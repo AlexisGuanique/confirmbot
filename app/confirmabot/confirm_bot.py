@@ -10,8 +10,10 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from app.confirmabot.hostinger_login import login_to_hostinger
-
+from app.confirmabot.hostinger_actions import perform_hostinger_actions
 from app.confirmabot.mail_actions import mail_actions
+
+
 
 def open_temp_chrome_profile():
     chrome_options = Options()
@@ -29,12 +31,10 @@ def open_temp_chrome_profile():
 
 
 
-
 def run_checker():
     print("🟢 Ejecutando checker con el primer registro de la base de datos...")
 
     try:
-        # 🔽 ID fijo para ahora (puedes hacerlo dinámico más adelante)
         registro = get_email_by_id(1)
         if not registro:
             print("❌ No se encontró ningún registro con ID 1.")
@@ -46,15 +46,19 @@ def run_checker():
 
         driver = open_temp_chrome_profile()
 
-        mail_actions(driver, domain)
+        mail_ok, generated_email = mail_actions(driver, domain)
+        if not mail_ok:
+            print("❌ Falló la creación del correo en 33mail.")
+            driver.quit()
+            return
 
         login_to_hostinger(driver, email_hostinger, password_hostinger)
 
-
-        #"driver.quit()
-
     except Exception as e:
         print(f"❌ Error al ejecutar el checker: {e}")
+
+
+
 
 
 

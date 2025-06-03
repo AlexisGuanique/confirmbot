@@ -42,5 +42,9 @@ def login_to_hostinger(driver, email, password):
         else:
             print("⚠️ No se pudo completar la acción después del login.")
 
+        # 🧹 Cierre del navegador al finalizar todo
+        driver.quit()
+
     except Exception as e:
         print(f"❌ Error durante el login: {e}")
+        driver.quit()

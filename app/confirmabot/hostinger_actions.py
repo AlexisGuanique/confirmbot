@@ -15,7 +15,7 @@ def perform_hostinger_actions(driver):
     try:
         wait = WebDriverWait(driver, 30)
 
-
+        # Asegurar que la tabla de correos esté presente
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "tbody")))
 
         max_attempts = 10
@@ -36,7 +36,7 @@ def perform_hostinger_actions(driver):
                     time.sleep(3)
                     continue
 
-                # Hacer clic en el primer correo no leído
+                # Hacer clic en el primer correo no leído (el más reciente arriba)
                 unread_emails[0].click()
 
                 # Esperar el iframe del contenido y cambiar el foco
@@ -54,23 +54,24 @@ def perform_hostinger_actions(driver):
                     link_url = confirmation_link.get_attribute("href")
                     print(f"🔗 Enlace de confirmación encontrado: {link_url}")
 
+                    # Hacer clic en el enlace
                     confirmation_link.click()
                     print("✅ Enlace de confirmación clickeado.")
 
-                    # Cambiar al contenido principal antes de esperar nuevo sitio
+                    # 👉 Cambiar a la nueva pestaña
                     driver.switch_to.default_content()
+                    driver.switch_to.window(driver.window_handles[-1])
 
-                    # Esperar a que cargue el header de confirmación en la nueva página
+                    # 👉 Esperar a que cargue el header de confirmación
                     WebDriverWait(driver, 20).until(
                         EC.presence_of_element_located((By.XPATH, "//a[@href='/help']"))
                     )
 
-                    print("🎉 Cuenta confirmada exitosamente. Cerrando navegador...")
-                    driver.quit()
+                    print("🎉 Confirmación detectada en nueva pestaña. Proceso finalizado.")
                     return True
 
                 except Exception as e:
-                    print(f"⚠️ No se pudo encontrar o hacer clic en el enlace de confirmación: {e}")
+                    print(f"⚠️ No se pudo encontrar el enlace de confirmación: {e}")
 
                 finally:
                     driver.switch_to.default_content()
@@ -83,5 +84,5 @@ def perform_hostinger_actions(driver):
     except Exception as e:
         print(f"❌ Error inesperado: {e}")
 
-    print("❌ No se pudo confirmar la cuenta tras múltiples intentos.")
+    print("❌ No se pudo obtener el código de verificación tras múltiples intentos.")
     return False
