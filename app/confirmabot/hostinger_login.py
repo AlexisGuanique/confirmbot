@@ -3,7 +3,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from tkinter import messagebox
 import sys
-from app.confirmabot.hostinger_actions import perform_hostinger_actions  # ajusta el path según tu estructura
+from app.confirmabot.hostinger_actions import perform_hostinger_actions
 
 def login_to_hostinger(driver, email, password):
     try:
@@ -42,9 +42,9 @@ def login_to_hostinger(driver, email, password):
         else:
             print("⚠️ No se pudo completar la acción después del login.")
 
-        # 🧹 Cierre del navegador al finalizar todo
-        driver.quit()
+        return success  # ✅ Devolver resultado de verificación
 
     except Exception as e:
         print(f"❌ Error durante el login: {e}")
-        driver.quit()
+        return False  # ⚠️ En caso de error también devolvemos False
+

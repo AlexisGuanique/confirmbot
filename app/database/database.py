@@ -225,27 +225,26 @@ def get_bot_settings():
 
 
 
-def save_emails(email_list, email_hostinger, password_hostinger):
-    """Guarda una lista de emails junto con las credenciales de Hostinger."""
+def save_emails(email, email_hostinger, password_hostinger):
+    """Guarda un único email con las credenciales de Hostinger."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
-        for email in email_list:
-            cursor.execute('''
-                INSERT OR IGNORE INTO emails (email, email_hostinger, password_hostinger)
-                VALUES (?, ?, ?)
-            ''', (email.strip(), email_hostinger, password_hostinger))
+        cursor.execute('''
+            INSERT OR IGNORE INTO emails (email, email_hostinger, password_hostinger)
+            VALUES (?, ?, ?)
+        ''', (email.strip(), email_hostinger, password_hostinger))
 
         conn.commit()
         conn.close()
-        print("✅ Emails y credenciales guardados correctamente.")
+        print(f"✅ Registro guardado: {email}")
         return True
 
     except Exception as e:
-        print(f"❌ Error al guardar emails y credenciales: {e}")
+        print(f"❌ Error al guardar email y credenciales: {e}")
         return False
-   
+
 
 def get_all_emails():
     try:

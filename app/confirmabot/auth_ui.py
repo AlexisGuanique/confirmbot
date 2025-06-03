@@ -36,14 +36,14 @@ def setup_auth_ui(on_login_success):
 
     # Crear ventana principal
     root = ctk.CTk()
-    root.title("Login - Ultra Bot")
+    root.title("Login - Confirma Bot")
     root.geometry("600x300")
     root.configure(fg_color="#FFFFFF")
 
     # Título principal centrado
     title_label = ctk.CTkLabel(
         root,
-        text="Bienvenido al Ultra Bot",
+        text="Bienvenido al Confirma Bot",
         font=("Arial", 24, "bold"),
         text_color="black"
     )

@@ -29,7 +29,10 @@ def mail_actions(driver, domain):
 
         # 👉 Generar datos
         username = generate_custom_username()
-        generated_email = f"{username}{domain}"
+        username2 = generate_custom_username()
+        second_username = generate_custom_username()
+        final_email = f"{second_username}@{username}.33mail.com"
+        generated_email = f"{username2}{domain}"
         password = generate_secure_password()
 
         wait = WebDriverWait(driver, 30)
@@ -58,18 +61,30 @@ def mail_actions(driver, domain):
         print(f"👤 Username: {username}")
         print(f"🔒 Password: {password}")
 
-        # 👉 Botón de registro
-        submit_button = wait.until(
-            EC.element_to_be_clickable((By.XPATH, '//input[@type="submit" and @value="Continue signup"]'))
-        )
+        submit_button_xpath = '//input[@type="submit" and @value="Continue signup"]'
+        submit_button = wait.until(EC.presence_of_element_located((By.XPATH, submit_button_xpath)))
+
+        # Hacer scroll hasta el botón
+        driver.execute_script("arguments[0].scrollIntoView(true);", submit_button)
+        time.sleep(0.5)
+
+        # Esperar a que sea clickeable de verdad
+        wait.until(EC.element_to_be_clickable((By.XPATH, submit_button_xpath)))
+
+        # Hacer clic normal (no JS)
         submit_button.click()
-        print("🚀 Formulario enviado. Esperando confirmación final...")
+        print("🖱️ Clic nativo sobre botón de continuar.")
+
+
+        # Confirmar que ya no esté visible el botón (o que haya navegación)
+        wait.until(EC.invisibility_of_element_located((By.XPATH, submit_button_xpath)))
+        print("📤 Botón de continuar desapareció, formulario enviado.")
 
         # ✅ Esperar a que se cargue el header con enlace a dashboard
         wait.until(EC.presence_of_element_located((By.XPATH, '//a[@href="/dashboard"]')))
         print("✅ Registro completado y página final cargada.")
 
-        return True, generated_email
+        return True, final_email
 
     except Exception as e:
         print(f"❌ Error durante las acciones en mail: {e}")

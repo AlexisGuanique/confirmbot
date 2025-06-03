@@ -7,6 +7,7 @@ def setup_ui(logged_in_user, on_login_success):
     from app.database.database import save_bot_settings, get_bot_settings, save_emails, get_all_emails, get_email_count, clear_emails
 
     from app.confirmabot.confirm_bot import run_checker
+    from app.confirmabot.utils.field_reader import parse_email_file  
 
 
 
@@ -95,6 +96,8 @@ def setup_ui(logged_in_user, on_login_success):
     email_count_label.pack(pady=(10, 2), anchor="w")
     email_count_label.bind("<Button-1>", toggle_domain_view)
 
+
+
     def load_emails_from_file():
         file_path = filedialog.askopenfilename(
             filetypes=[("Text files", "*.txt")],
@@ -105,24 +108,14 @@ def setup_ui(logged_in_user, on_login_success):
             return
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f if line.strip()]
-
-            if len(lines) % 3 != 0:
-                messagebox.showerror("Error", "El archivo debe tener bloques de 3 líneas: email, contraseña y dominio.")
-                return
-
+            registros = parse_email_file(file_path)
             registros_guardados = 0
 
-            for i in range(0, len(lines), 3):
-                email_h = lines[i]
-                password_h = lines[i + 1]
-                dominio = lines[i + 2]
-
-                if dominio.startswith("@"):
-                    success = save_emails([dominio], email_h, password_h)
-                    if success:
-                        registros_guardados += 1
+            for email, email_hostinger, password_hostinger in registros:
+                print(email, email_hostinger, password_hostinger)
+                success = save_emails(email, email_hostinger, password_hostinger)
+                if success:
+                    registros_guardados += 1
 
             if registros_guardados:
                 email_count_label.configure(text=f"Dominios cargados: {get_email_count()} (click para ver)")
@@ -217,11 +210,21 @@ def setup_ui(logged_in_user, on_login_success):
             domain_view_frame.place(x=250, y=250)  # ⇠ Más a la izquierda y abajo
 
 
-
-    
     # 👉 Botón para ejecutar el bot
     def handle_run_checker():
-        run_checker()
+        resultado = run_checker()
+
+        if resultado:
+            messagebox.showinfo(
+                "Verificación completada",
+                "✅ Proceso finalizado correctamente.\n\nLos correos verificados fueron guardados en la carpeta:\nverifications/"
+            )
+        else:
+            messagebox.showwarning(
+                "Verificación incompleta",
+                "⚠️ No se pudo verificar ninguna cuenta.\n\nPor favor revisa errores en consola y verifica credenciales.\nLos resultados (si hay alguno) están en:\nverifications/"
+            )
+
 
     run_checker_button = ctk.CTkButton(
         hostinger_frame,
