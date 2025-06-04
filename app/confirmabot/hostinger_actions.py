@@ -34,12 +34,14 @@ def perform_hostinger_actions(driver):
                 if not unread_emails and attempt in [3, 6]:
                     print("🔍 Verificando si hay contador de mensajes...")
                     try:
-                        driver.find_element(By.XPATH, "//span[@class='unreadcount skip-content' and text()='1']")
+                        driver.find_element(By.XPATH, "//span[contains(@class, 'unreadcount') and contains(@class, 'skip-content')]")
+                        print("📬 Contador encontrado. Refrescando la página...")
                         driver.refresh()
                         time.sleep(5)
                         unread_emails = driver.find_elements(By.CSS_SELECTOR, "tr.message.unread a")
                     except:
                         print("⚠️ Contador no encontrado.")
+
 
                 if not unread_emails:
                     print("🕐 No hay correos no leídos aún.")
@@ -67,11 +69,18 @@ def perform_hostinger_actions(driver):
                     driver.switch_to.default_content()
                     driver.switch_to.window(driver.window_handles[-1])
 
-                    WebDriverWait(driver, 20).until(
-                        EC.presence_of_element_located((By.XPATH, "//a[@href='/help']"))
-                    )
-                    print("🎉 Confirmación completada.")
-                    return True
+                    # 🟡 Intentar encontrar el elemento directamente varias veces sin esperar carga completa
+                    for attempt in range(1, 11):
+                        all_links = driver.find_elements(By.XPATH, "//a[@href='/help']")
+                        if all_links:
+                            print("🎉 Confirmación completada.")
+                            return True
+                        print(f"⏳ Buscando <a href='/help'>... intento {attempt}/10")
+                        time.sleep(2)
+
+                    print("❌ No se encontró el enlace '/help' tras varios intentos.")
+                    return False
+
 
                 except Exception as e:
                     print(f"⚠️ No se encontró el enlace de confirmación: {e}")
