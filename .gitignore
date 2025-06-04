@@ -5,10 +5,13 @@ __pycache__/
 # Ignorar entorno virtual
 venv/
 
+# Ignorar archivos de verificación y la carpeta completa
+verifications/
+
+# Ignorar base de datos
 cookies.db
 
-/build
-
-/dist
-
+# Ignorar archivos de build
+/build/
+/dist/
 *.spec
