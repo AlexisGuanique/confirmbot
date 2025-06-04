@@ -6,7 +6,7 @@ def setup_ui(logged_in_user, on_login_success):
     from app.confirmabot.auth_ui import setup_auth_ui
     from app.database.database import save_bot_settings, get_bot_settings, save_emails, get_all_emails, get_email_count, clear_emails
 
-    from app.confirmabot.confirm_bot import run_checker
+    from app.confirmabot.confirm_bot import run_checker, stop_bot
     from app.confirmabot.utils.field_reader import parse_email_file  
 
 
@@ -234,6 +234,17 @@ def setup_ui(logged_in_user, on_login_success):
         text_color="white"
     )
     run_checker_button.pack(pady=(10, 10))
+
+
+    stop_button = ctk.CTkButton(
+        hostinger_frame,
+        text="Detener Bot",
+        command=stop_bot,
+        fg_color="red",
+        text_color="white"
+    )
+    stop_button.pack(pady=(5, 10))
+
 
 
 

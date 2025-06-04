@@ -11,10 +11,18 @@ from app.confirmabot.hostinger_login import login_to_hostinger
 from app.confirmabot.mail_actions import mail_actions
 import time  # ⏱️ Asegúrate de tener esta importación al inicio del archivo
 
+stop_checker = False
+
+
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
+
+def stop_bot():
+    global stop_checker
+    stop_checker = True
+    print("🛑 Señal de detención enviada al bot.")
 
 
 def open_temp_chrome_profile():
@@ -40,8 +48,10 @@ def open_temp_chrome_profile():
 
 
 def run_checker():
+    global stop_checker
     print("🟢 Ejecutando checker para todos los registros...")
-    at_least_one_verified = False  # 🟢 Bandera de éxito
+    at_least_one_verified = False  
+    stop_checker = False
 
     try:
         total_registros = get_email_count()
@@ -54,8 +64,11 @@ def run_checker():
         iteraciones = config["iterations"]
 
         for id in range(1, total_registros + 1):
-            print(f"📂 Procesando registro ID {id}")
+            if stop_checker:
+                print("🛑 Ejecución interrumpida por el usuario.")
+                return at_least_one_verified
 
+            print(f"📂 Procesando registro ID {id}")
             registro = get_email_by_id(id)
             if not registro:
                 print(f"❌ No se encontró el registro con ID {id}. Saltando...")
@@ -74,6 +87,10 @@ def run_checker():
 
             with open(file_path, "a", encoding="utf-8") as f:
                 for i in range(iteraciones):
+                    if stop_checker:
+                        print("🛑 Iteración interrumpida por el usuario.")
+                        return at_least_one_verified
+
                     print(f"🔁 Iteración {i + 1} de {iteraciones} para ID {id}")
                     start_time = time.time()
 
@@ -84,13 +101,13 @@ def run_checker():
                         if not mail_ok:
                             print("❌ Falló la creación del correo en 33mail.")
                             continue
-                        print(final_email)
+
                         is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
 
                         if is_verified:
                             f.write(f"{final_email.strip()}\n")
                             print(f"📝 Email verificado guardado: {final_email.strip()}")
-                            at_least_one_verified = True  # ✅ Marcamos éxito
+                            at_least_one_verified = True
                         else:
                             f.write(f"{final_email.strip()} <-- no verificado\n")
                             print(f"⚠️ Email no verificado: {final_email.strip()}")
@@ -104,7 +121,7 @@ def run_checker():
                     elapsed = time.time() - start_time
                     print(f"⏱️ Tiempo de ejecución de la iteración: {elapsed:.2f} segundos")
 
-        return at_least_one_verified  # ✅ Retornamos si fue exitoso
+        return at_least_one_verified
 
     except Exception as e:
         print(f"❌ Error al ejecutar el checker: {e}")
