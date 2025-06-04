@@ -18,9 +18,13 @@ def login_to_hostinger(driver, email, password):
         print("🌐 Abriendo bandeja de entrada de Hostinger...")
         driver.get("https://mail.hostinger.com/?_task=mail&_mbox=INBOX.Confirmar")
 
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.ID, "rcmloginuser"))
-        )
+        try:
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.ID, "rcmloginuser"))
+            )
+        except:
+            print("❌ Timeout: No se pudo cargar el formulario de login.")
+            return False
 
         user_input = driver.find_element(By.ID, "rcmloginuser")
         pass_input = driver.find_element(By.ID, "rcmloginpwd")
@@ -28,23 +32,21 @@ def login_to_hostinger(driver, email, password):
 
         user_input.clear()
         user_input.send_keys(email)
-
         pass_input.clear()
         pass_input.send_keys(password)
-
         login_button.click()
         print("✅ Login automático completado.")
 
-        # 🔽 Ejecutar acciones de búsqueda de código después del login
+        # 🔽 Acción post-login
         success = perform_hostinger_actions(driver)
         if success:
             print("✅ Acción completada después del login.")
         else:
             print("⚠️ No se pudo completar la acción después del login.")
 
-        return success  # ✅ Devolver resultado de verificación
+        return success
 
     except Exception as e:
         print(f"❌ Error durante el login: {e}")
-        return False  # ⚠️ En caso de error también devolvemos False
+        return False
 
