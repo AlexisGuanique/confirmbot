@@ -47,6 +47,8 @@ def open_temp_chrome_profile():
 
 
 
+
+
 def run_checker():
     global stop_checker
     print("🟢 Ejecutando checker para todos los registros...")
@@ -82,8 +84,9 @@ def run_checker():
             os.makedirs("verifications", exist_ok=True)
             file_path = os.path.join("verifications", f"{safe_filename}.txt")
 
-            # 🧹 Limpiar archivo al iniciar el ciclo para este ID
-            open(file_path, "w", encoding="utf-8").close()
+            # ✅ Limpiar el archivo solo una vez al comenzar este ID
+            with open(file_path, "w", encoding="utf-8"):
+                pass
 
             with open(file_path, "a", encoding="utf-8") as f:
                 for i in range(iteraciones):
@@ -106,10 +109,14 @@ def run_checker():
 
                         if is_verified:
                             f.write(f"{final_email.strip()}\n")
+                            f.flush()
+                            os.fsync(f.fileno())
                             print(f"📝 Email verificado guardado: {final_email.strip()}")
                             at_least_one_verified = True
                         else:
                             f.write(f"{final_email.strip()} <-- no verificado\n")
+                            f.flush()
+                            os.fsync(f.fileno())
                             print(f"⚠️ Email no verificado: {final_email.strip()}")
 
                     except Exception as e:
@@ -126,7 +133,6 @@ def run_checker():
     except Exception as e:
         print(f"❌ Error al ejecutar el checker: {e}")
         return False
-
 
 
 if __name__ == "__main__":
