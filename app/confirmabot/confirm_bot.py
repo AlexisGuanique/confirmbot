@@ -28,22 +28,38 @@ def stop_bot():
 def open_temp_chrome_profile():
     chrome_options = Options()
 
-    # ✅ Desactivar headless
-    # chrome_options.add_argument("--headless")  ← asegurate de que esto esté desactivado
-
-    # ✅ Perfil temporal único para evitar conflictos
+    # ✅ Crear perfil temporal único
     unique_profile = os.path.join(tempfile.gettempdir(), f"selenium-profile-{uuid.uuid4()}")
     chrome_options.add_argument(f"--user-data-dir={unique_profile}")
 
-    # ✅ Evitar automatización visual (opcional)
+    # ✅ Evitar mensajes molestos y automatización detectada
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
 
-    # ✅ Forzar ventanas visibles (descomentar si hiciste pruebas con headless)
+    # ✅ Forzar ventana visible
     chrome_options.add_argument("--start-maximized")
 
-    driver = webdriver.Chrome(options=chrome_options)
-    return driver
+    # ✅ Desactivar caché para evitar errores por espacio
+    chrome_options.add_argument("--disable-application-cache")
+    chrome_options.add_argument("--disk-cache-size=0")
+
+    # ✅ Evitar problemas en sistemas limitados
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-gpu")
+
+    # 🔄 Opción alternativa: usar siempre el mismo perfil (evita acumulación)
+    # profile_path = os.path.join("chrome_profiles", "default")
+    # os.makedirs(profile_path, exist_ok=True)
+    # chrome_options.add_argument(f"--user-data-dir={profile_path}")
+
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver
+    except Exception as e:
+        print(f"❌ Error al iniciar Chrome: {e}")
+        return None
+
 
 
 
