@@ -8,6 +8,7 @@ def setup_ui(logged_in_user, on_login_success):
 
     from app.confirmabot.confirm_bot import run_checker, stop_bot
     from app.confirmabot.utils.field_reader import parse_email_file  
+    from app.confirmabot.utils.clear_cache import clear_selenium_cache, clear_browser_cache, clear_disk_space
 
 
 
@@ -244,6 +245,22 @@ def setup_ui(logged_in_user, on_login_success):
         text_color="white"
     )
     stop_button.pack(pady=(5, 10))
+
+
+    def run_cleanup():
+        try:
+            # Ejecutar las funciones de limpieza
+            clear_selenium_cache()
+            clear_browser_cache()
+            clear_disk_space()
+        except Exception as e:
+            print(f"❌ Error durante la limpieza: {e}")
+            messagebox.showerror("Error", f"Error durante la limpieza: {e}")
+
+
+        # Crear el botón para limpiar la caché
+    cleanup_button = ctk.CTkButton(hostinger_frame, text="Limpiar Caché y Liberar Espacio", command=run_cleanup, height=2, width=30)
+    cleanup_button.pack(pady=20)
 
 
 

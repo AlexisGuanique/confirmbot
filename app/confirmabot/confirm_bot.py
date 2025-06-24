@@ -48,21 +48,12 @@ def open_temp_chrome_profile():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-gpu")
 
-    # 🔄 Opción alternativa: usar siempre el mismo perfil (evita acumulación)
-    # profile_path = os.path.join("chrome_profiles", "default")
-    # os.makedirs(profile_path, exist_ok=True)
-    # chrome_options.add_argument(f"--user-data-dir={profile_path}")
-
     try:
         driver = webdriver.Chrome(options=chrome_options)
         return driver
     except Exception as e:
-        print(f"❌ Error al iniciar Chrome: {e}")
-        return None
-
-
-
-
+        print(f"❌ Error al iniciar el navegador: {e}")
+        return None  # Devolvemos None si no se puede iniciar el driver
 
 
 def run_checker():
@@ -113,33 +104,51 @@ def run_checker():
                     print(f"🔁 Iteración {i + 1} de {iteraciones} para ID {id}")
                     start_time = time.time()
 
+                    # Inicializamos el driver
                     driver = open_temp_chrome_profile()
 
+                    # Si el driver es None, terminamos la iteración
+                    if not driver:
+                        print("❌ Error al crear el navegador, saltando esta iteración.")
+                        continue  # Saltamos a la siguiente iteración
+
+                    # Usamos un ciclo para reintentar en caso de error
+                    retries = 3
+                    while retries > 0:
+                        try:
+                            mail_ok, final_email = mail_actions(driver, domain)
+                            if not mail_ok:
+                                print("❌ Falló la creación del correo en 33mail.")
+                                retries -= 1  # Reintentar
+                                continue
+
+                            is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
+
+                            if is_verified:
+                                f.write(f"{final_email.strip()}\n")
+                                f.flush()
+                                os.fsync(f.fileno())
+                                print(f"📝 Email verificado guardado: {final_email.strip()}")
+                                at_least_one_verified = True
+                            else:
+                                f.write(f"{final_email.strip()} <-- no verificado\n")
+                                f.flush()
+                                os.fsync(f.fileno())
+                                print(f"⚠️ Email no verificado: {final_email.strip()}")
+                            break  # Si no hubo error, salimos del ciclo
+
+                        except Exception as e:
+                            print(f"❌ Error durante la iteración: {e}")
+                            retries -= 1  # Reintentar
+
+                        if retries == 0:
+                            print(f"❌ Se alcanzaron los intentos máximos para el registro ID {id}. Saltando...")
+
+                    # Intentar cerrar el driver con seguridad
                     try:
-                        mail_ok, final_email = mail_actions(driver, domain)
-                        if not mail_ok:
-                            print("❌ Falló la creación del correo en 33mail.")
-                            continue
-
-                        is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
-
-                        if is_verified:
-                            f.write(f"{final_email.strip()}\n")
-                            f.flush()
-                            os.fsync(f.fileno())
-                            print(f"📝 Email verificado guardado: {final_email.strip()}")
-                            at_least_one_verified = True
-                        else:
-                            f.write(f"{final_email.strip()} <-- no verificado\n")
-                            f.flush()
-                            os.fsync(f.fileno())
-                            print(f"⚠️ Email no verificado: {final_email.strip()}")
-
-                    except Exception as e:
-                        print(f"❌ Error durante la iteración: {e}")
-
-                    finally:
                         driver.quit()
+                    except Exception as e:
+                        print(f"⚠️ Error al cerrar el driver: {e}")
 
                     elapsed = time.time() - start_time
                     print(f"⏱️ Tiempo de ejecución de la iteración: {elapsed:.2f} segundos")
@@ -149,6 +158,7 @@ def run_checker():
     except Exception as e:
         print(f"❌ Error al ejecutar el checker: {e}")
         return False
+
 
 
 if __name__ == "__main__":

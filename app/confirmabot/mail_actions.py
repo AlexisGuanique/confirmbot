@@ -35,6 +35,11 @@ def mail_actions(driver, domain):
         generated_email = f"{username2}{domain}"
         password = generate_secure_password()
 
+        # Asegurarnos que los valores generados no son None
+        if not final_email or not generated_email:
+            print("❌ Error: los emails generados son inválidos.")
+            return False, None
+
         wait = WebDriverWait(driver, 30)
 
         # 👉 Email destino
@@ -74,7 +79,6 @@ def mail_actions(driver, domain):
         # Hacer clic normal (no JS)
         submit_button.click()
         print("🖱️ Clic nativo sobre botón de continuar.")
-
 
         # Confirmar que ya no esté visible el botón (o que haya navegación)
         wait.until(EC.invisibility_of_element_located((By.XPATH, submit_button_xpath)))
