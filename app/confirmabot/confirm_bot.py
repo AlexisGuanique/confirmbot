@@ -6,6 +6,8 @@ import os
 import tempfile
 import uuid
 
+from contextlib import contextmanager
+
 import subprocess
 
 from app.confirmabot.hostinger_login import login_to_hostinger
@@ -25,45 +27,83 @@ def stop_bot():
     stop_checker = True
     print("🛑 Señal de detención enviada al bot.")
 
+@contextmanager
+def suppress_stderr():
+    """Oculta errores en consola temporalmente."""
+    with open(os.devnull, 'w') as fnull:
+        old_stderr = sys.stderr
+        sys.stderr = fnull
+        try:
+            yield
+        finally:
+            sys.stderr = old_stderr
 
 def open_temp_chrome_profile():
-    chrome_options = Options()
 
-    # ✅ Crear perfil temporal único
+    chromeOptions = Options()
+
+    # ✅ Crear perfil temporal limpio de Chrome para evitar conflictos
     unique_profile = os.path.join(tempfile.gettempdir(), f"selenium-profile-{uuid.uuid4()}")
-    chrome_options.add_argument(f"--user-data-dir={unique_profile}")
+    chromeOptions.add_argument(f"--user-data-dir={unique_profile}")
 
-    # ✅ Evitar mensajes molestos y automatización detectada
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option("useAutomationExtension", False)
+    # ✅ Ruta a la extensión de Captcha en Chrome
+    chrome_user_data_path = os.path.join(os.getenv("LOCALAPPDATA", ""), "Google", "Chrome", "User Data")
+    extension_id = "dknlfmjaanfblgfdfebhijalfmhmjjjo"
 
-    # ✅ Forzar ventana visible
-    chrome_options.add_argument("--start-maximized")
+    perfiles_a_buscar = [d for d in os.listdir(chrome_user_data_path)
+                         if os.path.isdir(os.path.join(chrome_user_data_path, d)) and (d == "Default" or d.startswith("Profile"))]
 
-    # ✅ Desactivar caché para evitar errores por espacio
-    chrome_options.add_argument("--disable-application-cache")
-    chrome_options.add_argument("--disk-cache-size=0")
+    base_extension_dir = None
+    for perfil in perfiles_a_buscar:
+        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id)
+        if os.path.isdir(posible_dir):
+            base_extension_dir = posible_dir
+            break
 
-    # ✅ Evitar problemas en sistemas limitados
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-gpu")
+    if base_extension_dir is None:
+        raise FileNotFoundError(f"❌ La extensión con ID {extension_id} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
 
-    # Bloquear imágenes (pero permitir CSS y JS)
-    prefs = {
-        "profile.managed_default_content_settings.images": 2,  # Bloquear imágenes
-        "profile.managed_default_content_settings.stylesheets": 1,  # Permitir CSS
-        "profile.managed_default_content_settings.javascript": 1,  # Permitir JS
-    }
-    chrome_options.add_experimental_option("prefs", prefs)
+    versiones = sorted([d for d in os.listdir(base_extension_dir) if os.path.isdir(os.path.join(base_extension_dir, d))], reverse=True)
 
-    try:
-        # Iniciar el navegador con las opciones especificadas
-        driver = webdriver.Chrome(options=chrome_options)
-        return driver
-    except Exception as e:
-        print(f"❌ Error al iniciar Chrome: {e}")
-        return None  # Devolvemos None si no se puede iniciar el driver
+    if not versiones:
+        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir}")
+
+    extension_path = os.path.join(base_extension_dir, versiones[0])
+
+    manifest_path = os.path.join(extension_path, "manifest.json")
+    if not os.path.exists(manifest_path):
+        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path}")
+
+    # Cargar únicamente la extensión necesaria y deshabilitar las demás.
+    chromeOptions.add_argument(f"--load-extension={extension_path}")
+    chromeOptions.add_argument(f"--disable-extensions-except={extension_path}")
+
+    # 🚫 Desactivar Brave Shields (bloqueador nativo de anuncios) para evitar bloqueo de recursos
+    chromeOptions.add_argument("--disable-brave-shields-backend")
+    chromeOptions.add_argument("--brave.disable_shields=true")
+    # Otras características internas que pueden interferir
+    chromeOptions.add_argument("--disable-features=BraveAds,BraveRewards")
+
+    # ⚙️ Opciones de rendimiento
+    # chromeOptions.add_argument("--incognito")
+    chromeOptions.add_argument("--disable-gpu")
+    chromeOptions.add_argument("--disable-software-rasterizer")
+    chromeOptions.add_argument("--disable-features=VizDisplayCompositor")
+    chromeOptions.add_argument("--disable-accelerated-2d-canvas")
+    chromeOptions.add_argument("--disable-accelerated-video-decode")
+    chromeOptions.add_argument("--disable-accelerated-mjpeg-decode")
+
+    # 🕵️ Evitar detección de Selenium
+    chromeOptions.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chromeOptions.add_experimental_option("useAutomationExtension", False)
+
+    # 🚀 Crear driver (Chrome predeterminado)
+    with suppress_stderr():
+        driver = webdriver.Chrome(options=chromeOptions)
+    
+
+    return driver
+
 
 
 
@@ -120,14 +160,14 @@ def run_checker():
                     start_time = time.time()
 
                     # Ejecutar el comando para activar el modo avión
-                    subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"])
-                    print("✅ Modo avión activado.")
-                    time.sleep(5)  # Esperar 3 segundos
+                    # subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"])
+                    # print("✅ Modo avión activado.")
+                    # time.sleep(5)  # Esperar 3 segundos
 
                     # Ejecutar el comando para desactivar el modo avión
-                    subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"])
-                    print("✅ Modo avión desactivado.")
-                    time.sleep(5)  # Esperar 5 segundos
+                    # subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"])
+                    # print("✅ Modo avión desactivado.")
+                    # time.sleep(5)  # Esperar 5 segundos
 
                     # Inicializar el navegador
                     driver = open_temp_chrome_profile()

@@ -5,6 +5,7 @@ import string
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException
 
 fake = Faker()
 
@@ -26,6 +27,34 @@ def mail_actions(driver, domain):
         print("🌐 Abriendo 33mail para crear cuenta...")
         driver.get("https://www.33mail.com/signup")
         print("📨 Iniciando acciones en la página de 33mail...")
+
+        # ✋ Esperar a que la extensión resuelva el reCAPTCHA ANTES de rellenar el formulario
+        try:
+            WebDriverWait(driver, 180).until(
+                lambda d: d.execute_script(
+                    "return (typeof grecaptcha !== 'undefined' && grecaptcha.getResponse().length > 0);"
+                )
+            )
+            print("🔑 Token de reCAPTCHA detectado (grecaptcha.getResponse()).")
+        except TimeoutException:
+            print("⚠️ No se detectó token de reCAPTCHA mediante grecaptcha.getResponse(). Se intentará verificar textarea oculto…")
+            try:
+                WebDriverWait(driver, 60).until(
+                    lambda d: d.execute_script(
+                        "var t=document.querySelector('textarea[name=\"g-recaptcha-response\"]'); return t && t.value.trim().length>0;"
+                    )
+                )
+                print("🔑 Token de reCAPTCHA detectado en textarea oculto.")
+            except TimeoutException:
+                print("⚠️ No se detectó el token de reCAPTCHA dentro del tiempo límite. Continuaremos, pero el servidor podría rechazar el registro.")
+
+        # ✅ Asegurarse de que desaparezca el overlay de captcha
+        try:
+            overlay_locator = (By.CSS_SELECTOR, 'div[style*="z-index: 2000000000"]')
+            WebDriverWait(driver, 120).until(EC.invisibility_of_element_located(overlay_locator))
+            print("✅ Captcha resuelto, overlay desapareció.")
+        except TimeoutException:
+            print("⚠️ Timeout esperando que desaparezca overlay de captcha. Podría interferir posteriormente.")
 
         # 👉 Generar datos
         username = generate_custom_username()
@@ -68,21 +97,31 @@ def mail_actions(driver, domain):
         driver.execute_script("arguments[0].scrollIntoView(true);", submit_button)
         time.sleep(0.5)
 
-        # Esperar a que sea clickeable de verdad
-        wait.until(EC.element_to_be_clickable((By.XPATH, submit_button_xpath)))
+        # Intentar hacer clic con reintentos por si algún overlay residual intercepta el clic
+        for attempt in range(5):
+            try:
+                wait.until(EC.element_to_be_clickable((By.XPATH, submit_button_xpath)))
+                submit_button.click()
+                print("✅ Clic nativo sobre botón de continuar.")
+                break
+            except ElementClickInterceptedException:
+                print(f"⏳ Intento {attempt + 1}: botón aún interceptado, esperando 2 s...")
+                time.sleep(2)
+        else:
+            raise Exception("No se pudo hacer clic en el botón de continuar tras múltiples intentos.")
 
-        # Hacer clic normal (no JS)
-        submit_button.click()
-        print("🖱️ Clic nativo sobre botón de continuar.")
-
-
-        # Confirmar que ya no esté visible el botón (o que haya navegación)
-        wait.until(EC.invisibility_of_element_located((By.XPATH, submit_button_xpath)))
-        print("📤 Botón de continuar desapareció, formulario enviado.")
-
-        # ✅ Esperar a que se cargue el header con enlace a dashboard
-        wait.until(EC.presence_of_element_located((By.XPATH, '//a[@href="/dashboard"]')))
-        print("✅ Registro completado y página final cargada.")
+        # Esperar a que desaparezca el botón O se cargue alguna señal de éxito
+        wait_success = WebDriverWait(driver, 60)
+        try:
+            wait_success.until(
+                EC.any_of(
+                    EC.invisibility_of_element_located((By.XPATH, submit_button_xpath)),
+                    EC.presence_of_element_located((By.XPATH, '//a[@href="/dashboard"]'))
+                )
+            )
+            print("✅ Registro completado o botón desapareció, navegación correcta.")
+        except TimeoutException:
+            raise Exception("Timeout esperando confirmación de registro.")
 
         return True, final_email
 
