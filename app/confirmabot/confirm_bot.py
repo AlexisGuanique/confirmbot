@@ -6,6 +6,7 @@ import os
 import tempfile
 import uuid
 
+import subprocess
 
 from app.confirmabot.hostinger_login import login_to_hostinger
 from app.confirmabot.mail_actions import mail_actions
@@ -48,19 +49,21 @@ def open_temp_chrome_profile():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-gpu")
 
-    # 🔄 Opción alternativa: usar siempre el mismo perfil (evita acumulación)
-    # profile_path = os.path.join("chrome_profiles", "default")
-    # os.makedirs(profile_path, exist_ok=True)
-    # chrome_options.add_argument(f"--user-data-dir={profile_path}")
+    # Bloquear imágenes (pero permitir CSS y JS)
+    prefs = {
+        "profile.managed_default_content_settings.images": 2,  # Bloquear imágenes
+        "profile.managed_default_content_settings.stylesheets": 1,  # Permitir CSS
+        "profile.managed_default_content_settings.javascript": 1,  # Permitir JS
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
 
     try:
+        # Iniciar el navegador con las opciones especificadas
         driver = webdriver.Chrome(options=chrome_options)
         return driver
     except Exception as e:
         print(f"❌ Error al iniciar Chrome: {e}")
-        return None
-
-
+        return None  # Devolvemos None si no se puede iniciar el driver
 
 
 
@@ -80,6 +83,9 @@ def run_checker():
             return False
 
         iteraciones = config["iterations"]
+
+        # Ruta del ejecutable
+        adb_path = r"C:\Adb\adb"
 
         for id in range(1, total_registros + 1):
             if stop_checker:
@@ -113,6 +119,17 @@ def run_checker():
                     print(f"🔁 Iteración {i + 1} de {iteraciones} para ID {id}")
                     start_time = time.time()
 
+                    # Ejecutar el comando para activar el modo avión
+                    subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"])
+                    print("✅ Modo avión activado.")
+                    time.sleep(5)  # Esperar 3 segundos
+
+                    # Ejecutar el comando para desactivar el modo avión
+                    subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"])
+                    print("✅ Modo avión desactivado.")
+                    time.sleep(5)  # Esperar 5 segundos
+
+                    # Inicializar el navegador
                     driver = open_temp_chrome_profile()
 
                     try:
