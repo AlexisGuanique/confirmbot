@@ -33,8 +33,14 @@ def login_to_hostinger(driver, email, password):
 
 
         max_retries = 10
+        global_start = time.time()
         for attempt in range(1, max_retries + 1):
             print(f"⏳ Intento número: {attempt}")
+
+            # Timeout global de 5 min
+            if time.time() - global_start > 300:
+                print("⏰ Timeout global de 5 minutos alcanzado en login_to_hostinger. Abortando intento.")
+                return False
 
             try:
                 WebDriverWait(driver, 5).until(

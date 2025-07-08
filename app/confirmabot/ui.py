@@ -4,19 +4,19 @@ def setup_ui(logged_in_user, on_login_success):
     from tkinter import messagebox
     from app.auth.auth import logout
     from app.confirmabot.auth_ui import setup_auth_ui
-    from app.database.database import save_bot_settings, get_bot_settings, save_emails, get_all_emails, get_email_count, clear_emails
+    from app.database.database import save_bot_settings, get_bot_settings, save_emails, get_all_emails, get_email_count, clear_emails, save_click_coordinates, save_nopecha_key, get_nopecha_key
 
-    from app.confirmabot.confirm_bot import run_checker, stop_bot
+    from app.confirmabot.confirm_bot import run_checker, stop_bot, open_temp_chrome_profile as openProfileWithExtraExtension
+    import threading
     from app.confirmabot.utils.field_reader import parse_email_file  
-
-
+    from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
 
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
 
     root = ctk.CTk()
     root.title("Confirma Bot")
-    root.geometry("600x550")
+    root.geometry("600x650")
     root.configure(fg_color="#FFFFFF")  # Fondo blanco
 
    # 📌 Etiqueta de bienvenida centrada arriba
@@ -77,6 +77,46 @@ def setup_ui(logged_in_user, on_login_success):
     )
     save_iterations_button.pack(pady=(0, 15))
 
+    # 👉 Input: NopeCHA API Key
+    nopecha_label = ctk.CTkLabel(
+        hostinger_frame,
+        text="NopeCHA API Key:",
+        text_color="black",
+        font=("Arial", 12, "bold")
+    )
+    nopecha_label.pack(pady=(10, 2), anchor="w")
+
+    nopecha_entry = ctk.CTkEntry(
+        hostinger_frame,
+        width=200,
+        placeholder_text="sub_xxxxxxxxxxxxxxxxxxxxxxxxx"
+    )
+    nopecha_entry.pack(pady=(0, 5))
+
+    # Cargar clave guardada si existe
+    stored_key = get_nopecha_key()
+    if stored_key:
+        nopecha_entry.insert(0, stored_key)
+
+    def save_nopecha_key_ui():
+        key = nopecha_entry.get().strip()
+        if not key:
+            messagebox.showerror("Error", "La clave NopeCHA no puede estar vacía.")
+            return
+
+        if save_nopecha_key(key):
+            messagebox.showinfo("Guardado", "✅ NopeCHA key guardada correctamente.")
+        else:
+            messagebox.showerror("Error", "No se pudo guardar la NopeCHA key.")
+
+    save_nopecha_button = ctk.CTkButton(
+        hostinger_frame,
+        text="Guardar NopeCHA Key",
+        command=save_nopecha_key_ui,
+        fg_color="#0066cc",
+        text_color="white"
+    )
+    save_nopecha_button.pack(pady=(0, 15))
 
     # 👉 Mostrar cantidad de dominios y hacer clic para verlos
     def toggle_domain_view(event=None):
@@ -245,11 +285,99 @@ def setup_ui(logged_in_user, on_login_success):
     )
     stop_button.pack(pady=(5, 10))
 
+    # ================= Capturar Coordenadas =================
+    def add_coordinates_interactively():
+        etiquetas = [
+            "first_click",
+            "second_click",
+            "third_click",
+            "fourth_click"
+        ]
 
+        coordenadas = []
 
+        # Abrir Chrome utilizando la misma configuración del bot
+        driver = openProfileWithExtraExtension()
+        driver.maximize_window()
+        driver.get("https://www.google.com/")
 
+        def capturar_y_mostrar(index, popup):
+            popup.lift()
+            popup.focus_force()
+            popup.attributes("-topmost", True)
 
+            label = ctk.CTkLabel(
+                popup,
+                text=f"Presiona la tecla 'c' para capturar la coordenada de:\n{etiquetas[index]}",
+                font=("Arial", 14),
+                text_color="black"
+            )
+            label.pack(pady=15)
 
+            coord_label = ctk.CTkLabel(
+                popup,
+                text="",
+                font=("Arial", 14, "bold"),
+                text_color="black"
+            )
+            coord_label.pack(pady=10)
+
+            def capturar():
+                coord_raw = get_mouse_coordinate_on_keypress("c")  # formato "123x456"
+                # Convertir a "123 x 456"
+                if "x" in coord_raw:
+                    x, y = coord_raw.split("x")
+                    coord = f"{x} x {y}"
+                else:
+                    coord = coord_raw
+                coordenadas.append(coord)
+                popup.after(0, lambda: coord_label.configure(text=f"{etiquetas[index]}: {coord}"))
+
+            threading.Thread(target=capturar, daemon=True).start()
+
+            def siguiente():
+                popup.destroy()
+                if index + 1 < len(etiquetas):
+                    mostrar_popup(index + 1)
+                else:
+                    # Guardar coordenadas en la base de datos
+                    if save_click_coordinates(coordenadas):
+                        messagebox.showinfo("Guardado", "✅ Coordenadas guardadas correctamente.")
+                    else:
+                        messagebox.showerror("Error", "No se pudieron guardar las coordenadas.")
+
+                    try:
+                        driver.quit()
+                    except Exception as e:
+                        print(f"❌ Error al cerrar Chrome: {e}")
+
+            next_button = ctk.CTkButton(
+                popup,
+                text="Próxima coordenada" if index + 1 < len(etiquetas) else "Finalizar",
+                command=siguiente,
+                fg_color="#5C2D91",
+                text_color="white",
+                hover_color="#472173"
+            )
+            next_button.pack(pady=15)
+
+        def mostrar_popup(index):
+            popup = ctk.CTkToplevel()
+            popup.geometry("420x220")
+            popup.title("Captura de Coordenada")
+            popup.configure(fg_color="#f0f0f0")
+            capturar_y_mostrar(index, popup)
+
+        mostrar_popup(0)
+
+    capture_coords_button = ctk.CTkButton(
+        hostinger_frame,
+        text="Capturar Coordenadas",
+        command=add_coordinates_interactively,
+        fg_color="#9C27B0",
+        text_color="white"
+    )
+    capture_coords_button.pack(pady=(5, 10))
 
     # 👉 Función de logout
     def handle_logout():

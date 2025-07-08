@@ -14,6 +14,7 @@ def extract_code_from_text(text):
 def perform_hostinger_actions(driver):
     try:
         wait = WebDriverWait(driver, 15)
+        global_start = time.time()
         try:
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "tbody")))
         except:
@@ -23,6 +24,11 @@ def perform_hostinger_actions(driver):
         max_attempts = 10
         for attempt in range(1, max_attempts + 1):
             print(f"🔄 Intento {attempt} de {max_attempts}")
+
+            # Verificar timeout global (5 minutos)
+            if time.time() - global_start > 300:
+                print("⏰ Timeout global de 5 minutos alcanzado en perform_hostinger_actions. Abortando.")
+                return False
 
             try:
                 refresh_btn = driver.find_element(By.ID, "rcmbtn113")

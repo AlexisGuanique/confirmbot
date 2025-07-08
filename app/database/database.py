@@ -1,4 +1,3 @@
-
 import os
 import sys
 import sqlite3
@@ -57,7 +56,34 @@ def create_database():
             '''
         )
 
+        # 🔹 Tabla para almacenar las coordenadas de 3 clics
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS actions (
+                id INTEGER PRIMARY KEY CHECK (id = 1),  -- Siempre 1
+                first_click TEXT NOT NULL,   -- formato "200 x 200"
+                second_click TEXT NOT NULL,
+                third_click TEXT NOT NULL,
+                fourth_click TEXT NOT NULL
+            )
+            '''
+        )
 
+        # ▶️ Asegurar que la columna fourth_click existe (migraciones antiguas)
+        cursor.execute("PRAGMA table_info(actions)")
+        existing_cols = [row[1] for row in cursor.fetchall()]
+        if "fourth_click" not in existing_cols:
+            cursor.execute("ALTER TABLE actions ADD COLUMN fourth_click TEXT NOT NULL DEFAULT ''")
+
+        # 🔹 Tabla para almacenar la clave de NopeCHA
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS nopecha_key (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                api_key TEXT NOT NULL
+            )
+            '''
+        )
 
         conn.commit()
         conn.close()
@@ -311,3 +337,102 @@ def get_email_count():
     except Exception as e:
         print(f"❌ Error al contar emails: {e}")
         return 0
+
+
+
+def _format_coord(value):
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return f"{value[0]} x {value[1]}"
+    return str(value)
+
+
+def save_click_coordinates(coordinates):
+
+    if len(coordinates) != 4:
+        print("❌ Debes proporcionar exactamente 4 coordenadas.")
+        return False
+
+    c1, c2, c3, c4 = map(_format_coord, coordinates)
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute("REPLACE INTO actions (id, first_click, second_click, third_click, fourth_click) VALUES (1, ?, ?, ?, ?)",
+                       (c1, c2, c3, c4))
+
+        conn.commit()
+        conn.close()
+        print("✅ Coordenadas guardadas exitosamente.")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error al guardar coordenadas: {e}")
+        return False
+
+
+def get_click_coordinates():
+    """Devuelve un diccionario con las 3 coordenadas almacenadas o None."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT first_click, second_click, third_click, fourth_click FROM actions WHERE id = 1")
+        row = cursor.fetchone()
+        conn.close()
+
+        if row is None:
+            return None
+
+        return {
+            "first_click": row[0],
+            "second_click": row[1],
+            "third_click": row[2],
+            "fourth_click": row[3]
+        }
+
+    except Exception as e:
+        print(f"❌ Error al obtener coordenadas: {e}")
+        return None
+
+
+# =================================
+#         NOPECHA KEY
+# =================================
+
+def save_nopecha_key(api_key: str):
+    """Guarda o reemplaza la clave de NopeCHA."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "REPLACE INTO nopecha_key (id, api_key) VALUES (1, ?)",
+            (api_key.strip(),)
+        )
+
+        conn.commit()
+        conn.close()
+        print("✅ NopeCHA key guardada.")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error al guardar NopeCHA key: {e}")
+        return False
+
+
+def get_nopecha_key():
+    """Obtiene la clave de NopeCHA almacenada, o None si no existe."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT api_key FROM nopecha_key WHERE id = 1")
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            return row[0]
+        return None
+
+    except Exception as e:
+        print(f"❌ Error al obtener NopeCHA key: {e}")
+        return None
