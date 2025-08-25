@@ -1,6 +1,12 @@
 # Ignorar archivos de Python compilados
 __pycache__/
 *.py[cod]
+*$py.class
+
+# Ignorar archivos de Python compilados en todas las subcarpetas
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
 
 # Ignorar entorno virtual
 venv/
