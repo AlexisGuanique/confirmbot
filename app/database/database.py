@@ -705,7 +705,7 @@ def get_all_txt_emails():
 
 def clear_txt_emails():
     """
-    Elimina todos los correos almacenados en txt_emails.
+    Elimina todos los correos almacenados en txt_emails y reinicia los IDs.
     
     Returns:
         bool: True si se eliminaron correctamente, False en caso contrario
@@ -714,13 +714,18 @@ def clear_txt_emails():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
+        # Eliminar todos los correos
         cursor.execute("DELETE FROM txt_emails")
         deleted_count = cursor.rowcount
+        
+        # Reiniciar el contador de IDs (AUTOINCREMENT)
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='txt_emails'")
         
         conn.commit()
         conn.close()
         
         print(f"✅ Se eliminaron {deleted_count} correos de la tabla txt_emails")
+        print("🔄 IDs reiniciados - el próximo email tendrá ID 1")
         return True
         
     except Exception as e:

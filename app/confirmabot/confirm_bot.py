@@ -242,23 +242,19 @@ def run_creator():
         print("🟢 Ejecutando creador con acciones de LinkedIn...")
         
         # Importar el módulo de LinkedIn
-        from app.confirmabot.linkedin_actions import open_linkedin_window
+        from app.confirmabot.linkedin_actions import process_linkedin_email
         
-        print("🌐 Abriendo LinkedIn para acciones...")
+        print("🌐 Iniciando proceso de LinkedIn...")
         
-        # Usar el módulo de LinkedIn para abrir la ventana
-        driver = open_linkedin_window()
+        # Por ahora procesamos el email con ID 1
+        # Más adelante podremos hacer esto configurable
+        success = process_linkedin_email(1)
         
-        if driver:
-            print("✅ Ventana de LinkedIn abierta exitosamente")
-            print("🔄 Ventana mantenida abierta para acciones manuales...")
-            
-            # La ventana se mantiene abierta para que puedas trabajar manualmente
-            # No la cerramos automáticamente
+        if success:
+            print("✅ Proceso de LinkedIn completado exitosamente")
             return True
-            
         else:
-            print("❌ No se pudo abrir la ventana de LinkedIn")
+            print("❌ Error en el proceso de LinkedIn")
             return False
 
     except ImportError as e:
