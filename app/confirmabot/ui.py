@@ -91,45 +91,45 @@ def setup_ui(logged_in_user, on_login_success):
     save_iterations_button.pack(pady=(0, 15))
 
     # 👉 Input: NopeCHA API Key
-    nopecha_label = ctk.CTkLabel(
-        hostinger_frame,
-        text="NopeCHA API Key:",
-        text_color="black",
-        font=("Arial", 12, "bold")
-    )
-    nopecha_label.pack(pady=(10, 2), anchor="w")
+    #nopecha_label = ctk.CTkLabel(
+    #   hostinger_frame,
+   #     text="NopeCHA API Key:",
+    #    text_color="black",
+    #    font=("Arial", 12, "bold")
+    #)
+    #nopecha_label.pack(pady=(10, 2), anchor="w")
 
-    nopecha_entry = ctk.CTkEntry(
-        hostinger_frame,
-        width=200,
-        placeholder_text="sub_xxxxxxxxxxxxxxxxxxxxxxxxx"
-    )
-    nopecha_entry.pack(pady=(0, 5))
+    #nopecha_entry = ctk.CTkEntry(
+    #    hostinger_frame,
+    #    width=200,
+    #    placeholder_text="sub_xxxxxxxxxxxxxxxxxxxxxxxxx"
+    #)
+    #nopecha_entry.pack(pady=(0, 5))
 
     # Cargar clave guardada si existe
-    stored_key = get_nopecha_key()
-    if stored_key:
-        nopecha_entry.insert(0, stored_key)
+    #stored_key = get_nopecha_key()
+    #if stored_key:
+    #    nopecha_entry.insert(0, stored_key)
 
-    def save_nopecha_key_ui():
-        key = nopecha_entry.get().strip()
-        if not key:
-            messagebox.showerror("Error", "La clave NopeCHA no puede estar vacía.")
-            return
+    #def save_nopecha_key_ui():
+    #    key = nopecha_entry.get().strip()
+    #    if not key:
+    #        messagebox.showerror("Error", "La clave NopeCHA no puede estar vacía.")
+    #        return
 
-        if save_nopecha_key(key):
-            messagebox.showinfo("Guardado", "✅ NopeCHA key guardada correctamente.")
-        else:
-            messagebox.showerror("Error", "No se pudo guardar la NopeCHA key.")
+    #    if save_nopecha_key(key):
+    #        messagebox.showinfo("Guardado", "✅ NopeCHA key guardada correctamente.")
+    #    else:
+    #        messagebox.showerror("Error", "No se pudo guardar la NopeCHA key.")
 
-    save_nopecha_button = ctk.CTkButton(
-        hostinger_frame,
-        text="Guardar NopeCHA Key",
-        command=save_nopecha_key_ui,
-        fg_color="#0066cc",
-        text_color="white"
-    )
-    save_nopecha_button.pack(pady=(0, 15))
+    #save_nopecha_button = ctk.CTkButton(
+    #    hostinger_frame,
+    #       text="Guardar NopeCHA Key",
+    #    command=save_nopecha_key_ui,
+    #    fg_color="#0066cc",
+    #    text_color="white"
+    #)
+    #save_nopecha_button.pack(pady=(0, 15))
 
     # 👉 Mostrar cantidad de dominios y hacer clic para verlos
     def toggle_domain_view(event=None):
@@ -487,14 +487,14 @@ def setup_ui(logged_in_user, on_login_success):
 
         mostrar_popup(0)
 
-    capture_coords_button = ctk.CTkButton(
-        hostinger_frame,
-        text="Capturar Coordenadas",
-        command=add_coordinates_interactively,
-        fg_color="#9C27B0",
-        text_color="white"
-    )
-    capture_coords_button.pack(pady=(5, 10))
+    #capture_coords_button = ctk.CTkButton(
+    #    hostinger_frame,
+    #    text="Capturar Coordenadas",
+    #    command=add_coordinates_interactively,
+    #    fg_color="#9C27B0",
+    #    text_color="white"
+    #)
+    #capture_coords_button.pack(pady=(5, 10))
 
 
     # 👉 Input: User Agent
