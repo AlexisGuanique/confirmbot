@@ -38,45 +38,70 @@ def suppress_stderr():
         finally:
             sys.stderr = old_stderr
 
-def open_temp_chrome_profile():
+def open_chrome_profile(incognito_mode=False):
 
     chromeOptions = Options()
 
-    # ✅ Crear perfil temporal limpio de Chrome para evitar conflictos
-    unique_profile = os.path.join(tempfile.gettempdir(), f"selenium-profile-{uuid.uuid4()}")
-    chromeOptions.add_argument(f"--user-data-dir={unique_profile}")
-
-    # ✅ Ruta a la extensión de Captcha en Chrome
+    # ✅ Usar el perfil por defecto de Chrome para mantener configuraciones y extensiones
     chrome_user_data_path = os.path.join(os.getenv("LOCALAPPDATA", ""), "Google", "Chrome", "User Data")
-    extension_id = "dknlfmjaanfblgfdfebhijalfmhmjjjo"
+    chromeOptions.add_argument(f"--user-data-dir={chrome_user_data_path}")
+    chromeOptions.add_argument("--profile-directory=Default")
 
+    # ✅ Rutas a las extensiones en Chrome
+    # Extensión de Captcha (existente)
+    extension_id_captcha = "dknlfmjaanfblgfdfebhijalfmhmjjjo"
+    # Nueva extensión a agregar
+    extension_id_new = "hlkenndednhfkekhgcdicdfddnkalmdm"
+    
     perfiles_a_buscar = [d for d in os.listdir(chrome_user_data_path)
                          if os.path.isdir(os.path.join(chrome_user_data_path, d)) and (d == "Default" or d.startswith("Profile"))]
 
-    base_extension_dir = None
+    # Buscar la extensión de Captcha
+    base_extension_dir_captcha = None
     for perfil in perfiles_a_buscar:
-        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id)
+        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id_captcha)
         if os.path.isdir(posible_dir):
-            base_extension_dir = posible_dir
+            base_extension_dir_captcha = posible_dir
             break
 
-    if base_extension_dir is None:
-        raise FileNotFoundError(f"❌ La extensión con ID {extension_id} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
+    if base_extension_dir_captcha is None:
+        raise FileNotFoundError(f"❌ La extensión de Captcha con ID {extension_id_captcha} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
 
-    versiones = sorted([d for d in os.listdir(base_extension_dir) if os.path.isdir(os.path.join(base_extension_dir, d))], reverse=True)
+    # Buscar la nueva extensión
+    base_extension_dir_new = None
+    for perfil in perfiles_a_buscar:
+        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id_new)
+        if os.path.isdir(posible_dir):
+            base_extension_dir_new = posible_dir
+            break
 
-    if not versiones:
-        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir}")
+    if base_extension_dir_new is None:
+        raise FileNotFoundError(f"❌ La nueva extensión con ID {extension_id_new} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
 
-    extension_path = os.path.join(base_extension_dir, versiones[0])
+    # Obtener la versión más reciente de la extensión de Captcha
+    versiones_captcha = sorted([d for d in os.listdir(base_extension_dir_captcha) if os.path.isdir(os.path.join(base_extension_dir_captcha, d))], reverse=True)
+    if not versiones_captcha:
+        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir_captcha}")
+    extension_path_captcha = os.path.join(base_extension_dir_captcha, versiones_captcha[0])
 
-    manifest_path = os.path.join(extension_path, "manifest.json")
-    if not os.path.exists(manifest_path):
-        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path}")
+    # Obtener la versión más reciente de la nueva extensión
+    versiones_new = sorted([d for d in os.listdir(base_extension_dir_new) if os.path.isdir(os.path.join(base_extension_dir_new, d))], reverse=True)
+    if not versiones_new:
+        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir_new}")
+    extension_path_new = os.path.join(base_extension_dir_new, versiones_new[0])
 
-    # Cargar únicamente la extensión necesaria y deshabilitar las demás.
-    chromeOptions.add_argument(f"--load-extension={extension_path}")
-    chromeOptions.add_argument(f"--disable-extensions-except={extension_path}")
+    # Verificar que existan los manifest.json
+    manifest_path_captcha = os.path.join(extension_path_captcha, "manifest.json")
+    manifest_path_new = os.path.join(extension_path_new, "manifest.json")
+    
+    if not os.path.exists(manifest_path_captcha):
+        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path_captcha}")
+    if not os.path.exists(manifest_path_new):
+        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path_new}")
+
+    # Cargar ambas extensiones
+    chromeOptions.add_argument(f"--load-extension={extension_path_captcha},{extension_path_new}")
+    chromeOptions.add_argument(f"--disable-extensions-except={extension_path_captcha},{extension_path_new}")
 
     # 🚫 Desactivar Brave Shields (bloqueador nativo de anuncios) para evitar bloqueo de recursos
     chromeOptions.add_argument("--disable-brave-shields-backend")
@@ -85,7 +110,10 @@ def open_temp_chrome_profile():
     chromeOptions.add_argument("--disable-features=BraveAds,BraveRewards")
 
     # ⚙️ Opciones de rendimiento
-    # chromeOptions.add_argument("--incognito")
+    # Activar modo incógnito si se solicita
+    if incognito_mode:
+        chromeOptions.add_argument("--incognito")
+    
     chromeOptions.add_argument("--disable-gpu")
     chromeOptions.add_argument("--disable-software-rasterizer")
     chromeOptions.add_argument("--disable-features=VizDisplayCompositor")
@@ -103,8 +131,6 @@ def open_temp_chrome_profile():
     
 
     return driver
-
-
 
 
 
@@ -170,7 +196,7 @@ def run_checker():
                     # time.sleep(5)  # Esperar 5 segundos
 
                     # Inicializar el navegador
-                    driver = open_temp_chrome_profile()
+                    driver = open_chrome_profile()
 
                     try:
                         mail_ok, final_email = mail_actions(driver, domain)
@@ -205,6 +231,41 @@ def run_checker():
 
     except Exception as e:
         print(f"❌ Error al ejecutar el checker: {e}")
+        return False
+
+
+def run_creator():
+    """
+    Ejecuta el creador usando las acciones de LinkedIn
+    """
+    try:
+        print("🟢 Ejecutando creador con acciones de LinkedIn...")
+        
+        # Importar el módulo de LinkedIn
+        from app.confirmabot.linkedin_actions import open_linkedin_window
+        
+        print("🌐 Abriendo LinkedIn para acciones...")
+        
+        # Usar el módulo de LinkedIn para abrir la ventana
+        driver = open_linkedin_window()
+        
+        if driver:
+            print("✅ Ventana de LinkedIn abierta exitosamente")
+            print("🔄 Ventana mantenida abierta para acciones manuales...")
+            
+            # La ventana se mantiene abierta para que puedas trabajar manualmente
+            # No la cerramos automáticamente
+            return True
+            
+        else:
+            print("❌ No se pudo abrir la ventana de LinkedIn")
+            return False
+
+    except ImportError as e:
+        print(f"❌ Error al importar módulo de LinkedIn: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ Error al ejecutar el creador: {e}")
         return False
 
 

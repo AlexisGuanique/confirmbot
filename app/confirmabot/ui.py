@@ -4,9 +4,9 @@ def setup_ui(logged_in_user, on_login_success):
     from tkinter import messagebox
     from app.auth.auth import logout
     from app.confirmabot.auth_ui import setup_auth_ui
-    from app.database.database import save_bot_settings, get_bot_settings, save_emails, get_all_emails, get_email_count, clear_emails, save_click_coordinates, save_nopecha_key, get_nopecha_key
+    from app.database.database import save_bot_settings, get_bot_settings, save_emails, get_all_emails, get_email_count, clear_emails, save_first_three_coordinates, save_fourth_fifth_coordinates, save_nopecha_key, get_nopecha_key, save_user_agent, get_user_agent
 
-    from app.confirmabot.confirm_bot import run_checker, stop_bot, open_temp_chrome_profile as openProfileWithExtraExtension
+    from app.confirmabot.confirm_bot import run_checker, stop_bot, run_creator, open_chrome_profile as openProfileWithExtraExtension
     import threading
     from app.confirmabot.utils.field_reader import parse_email_file  
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
@@ -31,6 +31,19 @@ def setup_ui(logged_in_user, on_login_success):
     # 👉 Contenedor para inputs de Hostinger (lado izquierdo)
     hostinger_frame = ctk.CTkFrame(root, fg_color="transparent")
     hostinger_frame.place(relx=0.0, rely=0.0, anchor="nw", x=20, y=100)
+
+    # 👉 Contenedor para botones del lado derecho
+    right_frame = ctk.CTkFrame(root, fg_color="transparent")
+    right_frame.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=100)
+
+    # 👉 Título del frame derecho
+    right_title_label = ctk.CTkLabel(
+        right_frame,
+        text="🎯 Configuración del creador de cuentas",
+        text_color="black",
+        font=("Arial", 16, "bold")
+    )
+    right_title_label.pack(pady=(0, 15), anchor="w")
 
 
    #! 👉 Input: Cantidad de iteraciones
@@ -268,7 +281,7 @@ def setup_ui(logged_in_user, on_login_success):
 
     run_checker_button = ctk.CTkButton(
         hostinger_frame,
-        text="Ejecutar Bot",
+        text="Ejecutar Confirmabot",
         command=handle_run_checker,
         fg_color="#007ACC",   # Azul
         text_color="white"
@@ -285,18 +298,39 @@ def setup_ui(logged_in_user, on_login_success):
     )
     stop_button.pack(pady=(5, 10))
 
+    # ================= Ejecutar Creador =================
+    def handle_run_creator():
+        resultado = run_creator()
+        
+        # No mostrar messagebox, solo ejecutar silenciosamente
+        if resultado:
+            print("✅ Creador ejecutado correctamente")
+        else:
+            print("❌ Error al ejecutar el creador")
+
+    run_creator_button = ctk.CTkButton(
+        right_frame,
+        text="🚀 Ejecutar Creador",
+        command=handle_run_creator,
+        fg_color="#28A745",  # Verde
+        text_color="white",
+        hover_color="#218838",
+        width=220,  # Tamaño reducido
+        height=35   # Tamaño reducido
+    )
+    run_creator_button.pack(pady=(10, 10))
+
     # ================= Capturar Coordenadas =================
     def add_coordinates_interactively():
         etiquetas = [
             "first_click",
             "second_click",
-            "third_click",
-            "fourth_click"
+            "third_click"
         ]
 
         coordenadas = []
 
-        # Abrir Chrome utilizando la misma configuración del bot
+        # Abrir Chrome utilizando la misma configuración del bot en modo incógnito
         driver = openProfileWithExtraExtension()
         driver.maximize_window()
         driver.get("https://www.google.com/")
@@ -340,9 +374,9 @@ def setup_ui(logged_in_user, on_login_success):
                 if index + 1 < len(etiquetas):
                     mostrar_popup(index + 1)
                 else:
-                    # Guardar coordenadas en la base de datos
-                    if save_click_coordinates(coordenadas):
-                        messagebox.showinfo("Guardado", "✅ Coordenadas guardadas correctamente.")
+                    # Guardar solo las primeras 3 coordenadas en la base de datos
+                    if save_first_three_coordinates(coordenadas):
+                        messagebox.showinfo("Guardado", "✅ Primeras 3 coordenadas guardadas correctamente.")
                     else:
                         messagebox.showerror("Error", "No se pudieron guardar las coordenadas.")
 
@@ -370,6 +404,89 @@ def setup_ui(logged_in_user, on_login_success):
 
         mostrar_popup(0)
 
+    # ================= Capturar Coordenadas 4 y 5 =================
+    def add_fourth_fifth_coordinates():
+        etiquetas = [
+            "fourth_click",
+            "fifth_click"
+        ]
+
+        coordenadas = []
+
+        # Abrir Chrome utilizando la misma configuración del bot en modo incógnito
+        driver = openProfileWithExtraExtension(incognito_mode=True)
+        driver.maximize_window()
+        driver.get("https://www.linkedin.com/signup?_l=us&trk=guest_homepage-basic_nav-header-join.com/")
+
+        def capturar_y_mostrar(index, popup):
+            popup.lift()
+            popup.focus_force()
+            popup.attributes("-topmost", True)
+
+            label = ctk.CTkLabel(
+                popup,
+                text=f"Presiona la tecla 'c' para capturar la coordenada de:\n{etiquetas[index]}",
+                font=("Arial", 14),
+                text_color="black"
+            )
+            label.pack(pady=15)
+
+            coord_label = ctk.CTkLabel(
+                popup,
+                text="",
+                font=("Arial", 14, "bold"),
+                text_color="black"
+            )
+            coord_label.pack(pady=10)
+
+            def capturar():
+                coord_raw = get_mouse_coordinate_on_keypress("c")  # formato "123x456"
+                # Convertir a "123 x 456"
+                if "x" in coord_raw:
+                    x, y = coord_raw.split("x")
+                    coord = f"{x} x {y}"
+                else:
+                    coord = coord_raw
+                coordenadas.append(coord)
+                popup.after(0, lambda: coord_label.configure(text=f"{etiquetas[index]}: {coord}"))
+
+            threading.Thread(target=capturar, daemon=True).start()
+
+            def siguiente():
+                popup.destroy()
+                if index + 1 < len(etiquetas):
+                    mostrar_popup(index + 1)
+                else:
+                    # Guardar solo las coordenadas 4 y 5 en la base de datos
+                    if save_fourth_fifth_coordinates(coordenadas[0], coordenadas[1]):
+                        messagebox.showinfo("Guardado", "✅ Coordenadas 4 y 5 guardadas correctamente.")
+                    else:
+                        messagebox.showerror("Error", "No se pudieron guardar las coordenadas 4 y 5.")
+
+                    try:
+                        driver.quit()
+                    except Exception as e:
+                        print(f"❌ Error al cerrar Chrome: {e}")
+
+            next_button = ctk.CTkButton(
+                popup,
+                text="Próxima coordenada" if index + 1 < len(etiquetas) else "Finalizar",
+                command=siguiente,
+                fg_color="#5C2D91",
+                text_color="white",
+                hover_color="#472173"
+            )
+            next_button.pack(pady=15)
+
+        def mostrar_popup(index):
+            popup = ctk.CTkToplevel()
+            popup.geometry("420x220")
+            popup.title("Captura de Coordenadas 4 y 5")
+            popup.configure(fg_color="#f0f0f0")
+            capturar_y_mostrar(index, popup)
+
+        mostrar_popup(0)
+
     capture_coords_button = ctk.CTkButton(
         hostinger_frame,
         text="Capturar Coordenadas",
@@ -379,7 +496,214 @@ def setup_ui(logged_in_user, on_login_success):
     )
     capture_coords_button.pack(pady=(5, 10))
 
-    # 👉 Función de logout
+
+    # 👉 Input: User Agent
+    user_agent_label = ctk.CTkLabel(
+        right_frame,
+        text="User Agent:",
+        text_color="black",
+        font=("Arial", 12, "bold")
+    )
+    user_agent_label.pack(pady=(10, 2), anchor="center")
+
+    user_agent_entry = ctk.CTkEntry(
+        right_frame,
+        width=220,  # Mismo ancho que los botones
+        placeholder_text="Mozilla/5.0 (Windows NT 10.0; Win64; x64)..."
+    )
+    user_agent_entry.pack(pady=(0, 5))
+
+    # Cargar User Agent guardado si existe
+    stored_user_agent = get_user_agent()
+    if stored_user_agent:
+        user_agent_entry.insert(0, stored_user_agent)
+
+    def save_user_agent_ui():
+        user_agent = user_agent_entry.get().strip()
+        if not user_agent:
+            messagebox.showerror("Error", "El User Agent no puede estar vacío.")
+            return
+
+        if save_user_agent(user_agent):
+            messagebox.showinfo("Guardado", "✅ User Agent guardado correctamente.")
+        else:
+            messagebox.showerror("Error", "No se pudo guardar el User Agent.")
+
+    save_user_agent_button = ctk.CTkButton(
+        right_frame,
+        text="💾 Guardar User Agent",
+        command=save_user_agent_ui,
+        fg_color="#0066cc",
+        text_color="white",
+        hover_color="#0052a3",
+        width=220,  # Mismo ancho que los otros botones
+        height=35   # Mismo alto que los otros botones
+    )
+    save_user_agent_button.pack(pady=(0, 15))
+
+
+
+    # 👉 Botón para capturar coordenadas 4 y 5
+    capture_coords_4_5_button = ctk.CTkButton(
+        right_frame,
+        text="📱 Capturar Coordenadas LinkedIn",
+        command=add_fourth_fifth_coordinates,
+        fg_color="#FF9800",  # Naranja
+        text_color="white",
+        hover_color="#F57C00",
+        width=220,  # Tamaño reducido
+        height=35   # Tamaño reducido
+    )
+    capture_coords_4_5_button.pack(pady=(5, 10))
+
+    # ================= Cargar Correos desde .txt =================
+    def load_emails_from_txt():
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Text files", "*.txt")],
+            title="Seleccionar archivo .txt con correos"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            # Importar la función de detección automática
+            from app.confirmabot.utils.field_reader import auto_detect_email_format
+            from app.database.database import save_txt_emails, get_txt_emails_count
+            
+            print(f"📁 Archivo seleccionado: {file_path}")
+            
+            # Usar detección automática de formato
+            registros = auto_detect_email_format(file_path)
+            
+            if registros:
+                print(f"\n📧 Correos leídos del archivo:")
+                print("=" * 50)
+                for i, (email, email_hostinger, password) in enumerate(registros, 1):
+                    print(f"{i:2d}. {email}")
+                print("=" * 50)
+                print(f"✅ Total de correos procesados: {len(registros)}")
+                
+                # Extraer solo los emails para guardar en la base de datos
+                # Para formato simple: registro[0] es el email
+                emails_list = [registro[0] for registro in registros]
+                
+                # Guardar en la base de datos
+                print("\n💾 Guardando correos en la base de datos...")
+                if save_txt_emails(emails_list):
+                    print("✅ Correos guardados exitosamente en la base de datos")
+                    # Actualizar el contador en la UI
+                    update_txt_emails_count()
+                    # Mostrar mensaje de éxito
+                    messagebox.showinfo(
+                        "Éxito", 
+                        f"✅ Se cargaron {len(registros)} correos exitosamente desde el archivo.\n\nLos correos han sido guardados en la base de datos."
+                    )
+                else:
+                    print("❌ Error al guardar correos en la base de datos")
+                    messagebox.showerror(
+                        "Error", 
+                        "❌ No se pudieron guardar los correos en la base de datos.\n\nPor favor revisa los errores en la consola."
+                    )
+            else:
+                print("❌ No se pudieron leer correos del archivo")
+                # Mostrar messagebox informando sobre el formato incorrecto
+                messagebox.showerror(
+                    "Formato de archivo incorrecto", 
+                    "❌ El archivo seleccionado no tiene el formato correcto.\n\n"
+                    "📋 Formato requerido: un email por línea\n"
+                    "Ejemplo:\n"
+                    "dinner174qbda@play387dlbu.33mail.com\n"
+                    "just401yfcw@car60gvku.33mail.com\n"
+                    "base318qkrp@challenge200duqh.33mail.com\n\n"
+                    "⚠️ NO se aceptan archivos con formato de bloques (dominio, email, contraseña).\n"
+                    "Corrige el formato del archivo y vuelve a intentar."
+                )
+
+        except Exception as e:
+            print(f"❌ Error al procesar el archivo: {e}")
+            messagebox.showerror(
+                "Error", 
+                f"❌ Error al procesar el archivo:\n{e}\n\nPor favor verifica que el archivo sea válido."
+            )
+
+    def clear_txt_emails_ui():
+        """Función para eliminar todos los correos del archivo .txt"""
+        try:
+            from app.database.database import clear_txt_emails
+            
+            # Confirmar antes de eliminar
+            confirm = messagebox.askyesno(
+                "Confirmar eliminación", 
+                "¿Estás seguro de que quieres eliminar TODOS los correos del archivo .txt?\n\nEsta acción no se puede deshacer."
+            )
+            
+            if confirm:
+                if clear_txt_emails():
+                    messagebox.showinfo(
+                        "Eliminación exitosa", 
+                        "✅ Todos los correos del archivo .txt han sido eliminados."
+                    )
+                    # Actualizar el contador en la UI
+                    update_txt_emails_count()
+                else:
+                    messagebox.showerror(
+                        "Error", 
+                        "❌ No se pudieron eliminar los correos."
+                    )
+        except Exception as e:
+            print(f"❌ Error al eliminar correos: {e}")
+            messagebox.showerror("Error", f"Error al eliminar correos: {e}")
+
+    def update_txt_emails_count():
+        """Función para actualizar el contador de correos en la UI"""
+        try:
+            from app.database.database import get_txt_emails_count
+            count = get_txt_emails_count()
+            txt_emails_count_label.configure(text=f"📧 Correos almacenados: {count}")
+        except Exception as e:
+            print(f"❌ Error al actualizar contador: {e}")
+            txt_emails_count_label.configure(text="📧 Correos almacenados: Error")
+
+    # 👉 Botón para cargar correos desde .txt
+    load_emails_txt_button = ctk.CTkButton(
+        right_frame,
+        text="📧 Cargar Correos",
+        command=load_emails_from_txt,
+        fg_color="#17A2B8",  # Azul claro
+        text_color="white",
+        hover_color="#138496",
+        width=220,  # Tamaño reducido
+        height=35   # Tamaño reducido
+    )
+    load_emails_txt_button.pack(pady=(5, 10))
+
+    # 👉 Botón para eliminar todos los correos del archivo .txt
+    clear_txt_emails_button = ctk.CTkButton(
+        right_frame,
+        text="🗑️ Eliminar Correos",
+        command=clear_txt_emails_ui,
+        fg_color="#DC3545",  # Rojo
+        text_color="white",
+        hover_color="#C82333",
+        width=220,  # Tamaño reducido
+        height=35   # Tamaño reducido
+    )
+    clear_txt_emails_button.pack(pady=(5, 10))
+
+
+
+    # 👉 Etiqueta para mostrar la cantidad de correos en .txt
+    txt_emails_count_label = ctk.CTkLabel(
+        right_frame,
+        text="📧 Correos almacenados: 0",
+        text_color="black",
+        font=("Arial", 12, "bold")
+    )
+    txt_emails_count_label.pack(pady=(5, 10), anchor="w")
+    update_txt_emails_count() # Inicializar el contador
+
+    #  Función de logout
     def handle_logout():
         if logout():
             messagebox.showinfo("Logout Exitoso", "Has cerrado sesión.")

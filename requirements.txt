@@ -3,6 +3,7 @@ attrs==25.3.0
 certifi==2025.4.26
 cffi==1.17.1
 charset-normalizer==3.4.2
+ctk==0.1
 customtkinter==5.2.2
 darkdetect==0.8.0
 Faker==37.3.0
