@@ -40,7 +40,8 @@ def create_database():
             '''
             CREATE TABLE IF NOT EXISTS bot_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                iterations INTEGER NOT NULL
+                iterations INTEGER NOT NULL,
+                pause_minutes INTEGER NOT NULL DEFAULT 20
             )
             '''
         )
@@ -74,6 +75,13 @@ def create_database():
         existing_cols = [row[1] for row in cursor.fetchall()]
         if "fourth_click" not in existing_cols:
             cursor.execute("ALTER TABLE actions ADD COLUMN fourth_click TEXT NOT NULL DEFAULT ''")
+
+        # 🔄 Migración para agregar pause_minutes a bot_settings si no existe
+        cursor.execute("PRAGMA table_info(bot_settings)")
+        bot_settings_cols = [row[1] for row in cursor.fetchall()]
+        if "pause_minutes" not in bot_settings_cols:
+            cursor.execute("ALTER TABLE bot_settings ADD COLUMN pause_minutes INTEGER NOT NULL DEFAULT 20")
+            print("✅ Columna pause_minutes agregada a bot_settings")
 
         # 🔹 Tabla para almacenar la clave de NopeCHA
         cursor.execute(
@@ -204,7 +212,7 @@ def clear_database():
 
 
 
-def save_bot_settings(iterations):
+def save_bot_settings(iterations, pause_minutes=20):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -216,33 +224,33 @@ def save_bot_settings(iterations):
         if existing:
             cursor.execute('''
                 UPDATE bot_settings
-                SET iterations = ?
+                SET iterations = ?, pause_minutes = ?
                 WHERE id = ?
-            ''', (iterations, existing[0]))
+            ''', (iterations, pause_minutes, existing[0]))
         else:
             cursor.execute('''
-                INSERT INTO bot_settings (iterations)
-                VALUES (?)
-            ''', (iterations,))
+                INSERT INTO bot_settings (iterations, pause_minutes)
+                VALUES (?, ?)
+            ''', (iterations, pause_minutes))
 
         conn.commit()
         conn.close()
-        print("✅ Configuración de iteraciones guardada.")
+        print("✅ Configuración de iteraciones y tiempo de pausa guardada.")
         return True
 
     except Exception as e:
-        print(f"❌ Error al guardar iteraciones: {e}")
+        print(f"❌ Error al guardar configuración: {e}")
         return False
 
 def get_bot_settings():
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT iterations FROM bot_settings LIMIT 1")
+        cursor.execute("SELECT iterations, pause_minutes FROM bot_settings LIMIT 1")
         row = cursor.fetchone()
         conn.close()
         if row:
-            return {"iterations": row[0]}
+            return {"iterations": row[0], "pause_minutes": row[1]}
         else:
             return None
     except Exception as e:

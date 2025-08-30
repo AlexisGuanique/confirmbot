@@ -38,45 +38,70 @@ def suppress_stderr():
         finally:
             sys.stderr = old_stderr
 
-def open_temp_chrome_profile():
+def open_temp_chrome_profile(incognito_mode=False):
 
     chromeOptions = Options()
 
-    # ✅ Crear perfil temporal limpio de Chrome para evitar conflictos
-    unique_profile = os.path.join(tempfile.gettempdir(), f"selenium-profile-{uuid.uuid4()}")
-    chromeOptions.add_argument(f"--user-data-dir={unique_profile}")
-
-    # ✅ Ruta a la extensión de Captcha en Chrome
+    # ✅ Usar el perfil por defecto de Chrome para mantener configuraciones y extensiones
     chrome_user_data_path = os.path.join(os.getenv("LOCALAPPDATA", ""), "Google", "Chrome", "User Data")
-    extension_id = "dknlfmjaanfblgfdfebhijalfmhmjjjo"
+    chromeOptions.add_argument(f"--user-data-dir={chrome_user_data_path}")
+    chromeOptions.add_argument("--profile-directory=Default")
 
+    # ✅ Rutas a las extensiones en Chrome
+    # Extensión de Captcha (existente)
+    extension_id_captcha = "dknlfmjaanfblgfdfebhijalfmhmjjjo"
+    # Nueva extensión a agregar
+    extension_id_new = "hlkenndednhfkekhgcdicdfddnkalmdm"
+    
     perfiles_a_buscar = [d for d in os.listdir(chrome_user_data_path)
                          if os.path.isdir(os.path.join(chrome_user_data_path, d)) and (d == "Default" or d.startswith("Profile"))]
 
-    base_extension_dir = None
+    # Buscar la extensión de Captcha
+    base_extension_dir_captcha = None
     for perfil in perfiles_a_buscar:
-        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id)
+        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id_captcha)
         if os.path.isdir(posible_dir):
-            base_extension_dir = posible_dir
+            base_extension_dir_captcha = posible_dir
             break
 
-    if base_extension_dir is None:
-        raise FileNotFoundError(f"❌ La extensión con ID {extension_id} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
+    if base_extension_dir_captcha is None:
+        raise FileNotFoundError(f"❌ La extensión de Captcha con ID {extension_id_captcha} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
 
-    versiones = sorted([d for d in os.listdir(base_extension_dir) if os.path.isdir(os.path.join(base_extension_dir, d))], reverse=True)
+    # Buscar la nueva extensión
+    base_extension_dir_new = None
+    for perfil in perfiles_a_buscar:
+        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id_new)
+        if os.path.isdir(posible_dir):
+            base_extension_dir_new = posible_dir
+            break
 
-    if not versiones:
-        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir}")
+    if base_extension_dir_new is None:
+        raise FileNotFoundError(f"❌ La nueva extensión con ID {extension_id_new} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
 
-    extension_path = os.path.join(base_extension_dir, versiones[0])
+    # Obtener la versión más reciente de la extensión de Captcha
+    versiones_captcha = sorted([d for d in os.listdir(base_extension_dir_captcha) if os.path.isdir(os.path.join(base_extension_dir_captcha, d))], reverse=True)
+    if not versiones_captcha:
+        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir_captcha}")
+    extension_path_captcha = os.path.join(base_extension_dir_captcha, versiones_captcha[0])
 
-    manifest_path = os.path.join(extension_path, "manifest.json")
-    if not os.path.exists(manifest_path):
-        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path}")
+    # Obtener la versión más reciente de la nueva extensión
+    versiones_new = sorted([d for d in os.listdir(base_extension_dir_new) if os.path.isdir(os.path.join(base_extension_dir_new, d))], reverse=True)
+    if not versiones_new:
+        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir_new}")
+    extension_path_new = os.path.join(base_extension_dir_new, versiones_new[0])
 
-    # Cargar únicamente la extensión necesaria y deshabilitar las demás.
-    chromeOptions.add_argument(f"--load-extension={extension_path}")
-    chromeOptions.add_argument(f"--disable-extensions-except={extension_path}")
+    # Verificar que existan los manifest.json
+    manifest_path_captcha = os.path.join(extension_path_captcha, "manifest.json")
+    manifest_path_new = os.path.join(extension_path_new, "manifest.json")
+    
+    if not os.path.exists(manifest_path_captcha):
+        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path_captcha}")
+    if not os.path.exists(manifest_path_new):
+        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path_new}")
+
+    # Cargar ambas extensiones
+    chromeOptions.add_argument(f"--load-extension={extension_path_captcha},{extension_path_new}")
+    chromeOptions.add_argument(f"--disable-extensions-except={extension_path_captcha},{extension_path_new}")
 
     # 🚫 Desactivar Brave Shields (bloqueador nativo de anuncios) para evitar bloqueo de recursos
     chromeOptions.add_argument("--disable-brave-shields-backend")
@@ -85,7 +110,10 @@ def open_temp_chrome_profile():
     chromeOptions.add_argument("--disable-features=BraveAds,BraveRewards")
 
     # ⚙️ Opciones de rendimiento
-    # chromeOptions.add_argument("--incognito")
+    # Activar modo incógnito si se solicita
+    if incognito_mode:
+        chromeOptions.add_argument("--incognito")
+    
     chromeOptions.add_argument("--disable-gpu")
     chromeOptions.add_argument("--disable-software-rasterizer")
     chromeOptions.add_argument("--disable-features=VizDisplayCompositor")
@@ -107,7 +135,6 @@ def open_temp_chrome_profile():
 
 
 
-
 def run_checker():
     global stop_checker
     print("🟢 Ejecutando checker para todos los registros...")
@@ -123,6 +150,7 @@ def run_checker():
             return False
 
         iteraciones = config["iterations"]
+        pause_minutes = config.get("pause_minutes", 20)  # Valor por defecto: 20 minutos
 
         # Ruta del ejecutable
         adb_path = r"C:\Adb\adb"
@@ -151,10 +179,36 @@ def run_checker():
                 pass
 
             with open(file_path, "a", encoding="utf-8") as f:
+                successful_iterations = 0
+                failed_iterations = 0
+                timeout_errors = 0
+                other_errors = 0
+
                 for i in range(iteraciones):
                     if stop_checker:
                         print("🛑 Iteración interrumpida por el usuario.")
                         return at_least_one_verified
+
+                    # ⏸️ Pausa cada 10 iteraciones (excepto en la primera)
+                    if i > 0 and i % 10 == 0:
+                        print(f"⏸️ Pausa programada: {i} iteraciones completadas")
+                        print(f"⏰ Pausando por {pause_minutes} minutos...")
+                        
+                        # Convertir minutos a segundos
+                        pause_seconds = pause_minutes * 60
+                        
+                        # Mostrar progreso de la pausa cada minuto
+                        for remaining in range(pause_seconds, 0, -60):
+                            minutes_left = remaining // 60
+                            print(f"⏳ Tiempo restante: {minutes_left} minutos")
+                            time.sleep(60)  # Esperar 1 minuto
+                        
+                        # Esperar los segundos restantes
+                        remaining_seconds = pause_seconds % 60
+                        if remaining_seconds > 0:
+                            time.sleep(remaining_seconds)
+                        
+                        print("✅ Pausa completada. Continuando con las iteraciones...")
 
                     print(f"🔁 Iteración {i + 1} de {iteraciones} para ID {id}")
                     start_time = time.time()
@@ -170,7 +224,7 @@ def run_checker():
                     # time.sleep(5)  # Esperar 5 segundos
 
                     # Inicializar el navegador
-                    driver = open_temp_chrome_profile()
+                    driver = open_temp_chrome_profile(incognito_mode=True)
 
                     try:
                         mail_ok, final_email = mail_actions(driver, domain)
@@ -186,20 +240,59 @@ def run_checker():
                             os.fsync(f.fileno())
                             print(f"📝 Email verificado guardado: {final_email.strip()}")
                             at_least_one_verified = True
+                            successful_iterations += 1
                         else:
                             f.write(f"{final_email.strip()} <-- no verificado\n")
                             f.flush()
                             os.fsync(f.fileno())
                             print(f"⚠️ Email no verificado: {final_email.strip()}")
+                            failed_iterations += 1
 
                     except Exception as e:
-                        print(f"❌ Error durante la iteración: {e}")
+                        error_msg = str(e)
+                        print(f"❌ Error durante la iteración: {error_msg}")
+                        
+                        # Manejo específico para diferentes tipos de errores
+                        if "Timeout esperando confirmación de registro" in error_msg:
+                            print("⏰ Timeout en confirmación de registro - Error temporal, continuando...")
+                            print("💡 Este error suele ser temporal y se resuelve en siguientes intentos")
+                            timeout_errors += 1
+                        elif "ElementClickInterceptedException" in error_msg:
+                            print("🖱️ Error de clic interceptado - Elemento no disponible, continuando...")
+                            other_errors += 1
+                        elif "NoSuchElementException" in error_msg:
+                            print("🔍 Elemento no encontrado - Página puede haber cambiado, continuando...")
+                            other_errors += 1
+                        elif "WebDriverException" in error_msg:
+                            print("🌐 Error del navegador - Problema de conexión, continuando...")
+                            other_errors += 1
+                        else:
+                            print("❓ Error desconocido - Continuando con el proceso...")
+                            other_errors += 1
+                        
+                        failed_iterations += 1
+                        print("🔄 Continuando con la siguiente iteración...")
 
                     finally:
-                        driver.quit()
+                        try:
+                            driver.quit()
+                        except Exception as e:
+                            print(f"⚠️ Error al cerrar el navegador: {e}")
+                            # Continuar aunque falle el cierre del navegador
 
                     elapsed = time.time() - start_time
                     print(f"⏱️ Tiempo de ejecución de la iteración: {elapsed:.2f} segundos")
+
+            # Resumen de estadísticas para este ID
+            print(f"\n📊 Resumen para ID {id}:")
+            print(f"  ✅ Iteraciones exitosas: {successful_iterations}")
+            print(f"  ❌ Iteraciones fallidas: {failed_iterations}")
+            if timeout_errors > 0:
+                print(f"  ⏰ Errores de timeout: {timeout_errors}")
+            if other_errors > 0:
+                print(f"  ⚠️ Otros errores: {other_errors}")
+            print(f"  📈 Tasa de éxito: {(successful_iterations/iteraciones)*100:.1f}%")
+            print("-" * 50)
 
         return at_least_one_verified
 

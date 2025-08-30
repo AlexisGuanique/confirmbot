@@ -30,75 +30,76 @@ def generate_secure_password(length=10):
 def mail_actions(driver, domain):
     try:
         # 👉 Abrir Google para mantener la ventana visible y luego ejecutar los clics
-        driver.get("https://www.google.com/")
+        #driver.get("https://www.google.com/")
         # Asegurar que la ventana esté maximizada y en foco antes de los clics
-        try:
-            driver.maximize_window()
-        except Exception:
-            pass
 
-        driver.switch_to.window(driver.current_window_handle)
-        time.sleep(3)  # Esperar a que se dibuje la ventana
+
+        #driver.switch_to.window(driver.current_window_handle)
+        #time.sleep(3)  # Esperar a que se dibuje la ventana
 
         # 👉 Ejecutar clicks automáticos antes de ir a 33mail
-        global_start = time.time()
+        #global_start = time.time()
 
-        coords = get_click_coordinates()
-        api_key = get_nopecha_key()
+        #coords = get_click_coordinates()
+        #api_key = get_nopecha_key()
 
         # Validar configuración
-        if not coords or not api_key:
-            messagebox.showerror(
-                "Configuración faltante",
-                "⚠️ Debes configurar las coordenadas y la NopeCHA API key antes de ejecutar el bot."
-            )
-            try:
-                driver.quit()
-            except Exception:
-                pass
-            return False, None
+        #if not coords or not api_key:
+        #    messagebox.showerror(
+        #        "Configuración faltante",
+        #        "⚠️ Debes configurar las coordenadas y la NopeCHA API key antes de ejecutar el bot."
+        #    )
+        #    try:
+        #        driver.quit()
+        #    except Exception:
+        #        pass
+        #    return False, None
 
-        if coords:
-            c1 = coords.get("first_click")
-            c2 = coords.get("second_click")
-            c3 = coords.get("third_click")
-            c4 = coords.get("fourth_click")
+        #if coords:
+        #    c1 = coords.get("first_click")
+        #    c2 = coords.get("second_click")
+        #    c3 = coords.get("third_click")
+        #    c4 = coords.get("fourth_click")
 
-            for idx, coord_str in enumerate([c1, c2, c3], start=1):
-                if coord_str and "x" in coord_str:
-                    if time.time() - global_start > 300:
-                        print("⏰ Timeout global de 5 minutos en mail_actions. Abortando.")
-                        driver.quit()
-                        return False, None
-                    x_str, y_str = coord_str.replace(" ", "").split("x")
-                    try:
-                        x, y = int(x_str), int(y_str)
-                        print(f"🖱️ Click {idx} en ({x}, {y})")
-                        pyautogui.click(x, y)
-                        time.sleep(1)
-                    except ValueError:
-                        print(f"⚠️ Coordenada inválida: {coord_str}")
+        #    for idx, coord_str in enumerate([c1, c2, c3], start=1):
+        #        if coord_str and "x" in coord_str:
+        #            if time.time() - global_start > 300:
+        #                print("⏰ Timeout global de 5 minutos en mail_actions. Abortando.")
+        #                driver.quit()
+        #                return False, None
+        #            x_str, y_str = coord_str.replace(" ", "").split("x")
+        #            try:
+        #                x, y = int(x_str), int(y_str)
+        #                print(f"🖱️ Click {idx} en ({x}, {y})")
+        #                pyautogui.click(x, y)
+        #                time.sleep(1)
+        #            except ValueError:
+        #                print(f"⚠️ Coordenada inválida: {coord_str}")
 
             # Pegamos texto después del tercer click
-            paste_text = api_key
-            pyperclip.copy(paste_text)
-            pyautogui.hotkey("ctrl", "v")
-            print("📋 Texto pegado.")
-            time.sleep(2)
+        #    paste_text = api_key
+        #    pyperclip.copy(paste_text)
+        #    pyautogui.hotkey("ctrl", "v")
+        #    print("📋 Texto pegado.")
+        #    time.sleep(2)
 
-            # Cuarto click después de pegar el texto
-            if c4 and "x" in c4:
-                try:
-                    x4, y4 = map(int, c4.replace(" ", "").split("x"))
-                    print(f"🖱️ Click 4 en ({x4}, {y4}) después de pegar texto")
-                    pyautogui.click(x4, y4)
-                    time.sleep(1)
-                except ValueError:
-                    print(f"⚠️ Coordenada inválida: {c4}")
+        #    # Cuarto click después de pegar el texto
+        #    if c4 and "x" in c4:
+        #        try:
+        #            x4, y4 = map(int, c4.replace(" ", "").split("x"))
+        #            print(f"🖱️ Click 4 en ({x4}, {y4}) después de pegar texto")
+        #            pyautogui.click(x4, y4)
+        #            time.sleep(1)
+        #        except ValueError:
+        #            print(f"⚠️ Coordenada inválida: {c4}")
 
         print("🌐 Abriendo 33mail para crear cuenta...")
         driver.get("https://www.33mail.com/signup")
         print("📨 Iniciando acciones en la página de 33mail...")
+        try:
+            driver.maximize_window()
+        except Exception:
+            pass
 
         # ✋ Esperar a que la extensión resuelva el reCAPTCHA ANTES de rellenar el formulario
         try:

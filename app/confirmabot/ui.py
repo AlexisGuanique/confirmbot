@@ -54,28 +54,53 @@ def setup_ui(logged_in_user, on_login_success):
     if bot_settings:
         iterations_entry.insert(0, str(bot_settings["iterations"]))
 
-    # 👉 Botón para guardar solo el número de iteraciones
-    def save_iterations_only():
+    # 👉 Input: Tiempo de pausa entre cada 10 iteraciones
+    pause_label = ctk.CTkLabel(
+        hostinger_frame,
+        text="Tiempo de pausa (minutos) cada 10 iteraciones:",
+        text_color="black",
+        font=("Arial", 12, "bold")
+    )
+    pause_label.pack(pady=(10, 2), anchor="w")
+
+    pause_entry = ctk.CTkEntry(
+        hostinger_frame,
+        width=200,
+        placeholder_text="Ej: 20"
+    )
+    pause_entry.pack(pady=(0, 10))
+
+    # 🔽 Cargar valor guardado (si existe)
+    if bot_settings:
+        pause_entry.insert(0, str(bot_settings.get("pause_minutes", 20)))
+
+    # 👉 Botón para guardar configuración completa
+    def save_bot_config():
         iterations = iterations_entry.get()
+        pause_minutes = pause_entry.get()
 
         if not iterations.isdigit():
             messagebox.showerror("Error", "Ingresa un número válido de iteraciones.")
             return
 
-        success = save_bot_settings(int(iterations))
-        if success:
-            messagebox.showinfo("Guardado", "✅ Iteraciones guardadas correctamente.")
-        else:
-            messagebox.showerror("Error", "No se pudieron guardar las iteraciones.")
+        if not pause_minutes.isdigit():
+            messagebox.showerror("Error", "Ingresa un número válido de minutos para la pausa.")
+            return
 
-    save_iterations_button = ctk.CTkButton(
+        success = save_bot_settings(int(iterations), int(pause_minutes))
+        if success:
+            messagebox.showinfo("Guardado", "✅ Configuración del bot guardada correctamente.")
+        else:
+            messagebox.showerror("Error", "No se pudo guardar la configuración.")
+
+    save_config_button = ctk.CTkButton(
         hostinger_frame,
-        text="Guardar Iteraciones",
-        command=save_iterations_only,
+        text="Guardar Configuración",
+        command=save_bot_config,
         fg_color="#0066cc",
         text_color="white"
     )
-    save_iterations_button.pack(pady=(0, 15))
+    save_config_button.pack(pady=(0, 15))
 
     # 👉 Input: NopeCHA API Key
     nopecha_label = ctk.CTkLabel(
@@ -254,16 +279,16 @@ def setup_ui(logged_in_user, on_login_success):
     def handle_run_checker():
         resultado = run_checker()
 
-        if resultado:
-            messagebox.showinfo(
-                "Verificación completada",
-                "✅ Proceso finalizado correctamente.\n\nLos correos verificados fueron guardados en la carpeta:\nverifications/"
-            )
-        else:
-            messagebox.showwarning(
-                "Verificación incompleta",
-                "⚠️ No se pudo verificar ninguna cuenta.\n\nPor favor revisa errores en consola y verifica credenciales.\nLos resultados (si hay alguno) están en:\nverifications/"
-            )
+        #if resultado:
+         #   messagebox.showinfo(
+         #       "Verificación completada",
+         #       "✅ Proceso finalizado correctamente.\n\nLos correos verificados fueron guardados en la carpeta:\nverifications/"
+         #   )
+        #else:
+        #    messagebox.showwarning(
+        #        "Verificación incompleta",
+        #        "⚠️ No se pudo verificar ninguna cuenta.\n\nPor favor revisa errores en consola y verifica credenciales.\nLos resultados (si hay alguno) están en:\nverifications/"
+        #    )
 
 
     run_checker_button = ctk.CTkButton(
@@ -286,98 +311,98 @@ def setup_ui(logged_in_user, on_login_success):
     stop_button.pack(pady=(5, 10))
 
     # ================= Capturar Coordenadas =================
-    def add_coordinates_interactively():
-        etiquetas = [
-            "first_click",
-            "second_click",
-            "third_click",
-            "fourth_click"
-        ]
+    #def add_coordinates_interactively():
+    #    etiquetas = [
+    #        "first_click",
+    #        "second_click",
+    #        "third_click",
+    #        "fourth_click"
+    #    ]
 
-        coordenadas = []
+    #    coordenadas = []
 
         # Abrir Chrome utilizando la misma configuración del bot
-        driver = openProfileWithExtraExtension()
-        driver.maximize_window()
-        driver.get("https://www.google.com/")
+    #    driver = openProfileWithExtraExtension()
+    #    driver.maximize_window()
+    #    driver.get("https://www.google.com/")
 
-        def capturar_y_mostrar(index, popup):
-            popup.lift()
-            popup.focus_force()
-            popup.attributes("-topmost", True)
+    #    def capturar_y_mostrar(index, popup):
+    #        popup.lift()
+    #        popup.focus_force()
+    #        popup.attributes("-topmost", True)
 
-            label = ctk.CTkLabel(
-                popup,
-                text=f"Presiona la tecla 'c' para capturar la coordenada de:\n{etiquetas[index]}",
-                font=("Arial", 14),
-                text_color="black"
-            )
-            label.pack(pady=15)
+    #        label = ctk.CTkLabel(
+    #            popup,
+    #            text=f"Presiona la tecla 'c' para capturar la coordenada de:\n{etiquetas[index]}",
+    #            font=("Arial", 14),
+    #            text_color="black"
+    #        )
+    #        label.pack(pady=15)
 
-            coord_label = ctk.CTkLabel(
-                popup,
-                text="",
-                font=("Arial", 14, "bold"),
-                text_color="black"
-            )
-            coord_label.pack(pady=10)
+    #        coord_label = ctk.CTkLabel(
+    #            popup,
+    #            text="",
+    #            font=("Arial", 14, "bold"),
+    #            text_color="black"
+    #        )
+    #        coord_label.pack(pady=10)
 
-            def capturar():
-                coord_raw = get_mouse_coordinate_on_keypress("c")  # formato "123x456"
-                # Convertir a "123 x 456"
-                if "x" in coord_raw:
-                    x, y = coord_raw.split("x")
-                    coord = f"{x} x {y}"
-                else:
-                    coord = coord_raw
-                coordenadas.append(coord)
-                popup.after(0, lambda: coord_label.configure(text=f"{etiquetas[index]}: {coord}"))
+    #        def capturar():
+    #            coord_raw = get_mouse_coordinate_on_keypress("c")  # formato "123x456"
+    #            # Convertir a "123 x 456"
+    #            if "x" in coord_raw:
+    #                x, y = coord_raw.split("x")
+    #                coord = f"{x} x {y}"
+    #            else:
+    #                coord = coord_raw
+    #            coordenadas.append(coord)
+    #            popup.after(0, lambda: coord_label.configure(text=f"{etiquetas[index]}: {coord}"))
 
-            threading.Thread(target=capturar, daemon=True).start()
+    #        threading.Thread(target=capturar, daemon=True).start()
 
-            def siguiente():
-                popup.destroy()
-                if index + 1 < len(etiquetas):
-                    mostrar_popup(index + 1)
-                else:
-                    # Guardar coordenadas en la base de datos
-                    if save_click_coordinates(coordenadas):
-                        messagebox.showinfo("Guardado", "✅ Coordenadas guardadas correctamente.")
-                    else:
-                        messagebox.showerror("Error", "No se pudieron guardar las coordenadas.")
+    #        def siguiente():
+    #            popup.destroy()
+    #            if index + 1 < len(etiquetas):
+    #                mostrar_popup(index + 1)
+    #            else:
+    #                # Guardar coordenadas en la base de datos
+    #                if save_click_coordinates(coordenadas):
+    #                    messagebox.showinfo("Guardado", "✅ Coordenadas guardadas correctamente.")
+    #                else:
+    #                    messagebox.showerror("Error", "No se pudieron guardar las coordenadas.")
 
-                    try:
-                        driver.quit()
-                    except Exception as e:
-                        print(f"❌ Error al cerrar Chrome: {e}")
+    #            try:
+    #                driver.quit()
+    #            except Exception as e:
+    #                print(f"❌ Error al cerrar Chrome: {e}")
 
-            next_button = ctk.CTkButton(
-                popup,
-                text="Próxima coordenada" if index + 1 < len(etiquetas) else "Finalizar",
-                command=siguiente,
-                fg_color="#5C2D91",
-                text_color="white",
-                hover_color="#472173"
-            )
-            next_button.pack(pady=15)
+    #        next_button = ctk.CTkButton(
+    #            popup,
+    #            text="Próxima coordenada" if index + 1 < len(etiquetas) else "Finalizar",
+    #            command=siguiente,
+    #            fg_color="#5C2D91",
+    #            text_color="white",
+    #            hover_color="#472173"
+    #        )
+    #        next_button.pack(pady=15)
 
-        def mostrar_popup(index):
-            popup = ctk.CTkToplevel()
-            popup.geometry("420x220")
-            popup.title("Captura de Coordenada")
-            popup.configure(fg_color="#f0f0f0")
-            capturar_y_mostrar(index, popup)
+    #    def mostrar_popup(index):
+    #        popup = ctk.CTkToplevel()
+    #        popup.geometry("420x220")
+    #        popup.title("Captura de Coordenada")
+    #        popup.configure(fg_color="#f0f0f0")
+    #        capturar_y_mostrar(index, popup)
 
-        mostrar_popup(0)
+    #    mostrar_popup(0)
 
-    capture_coords_button = ctk.CTkButton(
-        hostinger_frame,
-        text="Capturar Coordenadas",
-        command=add_coordinates_interactively,
-        fg_color="#9C27B0",
-        text_color="white"
-    )
-    capture_coords_button.pack(pady=(5, 10))
+    #capture_coords_button = ctk.CTkButton(
+    #    hostinger_frame,
+    #    text="Capturar Coordenadas",
+    #    command=add_coordinates_interactively,
+    #    fg_color="#9C27B0",
+    #    text_color="white"
+    #)
+    #capture_coords_button.pack(pady=(5, 10))
 
     # 👉 Función de logout
     def handle_logout():
