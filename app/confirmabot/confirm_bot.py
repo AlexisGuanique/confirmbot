@@ -246,9 +246,30 @@ def run_creator():
         
         print("🌐 Iniciando proceso de LinkedIn...")
         
+        # Ejecutar script de modo avión antes de LinkedIn
+        print("🛩️ Ejecutando script de modo avión...")
+        adb_path = r"C:\Adb\adb"
+        
+        try:
+            # Activar modo avión
+            subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"])
+            print("✅ Modo avión activado.")
+            time.sleep(3)  # Esperar 3 segundos
+            
+            # Desactivar modo avión
+            subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"])
+            print("✅ Modo avión desactivado.")
+            time.sleep(5)  # Esperar 5 segundos
+            
+            print("🌐 Conexión de datos reactivada. Continuando con LinkedIn...")
+            
+        except Exception as e:
+            print(f"⚠️ Advertencia: Error en modo avión: {e}")
+            print("🔄 Continuando sin modo avión...")
+        
         # Por ahora procesamos el email con ID 1
         # Más adelante podremos hacer esto configurable
-        success = process_linkedin_email(1)
+        success = process_linkedin_email(2)
         
         if success:
             print("✅ Proceso de LinkedIn completado exitosamente")
