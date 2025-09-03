@@ -49,7 +49,7 @@ def login_to_hostinger(driver, email, password):
 
         # ⏳ Si hay captcha, esperar a que desaparezca
         if captcha_detected:
-            max_captcha_wait = 180  # 3 minutos máximo para resolver captcha
+            max_captcha_wait = 60  # 1 minuto máximo para resolver captcha
             captcha_start_time = time.time()
             
             while time.time() - captcha_start_time < max_captcha_wait:
@@ -113,7 +113,7 @@ def login_to_hostinger(driver, email, password):
 
         # ⏳ Si hay captcha después de ingresar datos, esperar a que desaparezca
         if captcha_detected_after_input:
-            max_captcha_wait = 180  # 3 minutos máximo para resolver captcha
+            max_captcha_wait = 60  # 1 minuto máximo para resolver captcha
             captcha_start_time = time.time()
             
             while time.time() - captcha_start_time < max_captcha_wait:
@@ -144,7 +144,7 @@ def login_to_hostinger(driver, email, password):
 
         # ⏳ Si hay captcha después del clic, esperar a que desaparezca
         if captcha_detected_after_click:
-            max_captcha_wait = 180  # 3 minutos máximo para resolver captcha
+            max_captcha_wait = 60  # 1 minuto máximo para resolver captcha
             captcha_start_time = time.time()
             
             while time.time() - captcha_start_time < max_captcha_wait:
