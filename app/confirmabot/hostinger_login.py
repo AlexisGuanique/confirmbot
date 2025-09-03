@@ -31,7 +31,40 @@ def login_to_hostinger(driver, email, password):
                 print("❌ Timeout: la página de Hostinger no respondió a tiempo.")
                 return False
 
+        # 🕐 Esperar un momento para que la página cargue completamente
+        print("⏳ Esperando a que la página cargue completamente...")
+        time.sleep(3)
 
+        # 🔍 Verificar si hay captcha presente
+        print("🔍 Verificando si hay captcha presente...")
+        captcha_detected = False
+        try:
+            # Buscar el elemento del captcha
+            captcha_element = driver.find_element(By.CSS_SELECTOR, "h1.zone-name-title.h1 img[src='/favicon.ico']")
+            if captcha_element:
+                captcha_detected = True
+                print("⚠️ Captcha detectado. Esperando a que se resuelva...")
+        except:
+            print("✅ No se detectó captcha, procediendo con el login...")
+
+        # ⏳ Si hay captcha, esperar a que desaparezca
+        if captcha_detected:
+            max_captcha_wait = 180  # 3 minutos máximo para resolver captcha
+            captcha_start_time = time.time()
+            
+            while time.time() - captcha_start_time < max_captcha_wait:
+                try:
+                    # Verificar si el captcha sigue presente
+                    captcha_element = driver.find_element(By.CSS_SELECTOR, "h1.zone-name-title.h1 img[src='/favicon.ico']")
+                    print("⏳ Captcha aún presente, esperando 2 segundos...")
+                    time.sleep(2)
+                except:
+                    print("✅ Captcha resuelto, procediendo con el login...")
+                    break
+            else:
+                print("⏰ Timeout esperando que se resuelva el captcha. Continuando de todas formas...")
+
+        # 🔍 Ahora buscar los elementos del formulario de login
         max_retries = 10
         global_start = time.time()
         for attempt in range(1, max_retries + 1):

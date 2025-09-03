@@ -5,8 +5,10 @@ import sys
 import os
 import tempfile
 import uuid
+import shutil
 
-from contextlib import contextmanager
+import os, uuid, tempfile, time, shutil, subprocess
+from selenium.webdriver.chrome.service import Service
 
 import subprocess
 
@@ -27,112 +29,61 @@ def stop_bot():
     stop_checker = True
     print("🛑 Señal de detención enviada al bot.")
 
-@contextmanager
-def suppress_stderr():
-    """Oculta errores en consola temporalmente."""
-    with open(os.devnull, 'w') as fnull:
-        old_stderr = sys.stderr
-        sys.stderr = fnull
-        try:
-            yield
-        finally:
-            sys.stderr = old_stderr
 
-def open_temp_chrome_profile(incognito_mode=False):
 
-    chromeOptions = Options()
+BRAVE_EXE = r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe"
 
-    # ✅ Usar el perfil por defecto de Chrome para mantener configuraciones y extensiones
-    chrome_user_data_path = os.path.join(os.getenv("LOCALAPPDATA", ""), "Google", "Chrome", "User Data")
-    chromeOptions.add_argument(f"--user-data-dir={chrome_user_data_path}")
-    chromeOptions.add_argument("--profile-directory=Default")
+def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromedriver_exe=None):
+    if kill_residual:
+        for exe in ("brave.exe", "BraveCrashHandler.exe"):
+            try:
+                subprocess.run(["taskkill", "/IM", exe, "/F"], capture_output=True, text=True)
+            except Exception:
+                pass
 
-    # ✅ Rutas a las extensiones en Chrome
-    # Extensión de Captcha (existente)
-    extension_id_captcha = "dknlfmjaanfblgfdfebhijalfmhmjjjo"
-    # Nueva extensión a agregar
-    extension_id_new = "hlkenndednhfkekhgcdicdfddnkalmdm"
+    user_data_dir = os.path.join(
+        os.environ["LOCALAPPDATA"],
+        r"BraveSoftware\Brave-Browser\User Data"
+    )
+
+    options = Options()
+    options.binary_location = BRAVE_EXE
+    options.add_argument(f'--user-data-dir={user_data_dir}')
+    options.add_argument(f'--profile-directory={profile_name}')
+
+    # ✅ Importante: no bloquear extensiones
+    options.add_argument("--no-first-run")
+    options.add_argument("--no-default-browser-check")
+    options.add_argument("--remote-debugging-port=0")
     
-    perfiles_a_buscar = [d for d in os.listdir(chrome_user_data_path)
-                         if os.path.isdir(os.path.join(chrome_user_data_path, d)) and (d == "Default" or d.startswith("Profile"))]
+    # 🧹 Opciones para ventana limpia
+    options.add_argument("--incognito")  # Modo incógnito para no cargar pestañas anteriores
+    options.add_argument("--disable-session-crashed-bubble")  # Evitar diálogos de sesión
+    options.add_argument("--disable-infobars")  # Deshabilitar barras de información
+    options.add_argument("--disable-plugins-discovery")  # Deshabilitar descubrimiento de plugins
+    options.add_argument("--disable-background-timer-throttling")  # Evitar throttling de timers
+    options.add_argument("--disable-backgrounding-occluded-windows")  # Evitar backgrounding
+    options.add_argument("--disable-renderer-backgrounding")  # Evitar backgrounding del renderer
+    options.add_argument("--disable-features=TranslateUI")  # Deshabilitar traducción automática
+    options.add_argument("--disable-ipc-flooding-protection")  # Deshabilitar protección contra flooding IPC
 
-    # Buscar la extensión de Captcha
-    base_extension_dir_captcha = None
-    for perfil in perfiles_a_buscar:
-        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id_captcha)
-        if os.path.isdir(posible_dir):
-            base_extension_dir_captcha = posible_dir
-            break
+    # 👉 Ruta a la extensión (ajusta versión)
+    extension_path = os.path.join(
+        user_data_dir,
+        profile_name,
+        "Extensions",
+        "dknlfmjaanfblgfdfebhijalfmhmjjjo",
+        "0.4.13_0"
+    )
+    options.add_argument(f"--load-extension={extension_path}")
 
-    if base_extension_dir_captcha is None:
-        raise FileNotFoundError(f"❌ La extensión de Captcha con ID {extension_id_captcha} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
-
-    # Buscar la nueva extensión
-    base_extension_dir_new = None
-    for perfil in perfiles_a_buscar:
-        posible_dir = os.path.join(chrome_user_data_path, perfil, "Extensions", extension_id_new)
-        if os.path.isdir(posible_dir):
-            base_extension_dir_new = posible_dir
-            break
-
-    if base_extension_dir_new is None:
-        raise FileNotFoundError(f"❌ La nueva extensión con ID {extension_id_new} no se encontró en ningún perfil de Chrome dentro de {chrome_user_data_path}.")
-
-    # Obtener la versión más reciente de la extensión de Captcha
-    versiones_captcha = sorted([d for d in os.listdir(base_extension_dir_captcha) if os.path.isdir(os.path.join(base_extension_dir_captcha, d))], reverse=True)
-    if not versiones_captcha:
-        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir_captcha}")
-    extension_path_captcha = os.path.join(base_extension_dir_captcha, versiones_captcha[0])
-
-    # Obtener la versión más reciente de la nueva extensión
-    versiones_new = sorted([d for d in os.listdir(base_extension_dir_new) if os.path.isdir(os.path.join(base_extension_dir_new, d))], reverse=True)
-    if not versiones_new:
-        raise FileNotFoundError(f"❌ No se encontraron versiones dentro de {base_extension_dir_new}")
-    extension_path_new = os.path.join(base_extension_dir_new, versiones_new[0])
-
-    # Verificar que existan los manifest.json
-    manifest_path_captcha = os.path.join(extension_path_captcha, "manifest.json")
-    manifest_path_new = os.path.join(extension_path_new, "manifest.json")
-    
-    if not os.path.exists(manifest_path_captcha):
-        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path_captcha}")
-    if not os.path.exists(manifest_path_new):
-        raise FileNotFoundError(f"❌ No se encontró manifest.json en {extension_path_new}")
-
-    # Cargar ambas extensiones
-    chromeOptions.add_argument(f"--load-extension={extension_path_captcha},{extension_path_new}")
-    chromeOptions.add_argument(f"--disable-extensions-except={extension_path_captcha},{extension_path_new}")
-
-    # 🚫 Desactivar Brave Shields (bloqueador nativo de anuncios) para evitar bloqueo de recursos
-    chromeOptions.add_argument("--disable-brave-shields-backend")
-    chromeOptions.add_argument("--brave.disable_shields=true")
-    # Otras características internas que pueden interferir
-    chromeOptions.add_argument("--disable-features=BraveAds,BraveRewards")
-
-    # ⚙️ Opciones de rendimiento
-    # Activar modo incógnito si se solicita
-    if incognito_mode:
-        chromeOptions.add_argument("--incognito")
-    
-    chromeOptions.add_argument("--disable-gpu")
-    chromeOptions.add_argument("--disable-software-rasterizer")
-    chromeOptions.add_argument("--disable-features=VizDisplayCompositor")
-    chromeOptions.add_argument("--disable-accelerated-2d-canvas")
-    chromeOptions.add_argument("--disable-accelerated-video-decode")
-    chromeOptions.add_argument("--disable-accelerated-mjpeg-decode")
-
-    # 🕵️ Evitar detección de Selenium
-    chromeOptions.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chromeOptions.add_experimental_option("useAutomationExtension", False)
-
-    # 🚀 Crear driver (Chrome predeterminado)
-    with suppress_stderr():
-        driver = webdriver.Chrome(options=chromeOptions)
-    
+    if chromedriver_exe and os.path.exists(chromedriver_exe):
+        service = Service(chromedriver_exe)
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        driver = webdriver.Chrome(options=options)
 
     return driver
-
-
 
 
 def run_checker():
@@ -214,17 +165,17 @@ def run_checker():
                     start_time = time.time()
 
                     # Ejecutar el comando para activar el modo avión
-                    # subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"])
-                    # print("✅ Modo avión activado.")
-                    # time.sleep(5)  # Esperar 3 segundos
+                    subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"])
+                    print("✅ Modo avión activado.")
+                    time.sleep(5)  # Esperar 3 segundos
 
                     # Ejecutar el comando para desactivar el modo avión
-                    # subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"])
-                    # print("✅ Modo avión desactivado.")
-                    # time.sleep(5)  # Esperar 5 segundos
+                    subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"])
+                    print("✅ Modo avión desactivado.")
+                    time.sleep(5)  # Esperar 5 segundos
 
                     # Inicializar el navegador
-                    driver = open_temp_chrome_profile(incognito_mode=True)
+                    driver = open_temp_chrome_profile()
 
                     try:
                         mail_ok, final_email = mail_actions(driver, domain)
@@ -275,6 +226,10 @@ def run_checker():
 
                     finally:
                         try:
+                            # Limpiar directorio temporal antes de cerrar el driver
+                            if hasattr(driver, 'cleanup_temp_dir'):
+                                driver.cleanup_temp_dir()
+                            
                             driver.quit()
                         except Exception as e:
                             print(f"⚠️ Error al cerrar el navegador: {e}")

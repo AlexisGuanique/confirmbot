@@ -1,6 +1,6 @@
 # confirmbot
 
 
-pyinstaller --onefile --windowed --icon="favicon.ico" --name=ConfirmaBotAvion-v5 main.py
+pyinstaller --onefile --windowed --icon="favicon.ico" --name=ConfirmaBotBrave-v6 main.py
 
-pyinstaller --onefile --icon="favicon.ico" --name=ConfirmaBotAvion-Debug-v5 main.py
+pyinstaller --onefile --icon="favicon.ico" --name=ConfirmaBotBrave-Debug-v6 main.py
