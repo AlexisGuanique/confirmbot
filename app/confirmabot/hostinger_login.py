@@ -98,7 +98,65 @@ def login_to_hostinger(driver, email, password):
         user_input.send_keys(email)
         pass_input.clear()
         pass_input.send_keys(password)
+        
+        print("📝 Datos de login ingresados. Verificando si hay captcha antes de hacer clic...")
+        
+        # 🔍 Verificar captcha después de ingresar datos pero antes de hacer clic
+        captcha_detected_after_input = False
+        try:
+            captcha_element = driver.find_element(By.CSS_SELECTOR, "h1.zone-name-title.h1 img[src='/favicon.ico']")
+            if captcha_element:
+                captcha_detected_after_input = True
+                print("⚠️ Captcha detectado después de ingresar datos. Esperando a que se resuelva...")
+        except:
+            print("✅ No se detectó captcha después de ingresar datos.")
+
+        # ⏳ Si hay captcha después de ingresar datos, esperar a que desaparezca
+        if captcha_detected_after_input:
+            max_captcha_wait = 180  # 3 minutos máximo para resolver captcha
+            captcha_start_time = time.time()
+            
+            while time.time() - captcha_start_time < max_captcha_wait:
+                try:
+                    captcha_element = driver.find_element(By.CSS_SELECTOR, "h1.zone-name-title.h1 img[src='/favicon.ico']")
+                    print("⏳ Captcha aún presente después de ingresar datos, esperando 2 segundos...")
+                    time.sleep(2)
+                except:
+                    print("✅ Captcha resuelto después de ingresar datos, procediendo con el clic...")
+                    break
+            else:
+                print("⏰ Timeout esperando que se resuelva el captcha después de ingresar datos. Continuando de todas formas...")
+
+        # 👆 Ahora hacer clic en el botón de login
         login_button.click()
+        print("🖱️ Clic en botón de login realizado.")
+
+        # 🔍 Verificar captcha después del clic
+        print("🔍 Verificando si hay captcha después del clic...")
+        captcha_detected_after_click = False
+        try:
+            captcha_element = driver.find_element(By.CSS_SELECTOR, "h1.zone-name-title.h1 img[src='/favicon.ico']")
+            if captcha_element:
+                captcha_detected_after_click = True
+                print("⚠️ Captcha detectado después del clic. Esperando a que se resuelva...")
+        except:
+            print("✅ No se detectó captcha después del clic.")
+
+        # ⏳ Si hay captcha después del clic, esperar a que desaparezca
+        if captcha_detected_after_click:
+            max_captcha_wait = 180  # 3 minutos máximo para resolver captcha
+            captcha_start_time = time.time()
+            
+            while time.time() - captcha_start_time < max_captcha_wait:
+                try:
+                    captcha_element = driver.find_element(By.CSS_SELECTOR, "h1.zone-name-title.h1 img[src='/favicon.ico']")
+                    print("⏳ Captcha aún presente después del clic, esperando 2 segundos...")
+                    time.sleep(2)
+                except:
+                    print("✅ Captcha resuelto después del clic, procediendo...")
+                    break
+            else:
+                print("⏰ Timeout esperando que se resuelva el captcha después del clic. Continuando de todas formas...")
 
         print("✅ Login automático completado.")
 

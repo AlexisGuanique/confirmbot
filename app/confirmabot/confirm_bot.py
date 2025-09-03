@@ -103,8 +103,15 @@ def run_checker():
         iteraciones = config["iterations"]
         pause_minutes = config.get("pause_minutes", 20)  # Valor por defecto: 20 minutos
 
-        # Ruta del ejecutable
+        # Ruta del ejecutable ADB - verificar si existe
         adb_path = r"C:\Adb\adb"
+        adb_available = os.path.exists(adb_path)
+        
+        if not adb_available:
+            print("⚠️ ADB no encontrado en C:\\Adb\\adb")
+            print("💡 El modo avión se omitirá, pero el bot continuará funcionando")
+        else:
+            print("✅ ADB encontrado y disponible")
 
         for id in range(1, total_registros + 1):
             if stop_checker:
@@ -164,15 +171,26 @@ def run_checker():
                     print(f"🔁 Iteración {i + 1} de {iteraciones} para ID {id}")
                     start_time = time.time()
 
-                    # Ejecutar el comando para activar el modo avión
-                    subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"])
-                    print("✅ Modo avión activado.")
-                    time.sleep(5)  # Esperar 3 segundos
+                    # Ejecutar comandos ADB solo si está disponible
+                    if adb_available:
+                        try:
+                            # Ejecutar el comando para activar el modo avión
+                            subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"], 
+                                         capture_output=True, text=True, timeout=10)
+                            print("✅ Modo avión activado.")
+                            time.sleep(5)  # Esperar 5 segundos
 
-                    # Ejecutar el comando para desactivar el modo avión
-                    subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"])
-                    print("✅ Modo avión desactivado.")
-                    time.sleep(5)  # Esperar 5 segundos
+                            # Ejecutar el comando para desactivar el modo avión
+                            subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"], 
+                                         capture_output=True, text=True, timeout=10)
+                            print("✅ Modo avión desactivado.")
+                            time.sleep(5)  # Esperar 5 segundos
+                        except Exception as e:
+                            print(f"⚠️ Error ejecutando comandos ADB: {e}")
+                            print("🔄 Continuando sin modo avión...")
+                    else:
+                        print("⏭️ Omitiendo modo avión (ADB no disponible)")
+                        time.sleep(2)  # Pequeña pausa para simular el proceso
 
                     # Inicializar el navegador
                     driver = open_temp_chrome_profile()
