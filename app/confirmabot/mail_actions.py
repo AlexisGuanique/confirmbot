@@ -2,24 +2,19 @@ from faker import Faker
 import time
 import random
 import string
-import pyautogui
+
 from app.database.database import get_click_coordinates, get_nopecha_key
-import pyperclip
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException
-import sys
-from tkinter import messagebox
+
+from .utils.username_generator import generate_custom_username
 
 fake = Faker()
 
-def generate_custom_username():
 
-    word = fake.word().lower()
-    number = random.randint(0, 600)
-    letters = ''.join(random.choices(string.ascii_lowercase, k=4))
-    return f"{word}{number}{letters}"
 
 def generate_secure_password(length=10):
 
@@ -29,70 +24,7 @@ def generate_secure_password(length=10):
 
 def mail_actions(driver, domain):
     try:
-        # 👉 Abrir Google para mantener la ventana visible y luego ejecutar los clics
-        #driver.get("https://www.google.com/")
-        # Asegurar que la ventana esté maximizada y en foco antes de los clics
-
-
-        #driver.switch_to.window(driver.current_window_handle)
-        #time.sleep(3)  # Esperar a que se dibuje la ventana
-
-        # 👉 Ejecutar clicks automáticos antes de ir a 33mail
-        #global_start = time.time()
-
-        #coords = get_click_coordinates()
-        #api_key = get_nopecha_key()
-
-        # Validar configuración
-        #if not coords or not api_key:
-        #    messagebox.showerror(
-        #        "Configuración faltante",
-        #        "⚠️ Debes configurar las coordenadas y la NopeCHA API key antes de ejecutar el bot."
-        #    )
-        #    try:
-        #        driver.quit()
-        #    except Exception:
-        #        pass
-        #    return False, None
-
-        #if coords:
-        #    c1 = coords.get("first_click")
-        #    c2 = coords.get("second_click")
-        #    c3 = coords.get("third_click")
-        #    c4 = coords.get("fourth_click")
-
-        #    for idx, coord_str in enumerate([c1, c2, c3], start=1):
-        #        if coord_str and "x" in coord_str:
-        #            if time.time() - global_start > 300:
-        #                print("⏰ Timeout global de 5 minutos en mail_actions. Abortando.")
-        #                driver.quit()
-        #                return False, None
-        #            x_str, y_str = coord_str.replace(" ", "").split("x")
-        #            try:
-        #                x, y = int(x_str), int(y_str)
-        #                print(f"🖱️ Click {idx} en ({x}, {y})")
-        #                pyautogui.click(x, y)
-        #                time.sleep(1)
-        #            except ValueError:
-        #                print(f"⚠️ Coordenada inválida: {coord_str}")
-
-            # Pegamos texto después del tercer click
-        #    paste_text = api_key
-        #    pyperclip.copy(paste_text)
-        #    pyautogui.hotkey("ctrl", "v")
-        #    print("📋 Texto pegado.")
-        #    time.sleep(2)
-
-        #    # Cuarto click después de pegar el texto
-        #    if c4 and "x" in c4:
-        #        try:
-        #            x4, y4 = map(int, c4.replace(" ", "").split("x"))
-        #            print(f"🖱️ Click 4 en ({x4}, {y4}) después de pegar texto")
-        #            pyautogui.click(x4, y4)
-        #            time.sleep(1)
-        #        except ValueError:
-        #            print(f"⚠️ Coordenada inválida: {c4}")
-
+ 
         print("🌐 Abriendo 33mail para crear cuenta...")
         driver.get("https://www.33mail.com/signup")
         print("🔄 Refrescando la página...")
@@ -139,7 +71,7 @@ def mail_actions(driver, domain):
         username2 = generate_custom_username()
         second_username = generate_custom_username()
         final_email = f"{second_username}@{username}.33mail.com"
-        generated_email = f"{username2}{domain}"
+        generated_email = f"{domain}+{username}@zohomail.com"
         password = generate_secure_password()
 
         wait = WebDriverWait(driver, 30)
@@ -167,6 +99,7 @@ def mail_actions(driver, domain):
         print(f"📧 Email generado: {generated_email}")
         print(f"👤 Username: {username}")
         print(f"🔒 Password: {password}")
+        print(f"🔒 Final email: {final_email}")
 
         submit_button_xpath = '//input[@type="submit" and @value="Continue signup"]'
         submit_button = wait.until(EC.presence_of_element_located((By.XPATH, submit_button_xpath)))
@@ -179,7 +112,7 @@ def mail_actions(driver, domain):
         for attempt in range(5):
             try:
                 wait.until(EC.element_to_be_clickable((By.XPATH, submit_button_xpath)))
-                submit_button.click()
+                #submit_button.click()
                 print("✅ Clic nativo sobre botón de continuar.")
                 break
             except ElementClickInterceptedException:

@@ -101,17 +101,11 @@ def run_checker():
             return False
 
         iteraciones = config["iterations"]
-        pause_minutes = config.get("pause_minutes", 20)  # Valor por defecto: 20 minutos
+        pause_minutes = config.get("pause_minutes", 20)
 
-        # Ruta del ejecutable ADB - verificar si existe
+        # Ruta del ejecutable ADB
         adb_path = r"C:\Adb\adb"
-        adb_available = os.path.exists(adb_path)
-        
-        if not adb_available:
-            print("⚠️ ADB no encontrado en C:\\Adb\\adb")
-            print("💡 El modo avión se omitirá, pero el bot continuará funcionando")
-        else:
-            print("✅ ADB encontrado y disponible")
+        print("🔄 Modo avión será ejecutado en cada iteración")
 
         for id in range(1, total_registros + 1):
             if stop_checker:
@@ -171,25 +165,22 @@ def run_checker():
                     print(f"🔁 Iteración {i + 1} de {iteraciones} para ID {id}")
                     start_time = time.time()
 
-                    # Ejecutar comandos ADB solo si está disponible
-                    if adb_available:
-                        try:
-                            # Ejecutar el comando para activar el modo avión
-                            subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"], 
-                                         capture_output=True, text=True, timeout=10)
-                            print("✅ Modo avión activado.")
-                            time.sleep(5)  # Esperar 5 segundos
+                    # Ejecutar comandos ADB siempre (con manejo de errores)
+                    try:
+                        # Ejecutar el comando para activar el modo avión
+                        subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"], 
+                                     capture_output=True, text=True, timeout=10)
+                        print("✅ Modo avión activado.")
+                        time.sleep(5)  # Esperar 5 segundos
 
-                            # Ejecutar el comando para desactivar el modo avión
-                            subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"], 
-                                         capture_output=True, text=True, timeout=10)
-                            print("✅ Modo avión desactivado.")
-                            time.sleep(5)  # Esperar 5 segundos
-                        except Exception as e:
-                            print(f"⚠️ Error ejecutando comandos ADB: {e}")
-                            print("🔄 Continuando sin modo avión...")
-                    else:
-                        print("⏭️ Omitiendo modo avión (ADB no disponible)")
+                        # Ejecutar el comando para desactivar el modo avión
+                        subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"], 
+                                     capture_output=True, text=True, timeout=10)
+                        print("✅ Modo avión desactivado.")
+                        time.sleep(5)  # Esperar 5 segundos
+                    except Exception as e:
+                        print(f"⚠️ Error ejecutando comandos ADB: {e}")
+                        print("🔄 Continuando sin modo avión...")
                         time.sleep(2)  # Pequeña pausa para simular el proceso
 
                     # Inicializar el navegador
@@ -201,29 +192,29 @@ def run_checker():
                             print("❌ Falló la creación del correo en 33mail.")
                             continue
 
-                        #is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
+                        is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
 
-                        #if is_verified:
-                        #    f.write(f"{final_email.strip()}\n")
-                            #f.flush()
-                            #os.fsync(f.fileno())
-                            #print(f"📝 Email verificado guardado: {final_email.strip()}")
-                            #at_least_one_verified = True
-                            #successful_iterations += 1
-                        #else:
-                            #f.write(f"{final_email.strip()} <-- no verificado\n")
-                            #f.flush()
-                            #os.fsync(f.fileno())
-                            #print(f"⚠️ Email no verificado: {final_email.strip()}")
-                            #failed_iterations += 1
+                        if is_verified:
+                            f.write(f"{final_email.strip()}\n")
+                            f.flush()
+                            os.fsync(f.fileno())
+                            print(f"📝 Email verificado guardado: {final_email.strip()}")
+                            at_least_one_verified = True
+                            successful_iterations += 1
+                        else:
+                            f.write(f"{final_email.strip()} <-- no verificado\n")
+                            f.flush()
+                            os.fsync(f.fileno())
+                            print(f"⚠️ Email no verificado: {final_email.strip()}")
+                            failed_iterations += 1
 
                         # ✅ Guardar email generado sin verificar en Hostinger
-                        f.write(f"{final_email.strip()}\n")
-                        f.flush()
-                        os.fsync(f.fileno())
-                        print(f"📝 Email generado guardado: {final_email.strip()}")
-                        at_least_one_verified = True
-                        successful_iterations += 1
+                        #f.write(f"{final_email.strip()}\n")
+                        #f.flush()
+                        #os.fsync(f.fileno())
+                        #print(f"📝 Email generado guardado: {final_email.strip()}")
+                        #at_least_one_verified = True
+                        #successful_iterations += 1
 
                     except Exception as e:
                         error_msg = str(e)
