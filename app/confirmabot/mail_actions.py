@@ -28,9 +28,6 @@ def mail_actions(driver, domain):
         print("🌐 Abriendo 33mail para crear cuenta...")
         driver.get("https://www.33mail.com/signup")
         print("🔄 Refrescando la página...")
-        driver.refresh()
-        time.sleep(2)
-        driver.refresh()
         time.sleep(2)
         print("📨 Iniciando acciones en la página de 33mail...")
         try:
@@ -112,7 +109,7 @@ def mail_actions(driver, domain):
         for attempt in range(5):
             try:
                 wait.until(EC.element_to_be_clickable((By.XPATH, submit_button_xpath)))
-                #submit_button.click()
+                submit_button.click()
                 print("✅ Clic nativo sobre botón de continuar.")
                 break
             except ElementClickInterceptedException:

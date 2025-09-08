@@ -11,7 +11,7 @@ def extract_code_from_text(text):
 
 
 
-def perform_hostinger_actions(driver):
+def perform_zohomail_actions(driver):
     try:
         wait = WebDriverWait(driver, 15)
         global_start = time.time()

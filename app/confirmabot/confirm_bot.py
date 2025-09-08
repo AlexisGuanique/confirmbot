@@ -12,7 +12,7 @@ from selenium.webdriver.chrome.service import Service
 
 import subprocess
 
-from app.confirmabot.hostinger_login import login_to_hostinger
+from app.confirmabot.zohomail_login import login_to_zohomail
 from app.confirmabot.mail_actions import mail_actions
 import time  # ⏱️ Asegúrate de tener esta importación al inicio del archivo
 
@@ -192,7 +192,7 @@ def run_checker():
                             print("❌ Falló la creación del correo en 33mail.")
                             continue
 
-                        is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
+                        is_verified = login_to_zohomail(driver, email_hostinger, password_hostinger)
 
                         if is_verified:
                             f.write(f"{final_email.strip()}\n")

@@ -88,12 +88,10 @@ def generate_custom_username():
     nombre_final = random.choice(variaciones_nombre)
     apellido_final = random.choice(variaciones_apellido)
     
-    # Combinar nombre y apellido (sin caracteres especiales)
-    username = f"{nombre_final}{apellido_final}"
+
+    numeros = random.randint(100, 999)
     
-    # Agregar número aleatorio (opcional, 30% de probabilidad)
-    if random.random() < 0.3:
-        numero = random.randint(1, 999)
-        username = f"{username}{numero}"
+    
+    username = f"{nombre_final}{numeros}{apellido_final}"
     
     return username
