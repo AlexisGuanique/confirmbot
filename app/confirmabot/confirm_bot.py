@@ -201,29 +201,29 @@ def run_checker():
                             print("❌ Falló la creación del correo en 33mail.")
                             continue
 
-                        #is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
+                        is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
 
-                        #if is_verified:
-                        #    f.write(f"{final_email.strip()}\n")
-                            #f.flush()
-                            #os.fsync(f.fileno())
-                            #print(f"📝 Email verificado guardado: {final_email.strip()}")
-                            #at_least_one_verified = True
-                            #successful_iterations += 1
-                        #else:
-                            #f.write(f"{final_email.strip()} <-- no verificado\n")
-                            #f.flush()
-                            #os.fsync(f.fileno())
-                            #print(f"⚠️ Email no verificado: {final_email.strip()}")
-                            #failed_iterations += 1
+                        if is_verified:
+                            f.write(f"{final_email.strip()}\n")
+                            f.flush()
+                            os.fsync(f.fileno())
+                            print(f"📝 Email verificado guardado: {final_email.strip()}")
+                            at_least_one_verified = True
+                            successful_iterations += 1
+                        else:
+                            f.write(f"{final_email.strip()} <-- no verificado\n")
+                            f.flush()
+                            os.fsync(f.fileno())
+                            print(f"⚠️ Email no verificado: {final_email.strip()}")
+                            failed_iterations += 1
 
                         # ✅ Guardar email generado sin verificar en Hostinger
-                        f.write(f"{final_email.strip()}\n")
-                        f.flush()
-                        os.fsync(f.fileno())
-                        print(f"📝 Email generado guardado: {final_email.strip()}")
-                        at_least_one_verified = True
-                        successful_iterations += 1
+                        #f.write(f"{final_email.strip()}\n")
+                        #f.flush()
+                        #os.fsync(f.fileno())
+                        #print(f"📝 Email generado guardado: {final_email.strip()}")
+                        #at_least_one_verified = True
+                        #successful_iterations += 1
 
                     except Exception as e:
                         error_msg = str(e)
