@@ -10,6 +10,7 @@ def setup_ui(logged_in_user, on_login_success):
     import threading
     from app.confirmabot.utils.field_reader import parse_email_file  
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
+    from app.creator.ui_creator import create_new_window
 
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
@@ -27,6 +28,24 @@ def setup_ui(logged_in_user, on_login_success):
         text_color="black"
     )
     welcome_label.pack(pady=(30, 10))
+
+    # 👉 Título para el lado izquierdo
+    left_title = ctk.CTkLabel(
+        root,
+        text="ConfirmaBot",
+        text_color="black",
+        font=("Arial", 16, "bold")
+    )
+    left_title.place(relx=0.0, rely=0.0, anchor="nw", x=20, y=70)
+
+    # 👉 Título para el lado derecho
+    right_title = ctk.CTkLabel(
+        root,
+        text="Linkedin Creator",
+        text_color="black",
+        font=("Arial", 16, "bold")
+    )
+    right_title.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=70)
 
     # 👉 Contenedor para inputs de Hostinger (lado izquierdo)
     hostinger_frame = ctk.CTkFrame(root, fg_color="transparent")
@@ -78,70 +97,35 @@ def setup_ui(logged_in_user, on_login_success):
     if bot_settings:
         pause_entry.insert(0, str(bot_settings.get("pause_minutes", 20)))
 
-    # 👉 Checkboxes para opciones del bot (lado derecho)
-    options_title = ctk.CTkLabel(
+
+
+    # 👉 Botón para ejecutar creator
+    def execute_creator():
+        print("ejecutandose creator")
+
+    creator_button = ctk.CTkButton(
         options_frame,
-        text="⚙️ Opciones del Bot",
-        text_color="black",
-        font=("Arial", 14, "bold")
+        text="Ejecutar Creator",
+        command=execute_creator,
+        fg_color="#007ACC",
+        text_color="white",
+        font=("Arial", 12)
     )
-    options_title.pack(pady=(0, 15), anchor="w")
+    creator_button.pack(pady=(20, 10), anchor="w")
 
-    # Checkbox para ADB (modo avión)
-    adb_checkbox = ctk.CTkCheckBox(
+    #! 👉 Botón para abrir ventana nueva
+    def open_new_window():
+        create_new_window(root)
+
+    new_window_button = ctk.CTkButton(
         options_frame,
-        text="Activar modo avión (ADB)",
-        text_color="black",
-        font=("Arial", 12),
-        checkbox_width=20,
-        checkbox_height=20
+        text="Configuración del creator",
+        command=open_new_window,
+        fg_color="#28a745",
+        text_color="white",
+        font=("Arial", 12)
     )
-    adb_checkbox.pack(pady=(0, 10), anchor="w")
-
-    # Checkbox para Proxy
-    proxy_checkbox = ctk.CTkCheckBox(
-        options_frame,
-        text="Activar proxy",
-        text_color="black",
-        font=("Arial", 12),
-        checkbox_width=20,
-        checkbox_height=20
-    )
-    proxy_checkbox.pack(pady=(0, 15), anchor="w")
-
-    # 🔽 Función para guardar automáticamente cuando cambien los checkboxes
-    def auto_save_checkboxes():
-        try:
-            iterations = iterations_entry.get() or "5"  # Valor por defecto si está vacío
-            pause_minutes = pause_entry.get() or "20"  # Valor por defecto si está vacío
-            
-            # Convertir a enteros con valores por defecto
-            iterations_val = int(iterations) if iterations.isdigit() else 5
-            pause_minutes_val = int(pause_minutes) if pause_minutes.isdigit() else 20
-            
-            enable_adb = adb_checkbox.get() == 1
-            enable_proxy = proxy_checkbox.get() == 1
-            
-            success = save_bot_settings(iterations_val, pause_minutes_val, enable_adb, enable_proxy)
-            if success:
-                print("✅ Configuración de checkboxes guardada automáticamente")
-            else:
-                print("❌ Error al guardar configuración automáticamente")
-        except Exception as e:
-            print(f"❌ Error en auto-guardado: {e}")
-
-    # 🔽 Cargar valores guardados de los checkboxes
-    if bot_settings:
-        adb_checkbox.select() if bot_settings.get("enable_adb", True) else adb_checkbox.deselect()
-        proxy_checkbox.select() if bot_settings.get("enable_proxy", True) else proxy_checkbox.deselect()
-    else:
-        # Valores por defecto si no hay configuración
-        adb_checkbox.select()
-        proxy_checkbox.select()
-
-    # 🔽 Conectar eventos de cambio a los checkboxes
-    adb_checkbox.configure(command=auto_save_checkboxes)
-    proxy_checkbox.configure(command=auto_save_checkboxes)
+    new_window_button.pack(pady=(0, 0), anchor="w")
 
     # 👉 Botón para guardar configuración completa
     def save_bot_config():
@@ -174,45 +158,46 @@ def setup_ui(logged_in_user, on_login_success):
     save_config_button.pack(pady=(0, 15))
 
     # 👉 Input: NopeCHA API Key
-    nopecha_label = ctk.CTkLabel(
-        hostinger_frame,
-        text="NopeCHA API Key:",
-        text_color="black",
-        font=("Arial", 12, "bold")
-    )
-    nopecha_label.pack(pady=(10, 2), anchor="w")
+    #nopecha_label = ctk.CTkLabel(
+    #    hostinger_frame,
+    #    text="NopeCHA API Key:",
+    #    text_color="black",
+    #    font=("Arial", 12, "bold")
+    #)
+    #nopecha_label.pack(pady=(10, 2), anchor="w")
 
-    nopecha_entry = ctk.CTkEntry(
-        hostinger_frame,
-        width=200,
-        placeholder_text="sub_xxxxxxxxxxxxxxxxxxxxxxxxx"
-    )
-    nopecha_entry.pack(pady=(0, 5))
+    #nopecha_entry = ctk.CTkEntry(
+    #    hostinger_frame,
+    #    width=200,
+    #    placeholder_text="sub_xxxxxxxxxxxxxxxxxxxxxxxxx"
+    #)
+    #nopecha_entry.pack(pady=(0, 5))
 
     # Cargar clave guardada si existe
-    stored_key = get_nopecha_key()
-    if stored_key:
-        nopecha_entry.insert(0, stored_key)
+    #stored_key = get_nopecha_key()
+    #if stored_key:
+    #    nopecha_entry.insert(0, stored_key)
 
-    def save_nopecha_key_ui():
-        key = nopecha_entry.get().strip()
-        if not key:
-            messagebox.showerror("Error", "La clave NopeCHA no puede estar vacía.")
-            return
+    #def save_nopecha_key_ui():
+    #    pass
+    #    key = nopecha_entry.get().strip()
+    #    if not key:
+    #        messagebox.showerror("Error", "La clave NopeCHA no puede estar vacía.")
+    #        return
 
-        if save_nopecha_key(key):
-            messagebox.showinfo("Guardado", "✅ NopeCHA key guardada correctamente.")
-        else:
-            messagebox.showerror("Error", "No se pudo guardar la NopeCHA key.")
+    #    if save_nopecha_key(key):
+    #        messagebox.showinfo("Guardado", "✅ NopeCHA key guardada correctamente.")
+    #    else:
+    #        messagebox.showerror("Error", "No se pudo guardar la NopeCHA key.")
 
-    save_nopecha_button = ctk.CTkButton(
-        hostinger_frame,
-        text="Guardar NopeCHA Key",
-        command=save_nopecha_key_ui,
-        fg_color="#0066cc",
-        text_color="white"
-    )
-    save_nopecha_button.pack(pady=(0, 15))
+    #save_nopecha_button = ctk.CTkButton(
+    #    hostinger_frame,
+    #    text="Guardar NopeCHA Key",
+    #    command=save_nopecha_key_ui,
+    #    fg_color="#0066cc",
+    #    text_color="white"
+    #)
+    #save_nopecha_button.pack(pady=(0, 15))
 
     # 👉 Mostrar cantidad de dominios y hacer clic para verlos
     def toggle_domain_view(event=None):
@@ -380,6 +365,71 @@ def setup_ui(logged_in_user, on_login_success):
         text_color="white"
     )
     stop_button.pack(pady=(5, 10))
+
+    # 👉 Checkboxes para opciones del bot (lado izquierdo - al final)
+    options_title = ctk.CTkLabel(
+        hostinger_frame,
+        text="⚙️ Opciones del Bot",
+        text_color="black",
+        font=("Arial", 14, "bold")
+    )
+    options_title.pack(pady=(20, 15), anchor="center")
+
+    # Checkbox para ADB (modo avión)
+    adb_checkbox = ctk.CTkCheckBox(
+        hostinger_frame,
+        text="Activar modo avión (ADB)",
+        text_color="black",
+        font=("Arial", 12),
+        checkbox_width=20,
+        checkbox_height=20
+    )
+    adb_checkbox.pack(pady=(0, 10), anchor="center")
+
+    # Checkbox para Proxy
+    proxy_checkbox = ctk.CTkCheckBox(
+        hostinger_frame,
+        text="Activar proxy",
+        text_color="black",
+        font=("Arial", 12),
+        checkbox_width=20,
+        checkbox_height=20
+    )
+    proxy_checkbox.pack(pady=(0, 15), anchor="center")
+
+    # 🔽 Función para guardar automáticamente cuando cambien los checkboxes
+    def auto_save_checkboxes():
+        try:
+            iterations = iterations_entry.get() or "5"  # Valor por defecto si está vacío
+            pause_minutes = pause_entry.get() or "20"  # Valor por defecto si está vacío
+            
+            # Convertir a enteros con valores por defecto
+            iterations_val = int(iterations) if iterations.isdigit() else 5
+            pause_minutes_val = int(pause_minutes) if pause_minutes.isdigit() else 20
+            
+            enable_adb = adb_checkbox.get() == 1
+            enable_proxy = proxy_checkbox.get() == 1
+            
+            success = save_bot_settings(iterations_val, pause_minutes_val, enable_adb, enable_proxy)
+            if success:
+                print("✅ Configuración de checkboxes guardada automáticamente")
+            else:
+                print("❌ Error al guardar configuración automáticamente")
+        except Exception as e:
+            print(f"❌ Error en auto-guardado: {e}")
+
+    # 🔽 Cargar valores guardados de los checkboxes
+    if bot_settings:
+        adb_checkbox.select() if bot_settings.get("enable_adb", True) else adb_checkbox.deselect()
+        proxy_checkbox.select() if bot_settings.get("enable_proxy", True) else proxy_checkbox.deselect()
+    else:
+        # Valores por defecto si no hay configuración
+        adb_checkbox.select()
+        proxy_checkbox.select()
+
+    # 🔽 Conectar eventos de cambio a los checkboxes
+    adb_checkbox.configure(command=auto_save_checkboxes)
+    proxy_checkbox.configure(command=auto_save_checkboxes)
 
     # ================= Capturar Coordenadas =================
     #def add_coordinates_interactively():

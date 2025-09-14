@@ -107,6 +107,25 @@ def create_database():
             '''
         )
 
+        # 🔹 Tabla para almacenar coordenadas de clicks del creator
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS creator_coordinates (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                brave_click TEXT NOT NULL,
+                linkedin_fav_click TEXT NOT NULL,
+                email_input_click TEXT NOT NULL,
+                continue_button_click TEXT NOT NULL,
+                name_input_click TEXT NOT NULL,
+                continue_button2_click TEXT NOT NULL,
+                close_captcha_click TEXT NOT NULL,
+                close_number_click TEXT NOT NULL,
+                cookie_editor_icon_click TEXT NOT NULL,
+                save_cookie_clipboard_click TEXT NOT NULL
+            )
+            '''
+        )
+
         conn.commit()
         conn.close()
         print(f"✅ Base de datos lista en {DB_PATH}")
@@ -462,4 +481,121 @@ def get_nopecha_key():
 
     except Exception as e:
         print(f"❌ Error al obtener NopeCHA key: {e}")
+        return None
+
+
+def save_creator_coordinates(coordinates_dict=None, **kwargs):
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Obtener coordenadas existentes
+        cursor.execute("SELECT * FROM creator_coordinates WHERE id = 1")
+        existing_row = cursor.fetchone()
+        
+        # Preparar valores con los existentes como base
+        if existing_row:
+            values = list(existing_row[1:])  # Excluir el id
+        else:
+            values = [''] * 10  # 10 campos vacíos
+
+        # Mapeo de nombres de campos a índices
+        field_mapping = {
+            'brave_click': 0,
+            'linkedin_fav_click': 1,
+            'email_input_click': 2,
+            'continue_button_click': 3,
+            'name_input_click': 4,
+            'continue_button2_click': 5,
+            'close_captcha_click': 6,
+            'close_number_click': 7,
+            'cookie_editor_icon_click': 8,
+            'save_cookie_clipboard_click': 9
+        }
+
+        # Actualizar valores desde coordinates_dict si se proporciona
+        if coordinates_dict:
+            for field, coord in coordinates_dict.items():
+                if field in field_mapping:
+                    values[field_mapping[field]] = coord
+
+        # Actualizar valores desde kwargs
+        for field, coord in kwargs.items():
+            if field in field_mapping:
+                values[field_mapping[field]] = coord
+
+        cursor.execute(
+            """
+            REPLACE INTO creator_coordinates (
+                id, brave_click, linkedin_fav_click, email_input_click,
+                continue_button_click, name_input_click, continue_button2_click,
+                close_captcha_click, close_number_click, cookie_editor_icon_click,
+                save_cookie_clipboard_click
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            tuple(values)
+        )
+
+        conn.commit()
+        conn.close()
+        print("✅ Coordenadas del creator guardadas.")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error al guardar coordenadas del creator: {e}")
+        return False
+
+
+def get_creator_coordinates(*field_names):
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM creator_coordinates WHERE id = 1")
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        # Mapeo de nombres de campos a índices
+        field_mapping = {
+            'brave_click': 1,
+            'linkedin_fav_click': 2,
+            'email_input_click': 3,
+            'continue_button_click': 4,
+            'name_input_click': 5,
+            'continue_button2_click': 6,
+            'close_captcha_click': 7,
+            'close_number_click': 8,
+            'cookie_editor_icon_click': 9,
+            'save_cookie_clipboard_click': 10
+        }
+
+        # Si no se especifican campos, devolver todos
+        if not field_names:
+            return {
+                'brave_click': row[1],
+                'linkedin_fav_click': row[2],
+                'email_input_click': row[3],
+                'continue_button_click': row[4],
+                'name_input_click': row[5],
+                'continue_button2_click': row[6],
+                'close_captcha_click': row[7],
+                'close_number_click': row[8],
+                'cookie_editor_icon_click': row[9],
+                'save_cookie_clipboard_click': row[10]
+            }
+
+        # Devolver solo los campos solicitados
+        result = {}
+        for field_name in field_names:
+            if field_name in field_mapping:
+                result[field_name] = row[field_mapping[field_name]]
+
+        return result if result else None
+
+    except Exception as e:
+        print(f"❌ Error al obtener coordenadas del creator: {e}")
         return None
