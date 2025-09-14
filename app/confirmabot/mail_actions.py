@@ -11,6 +11,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException
 import sys
 from tkinter import messagebox
+from app.confirmabot.utils.proxy_tool import ProxyController
 
 fake = Faker()
 
@@ -27,7 +28,7 @@ def generate_secure_password(length=10):
     return ''.join(random.choices(chars, k=length))
 
 
-def mail_actions(driver, domain):
+def mail_actions(driver, domain, enable_proxy=True):
     try:
         # 👉 Abrir Google para mantener la ventana visible y luego ejecutar los clics
         #driver.get("https://www.google.com/")
@@ -93,18 +94,55 @@ def mail_actions(driver, domain):
         #        except ValueError:
         #            print(f"⚠️ Coordenada inválida: {c4}")
 
+        # 🌐 ACTIVAR PROXY ANTES de abrir la página de 33mail (sin cambiar configuración)
+        #print("🌐 Activando proxy antes de abrir 33mail...")
+        #proxy_controller = ProxyController()
+        #try:
+            # Solo activar el proxy sin cambiar la configuración existente
+            #proxy_controller.enable_proxy_only()
+            #proxy_controller.refresh_internet_settings()
+            
+            # Verificar que el proxy esté realmente activo
+            #print("🔍 Verificando que el proxy esté activo...")
+            #enabled, server, port = proxy_controller.get_proxy_status()
+            #if enabled and server:
+                #print(f"✅ Proxy confirmado activo: {server}")
+            #else:
+                #print("⚠️ Proxy no se activó correctamente, reintentando...")
+                #proxy_controller.enable_proxy_only()
+                #proxy_controller.refresh_internet_settings()
+                #time.sleep(3)  # Esperar más tiempo en el segundo intento
+                
+        #finally:
+        #    proxy_controller.close()
+        
+        # Esperar tiempo suficiente para que el proxy se active completamente
+        #print("⏳ Esperando que el proxy se active completamente...")
+        #time.sleep(8)  # Esperar que el proxy se active antes de abrir la página
+
         print("🌐 Abriendo 33mail para crear cuenta...")
         driver.get("https://www.33mail.com/signup")
         print("🔄 Refrescando la página...")
         driver.refresh()
-        time.sleep(2)
-        driver.refresh()
+        #time.sleep(2)
+        #driver.refresh()
         time.sleep(2)
         print("📨 Iniciando acciones en la página de 33mail...")
-        try:
-            driver.maximize_window()
-        except Exception:
-            pass
+        #try:
+        #   driver.maximize_window()
+        #except Exception:
+        #   pass
+
+        # 🌐 DESACTIVAR PROXY temporalmente para resolver captcha
+        #print("🌐 Desactivando proxy temporalmente para resolver captcha...")
+        #proxy_controller = ProxyController()
+        #try:
+            #proxy_controller.disable_proxy()
+            #proxy_controller.refresh_internet_settings()
+            #print("✅ Proxy desactivado temporalmente")
+        #finally:
+            #proxy_controller.close()
+        #time.sleep(2)  # Esperar que se desactive
 
         # ✋ Esperar a que la extensión resuelva el reCAPTCHA ANTES de rellenar el formulario
         try:
@@ -133,6 +171,35 @@ def mail_actions(driver, domain):
             print("✅ Captcha resuelto, overlay desapareció.")
         except TimeoutException:
             print("⚠️ Timeout esperando que desaparezca overlay de captcha. Podría interferir posteriormente.")
+
+        # 🌐 REACTIVAR PROXY antes de llenar los inputs (si está habilitado)
+        if enable_proxy:
+            print("🌐 Reactivando proxy antes de llenar formulario...")
+            proxy_controller = ProxyController()
+            try:
+                # Solo reactivar el proxy sin cambiar la configuración existente
+                proxy_controller.enable_proxy_only()
+                proxy_controller.refresh_internet_settings()
+                
+                # Verificar que el proxy esté realmente activo
+                print("🔍 Verificando que el proxy esté reactivado...")
+                enabled, server, port = proxy_controller.get_proxy_status()
+                if enabled and server:
+                    print(f"✅ Proxy confirmado reactivado: {server}")
+                else:
+                    print("⚠️ Proxy no se reactivó correctamente, reintentando...")
+                    proxy_controller.enable_proxy_only()
+                    proxy_controller.refresh_internet_settings()
+                    time.sleep(3)  # Esperar más tiempo en el segundo intento
+                    
+            finally:
+                proxy_controller.close()
+            
+            # Esperar tiempo suficiente para que el proxy se reactive completamente
+            print("⏳ Esperando que el proxy se reactive completamente...")
+            time.sleep(8)  # Esperar que el proxy se reactive antes de llenar el formulario
+        else:
+            print("⏭️ Proxy deshabilitado por configuración")
 
         # 👉 Generar datos
         username = generate_custom_username()
@@ -198,11 +265,43 @@ def mail_actions(driver, domain):
                 )
             )
             print("✅ Registro completado o botón desapareció, navegación correcta.")
+            
+            # 🌐 DESACTIVAR PROXY después del éxito (si estaba habilitado)
+            if enable_proxy:
+                print("🌐 Desactivando proxy después del éxito...")
+                proxy_controller = ProxyController()
+                try:
+                    proxy_controller.disable_proxy()
+                    proxy_controller.refresh_internet_settings()
+                finally:
+                    proxy_controller.close()
+                time.sleep(1)  # Esperar un momento para que el proxy se desactive
+            
         except TimeoutException:
+            # 🌐 DESACTIVAR PROXY incluso si hay timeout (por seguridad, si estaba habilitado)
+            if enable_proxy:
+                print("🌐 Desactivando proxy por timeout...")
+                proxy_controller = ProxyController()
+                try:
+                    proxy_controller.disable_proxy()
+                    proxy_controller.refresh_internet_settings()
+                finally:
+                    proxy_controller.close()
             raise Exception("Timeout esperando confirmación de registro.")
 
         return True, final_email
 
     except Exception as e:
         print(f"❌ Error durante las acciones en mail: {e}")
+        # 🌐 DESACTIVAR PROXY en caso de error (por seguridad)
+        print("🌐 Desactivando proxy por error...")
+        try:
+            proxy_controller = ProxyController()
+            try:
+                proxy_controller.disable_proxy()
+                proxy_controller.refresh_internet_settings()
+            finally:
+                proxy_controller.close()
+        except:
+            pass  # Ignorar errores al desactivar proxy
         return False, None

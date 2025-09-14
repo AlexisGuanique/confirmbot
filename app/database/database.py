@@ -82,6 +82,20 @@ def create_database():
         if "pause_minutes" not in bot_settings_cols:
             cursor.execute("ALTER TABLE bot_settings ADD COLUMN pause_minutes INTEGER NOT NULL DEFAULT 20")
             print("✅ Columna pause_minutes agregada a bot_settings")
+        
+        # 🔄 Migración para agregar enable_adb a bot_settings si no existe
+        cursor.execute("PRAGMA table_info(bot_settings)")
+        bot_settings_cols = [row[1] for row in cursor.fetchall()]
+        if "enable_adb" not in bot_settings_cols:
+            cursor.execute("ALTER TABLE bot_settings ADD COLUMN enable_adb INTEGER NOT NULL DEFAULT 1")
+            print("✅ Columna enable_adb agregada a bot_settings")
+        
+        # 🔄 Migración para agregar enable_proxy a bot_settings si no existe
+        cursor.execute("PRAGMA table_info(bot_settings)")
+        bot_settings_cols = [row[1] for row in cursor.fetchall()]
+        if "enable_proxy" not in bot_settings_cols:
+            cursor.execute("ALTER TABLE bot_settings ADD COLUMN enable_proxy INTEGER NOT NULL DEFAULT 1")
+            print("✅ Columna enable_proxy agregada a bot_settings")
 
         # 🔹 Tabla para almacenar la clave de NopeCHA
         cursor.execute(
@@ -212,7 +226,7 @@ def clear_database():
 
 
 
-def save_bot_settings(iterations, pause_minutes=20):
+def save_bot_settings(iterations, pause_minutes=20, enable_adb=True, enable_proxy=True):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -224,18 +238,18 @@ def save_bot_settings(iterations, pause_minutes=20):
         if existing:
             cursor.execute('''
                 UPDATE bot_settings
-                SET iterations = ?, pause_minutes = ?
+                SET iterations = ?, pause_minutes = ?, enable_adb = ?, enable_proxy = ?
                 WHERE id = ?
-            ''', (iterations, pause_minutes, existing[0]))
+            ''', (iterations, pause_minutes, int(enable_adb), int(enable_proxy), existing[0]))
         else:
             cursor.execute('''
-                INSERT INTO bot_settings (iterations, pause_minutes)
-                VALUES (?, ?)
-            ''', (iterations, pause_minutes))
+                INSERT INTO bot_settings (iterations, pause_minutes, enable_adb, enable_proxy)
+                VALUES (?, ?, ?, ?)
+            ''', (iterations, pause_minutes, int(enable_adb), int(enable_proxy)))
 
         conn.commit()
         conn.close()
-        print("✅ Configuración de iteraciones y tiempo de pausa guardada.")
+        print("✅ Configuración de bot guardada.")
         return True
 
     except Exception as e:
@@ -246,11 +260,16 @@ def get_bot_settings():
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT iterations, pause_minutes FROM bot_settings LIMIT 1")
+        cursor.execute("SELECT iterations, pause_minutes, enable_adb, enable_proxy FROM bot_settings LIMIT 1")
         row = cursor.fetchone()
         conn.close()
         if row:
-            return {"iterations": row[0], "pause_minutes": row[1]}
+            return {
+                "iterations": row[0], 
+                "pause_minutes": row[1],
+                "enable_adb": bool(row[2]),
+                "enable_proxy": bool(row[3])
+            }
         else:
             return None
     except Exception as e:

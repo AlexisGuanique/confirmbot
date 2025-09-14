@@ -71,7 +71,7 @@ def login_to_hostinger(driver, email, password):
         print("⏳ Esperando nuevos emails de 33mail.com...")
         
         # Usar la función automatizada para extraer la URL
-        success, confirmation_url = wait_for_confirmation_email(timeout_seconds=45)
+        success, confirmation_url = wait_for_confirmation_email(email, password, timeout_seconds=45)
         
         if success and confirmation_url:
             print(f"✅ ¡URL de confirmación encontrada!")

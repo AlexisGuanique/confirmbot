@@ -727,22 +727,20 @@ def print_email_full(email_info: Dict, email_number: int):
     print("-" * 80)
 
 
-def wait_for_confirmation_email(timeout_seconds: int = 45) -> Tuple[bool, Optional[str]]:
+def wait_for_confirmation_email(email_address: str, password: str, timeout_seconds: int = 45) -> Tuple[bool, Optional[str]]:
     """
     Espera hasta que llegue un nuevo email de 33mail.com y extrae la URL de confirmación
     
     Args:
+        email_address: Dirección de correo electrónico
+        password: Contraseña de la cuenta
         timeout_seconds: Tiempo máximo de espera en segundos (default: 45)
     
     Returns:
         Tuple[bool, Optional[str]]: (True, URL) si encuentra la URL, (False, None) si no encuentra nada
     """
-    # Credenciales de correo
-    EMAIL_ADDRESS = "carneconpapa@facilrecordar.com"
-    PASSWORD = "Alexis4321."
-    
     # Crear cliente de email
-    email_client = HostingerEmailClient(EMAIL_ADDRESS, PASSWORD)
+    email_client = HostingerEmailClient(email_address, password)
     
     try:
         # Conectar al servidor
@@ -809,20 +807,20 @@ def wait_for_confirmation_email(timeout_seconds: int = 45) -> Tuple[bool, Option
         email_client.disconnect()
 
 
-def extract_latest_confirmation_url():
+def extract_latest_confirmation_url(email_address: str, password: str):
     """
     Función automatizada que extrae la URL de confirmación del email más reciente de 33mail.com
     Sin requerir interacción del usuario
     
+    Args:
+        email_address: Dirección de correo electrónico
+        password: Contraseña de la cuenta
+    
     Returns:
         Optional[str]: URL de confirmación si se encuentra, None en caso contrario
     """
-    # Credenciales de correo
-    EMAIL_ADDRESS = "carneconpapa@facilrecordar.com"
-    PASSWORD = "Alexis4321."
-    
     # Crear cliente de email
-    email_client = HostingerEmailClient(EMAIL_ADDRESS, PASSWORD)
+    email_client = HostingerEmailClient(email_address, password)
     
     try:
         # Conectar al servidor
@@ -873,15 +871,11 @@ def extract_latest_confirmation_url():
         email_client.disconnect()
 
 
-def go_directly_to_confirmar():
+def go_directly_to_confirmar(email_address: str, password: str):
     """Función para ir directamente a la carpeta Confirmar"""
     
-    # Credenciales de correo
-    EMAIL_ADDRESS = "carneconpapa@facilrecordar.com"
-    PASSWORD = "Alexis4321."
-    
     # Crear cliente de email
-    email_client = HostingerEmailClient(EMAIL_ADDRESS, PASSWORD)
+    email_client = HostingerEmailClient(email_address, password)
     
     try:
         # Conectar al servidor
@@ -979,12 +973,6 @@ def go_directly_to_confirmar():
 if __name__ == "__main__":
     # Función automatizada que espera por nuevos emails y extrae la URL
     print("🔍 Esperando nuevos emails de 33mail.com para extraer URL de confirmación...")
-    success, confirmation_url = wait_for_confirmation_email(timeout_seconds=45)
-    
-    if success and confirmation_url:
-        print(f"\n✅ ¡URL de confirmación encontrada!")
-        print(f"🔗 URL: {confirmation_url}")
-        print(f"\n📋 Puedes copiar esta URL y usarla para confirmar tu cuenta de 33mail.com")
-    else:
-        print(f"\n❌ No se encontró ninguna URL de confirmación de 33mail.com en 45 segundos")
-        print(f"💡 Verifica que tengas emails de 33mail.com en tu carpeta 'Confirmar' o bandeja de entrada")
+    # Nota: Esta función ahora requiere credenciales como parámetros
+    print("⚠️ Esta función ahora requiere credenciales como parámetros.")
+    print("   Usa: wait_for_confirmation_email(email_address, password, timeout_seconds)")

@@ -56,6 +56,20 @@ def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromed
     options.add_argument("--no-default-browser-check")
     options.add_argument("--remote-debugging-port=0")
     
+    # 🔧 Opciones para evitar error DevToolsActivePort
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-tools")
+    options.add_argument("--disable-extensions-file-access-check")
+    options.add_argument("--disable-extensions-http-throttling")
+    options.add_argument("--disable-logging")
+    options.add_argument("--disable-web-security")
+    options.add_argument("--allow-running-insecure-content")
+    options.add_argument("--disable-features=VizDisplayCompositor")
+    
+    # ✅ Permitir extensiones (se cargarán automáticamente)
+    
     # 🧹 Opciones para ventana limpia
     options.add_argument("--incognito")  # Modo incógnito para no cargar pestañas anteriores
     options.add_argument("--disable-session-crashed-bubble")  # Evitar diálogos de sesión
@@ -67,23 +81,57 @@ def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromed
     options.add_argument("--disable-features=TranslateUI")  # Deshabilitar traducción automática
     options.add_argument("--disable-ipc-flooding-protection")  # Deshabilitar protección contra flooding IPC
 
-    # 👉 Ruta a la extensión (ajusta versión)
-    extension_path = os.path.join(
-        user_data_dir,
-        profile_name,
-        "Extensions",
-        "dknlfmjaanfblgfdfebhijalfmhmjjjo",
-        "0.4.13_0"
-    )
-    options.add_argument(f"--load-extension={extension_path}")
+    # 👉 Cargar todas las extensiones disponibles automáticamente
+    extensions_dir = os.path.join(user_data_dir, profile_name, "Extensions")
+    if os.path.exists(extensions_dir):
+        extension_paths = []
+        for ext_id in os.listdir(extensions_dir):
+            ext_path = os.path.join(extensions_dir, ext_id)
+            if os.path.isdir(ext_path):
+                # Buscar la versión más reciente de cada extensión
+                versions = os.listdir(ext_path)
+                if versions:
+                    # Ordenar versiones y tomar la más reciente
+                    latest_version = sorted(versions)[-1]
+                    full_ext_path = os.path.join(ext_path, latest_version)
+                    manifest_path = os.path.join(full_ext_path, "manifest.json")
+                    if os.path.exists(manifest_path):
+                        extension_paths.append(full_ext_path)
+                        #print(f"✅ Extensión cargada: {ext_id} v{latest_version}")
+        
+        # Cargar todas las extensiones válidas
+        if extension_paths:
+            options.add_argument(f"--load-extension={','.join(extension_paths)}")
+        else:
+            print("⚠️ No se encontraron extensiones válidas para cargar")
 
-    if chromedriver_exe and os.path.exists(chromedriver_exe):
-        service = Service(chromedriver_exe)
-        driver = webdriver.Chrome(service=service, options=options)
-    else:
-        driver = webdriver.Chrome(options=options)
-
-    return driver
+    try:
+        if chromedriver_exe and os.path.exists(chromedriver_exe):
+            service = Service(chromedriver_exe)
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            driver = webdriver.Chrome(options=options)
+        
+        # Esperar un momento para que el navegador se inicialice completamente
+        time.sleep(2)
+        return driver
+        
+    except Exception as e:
+        print(f"❌ Error al inicializar el navegador: {e}")
+        print("🔄 Intentando con opciones adicionales...")
+        
+        # Intentar con opciones más restrictivas
+        options.add_argument("--headless")  # Modo sin interfaz gráfica
+        options.add_argument("--disable-images")  # Deshabilitar imágenes
+        options.add_argument("--disable-javascript")  # Deshabilitar JavaScript temporalmente
+        
+        try:
+            driver = webdriver.Chrome(options=options)
+            time.sleep(2)
+            return driver
+        except Exception as e2:
+            print(f"❌ Error crítico al inicializar el navegador: {e2}")
+            raise e2
 
 
 def run_checker():
@@ -104,11 +152,11 @@ def run_checker():
         pause_minutes = config.get("pause_minutes", 20)  # Valor por defecto: 20 minutos
 
         # Ruta del ejecutable ADB - verificar si existe
-        adb_path = r"C:\Adb\adb"
+        adb_path = r"C:\Adb\adb.exe"
         adb_available = os.path.exists(adb_path)
         
         if not adb_available:
-            print("⚠️ ADB no encontrado en C:\\Adb\\adb")
+            print("⚠️ ADB no encontrado en C:\\Adb\\adb.exe")
             print("💡 El modo avión se omitirá, pero el bot continuará funcionando")
         else:
             print("✅ ADB encontrado y disponible")
@@ -171,8 +219,9 @@ def run_checker():
                     print(f"🔁 Iteración {i + 1} de {iteraciones} para ID {id}")
                     start_time = time.time()
 
-                    # Ejecutar comandos ADB solo si está disponible
-                    if adb_available:
+                    # Ejecutar comandos ADB solo si está disponible y habilitado
+                    enable_adb = config.get("enable_adb", True)
+                    if adb_available and enable_adb:
                         try:
                             # Ejecutar el comando para activar el modo avión
                             subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"], 
@@ -188,6 +237,9 @@ def run_checker():
                         except Exception as e:
                             print(f"⚠️ Error ejecutando comandos ADB: {e}")
                             print("🔄 Continuando sin modo avión...")
+                    elif not enable_adb:
+                        print("⏭️ Modo avión deshabilitado por configuración")
+                        time.sleep(2)  # Pequeña pausa para simular el proceso
                     else:
                         print("⏭️ Omitiendo modo avión (ADB no disponible)")
                         time.sleep(2)  # Pequeña pausa para simular el proceso
@@ -196,7 +248,8 @@ def run_checker():
                     driver = open_temp_chrome_profile()
 
                     try:
-                        mail_ok, final_email = mail_actions(driver, domain)
+                        enable_proxy = config.get("enable_proxy", True)
+                        mail_ok, final_email = mail_actions(driver, domain, enable_proxy)
                         if not mail_ok:
                             print("❌ Falló la creación del correo en 33mail.")
                             continue

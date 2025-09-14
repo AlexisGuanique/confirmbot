@@ -32,6 +32,10 @@ def setup_ui(logged_in_user, on_login_success):
     hostinger_frame = ctk.CTkFrame(root, fg_color="transparent")
     hostinger_frame.place(relx=0.0, rely=0.0, anchor="nw", x=20, y=100)
 
+    # 👉 Contenedor para opciones del bot (lado derecho)
+    options_frame = ctk.CTkFrame(root, fg_color="transparent")
+    options_frame.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=100)
+
 
    #! 👉 Input: Cantidad de iteraciones
     iterations_label = ctk.CTkLabel(
@@ -74,10 +78,77 @@ def setup_ui(logged_in_user, on_login_success):
     if bot_settings:
         pause_entry.insert(0, str(bot_settings.get("pause_minutes", 20)))
 
+    # 👉 Checkboxes para opciones del bot (lado derecho)
+    options_title = ctk.CTkLabel(
+        options_frame,
+        text="⚙️ Opciones del Bot",
+        text_color="black",
+        font=("Arial", 14, "bold")
+    )
+    options_title.pack(pady=(0, 15), anchor="w")
+
+    # Checkbox para ADB (modo avión)
+    adb_checkbox = ctk.CTkCheckBox(
+        options_frame,
+        text="Activar modo avión (ADB)",
+        text_color="black",
+        font=("Arial", 12),
+        checkbox_width=20,
+        checkbox_height=20
+    )
+    adb_checkbox.pack(pady=(0, 10), anchor="w")
+
+    # Checkbox para Proxy
+    proxy_checkbox = ctk.CTkCheckBox(
+        options_frame,
+        text="Activar proxy",
+        text_color="black",
+        font=("Arial", 12),
+        checkbox_width=20,
+        checkbox_height=20
+    )
+    proxy_checkbox.pack(pady=(0, 15), anchor="w")
+
+    # 🔽 Función para guardar automáticamente cuando cambien los checkboxes
+    def auto_save_checkboxes():
+        try:
+            iterations = iterations_entry.get() or "5"  # Valor por defecto si está vacío
+            pause_minutes = pause_entry.get() or "20"  # Valor por defecto si está vacío
+            
+            # Convertir a enteros con valores por defecto
+            iterations_val = int(iterations) if iterations.isdigit() else 5
+            pause_minutes_val = int(pause_minutes) if pause_minutes.isdigit() else 20
+            
+            enable_adb = adb_checkbox.get() == 1
+            enable_proxy = proxy_checkbox.get() == 1
+            
+            success = save_bot_settings(iterations_val, pause_minutes_val, enable_adb, enable_proxy)
+            if success:
+                print("✅ Configuración de checkboxes guardada automáticamente")
+            else:
+                print("❌ Error al guardar configuración automáticamente")
+        except Exception as e:
+            print(f"❌ Error en auto-guardado: {e}")
+
+    # 🔽 Cargar valores guardados de los checkboxes
+    if bot_settings:
+        adb_checkbox.select() if bot_settings.get("enable_adb", True) else adb_checkbox.deselect()
+        proxy_checkbox.select() if bot_settings.get("enable_proxy", True) else proxy_checkbox.deselect()
+    else:
+        # Valores por defecto si no hay configuración
+        adb_checkbox.select()
+        proxy_checkbox.select()
+
+    # 🔽 Conectar eventos de cambio a los checkboxes
+    adb_checkbox.configure(command=auto_save_checkboxes)
+    proxy_checkbox.configure(command=auto_save_checkboxes)
+
     # 👉 Botón para guardar configuración completa
     def save_bot_config():
         iterations = iterations_entry.get()
         pause_minutes = pause_entry.get()
+        enable_adb = adb_checkbox.get() == 1
+        enable_proxy = proxy_checkbox.get() == 1
 
         if not iterations.isdigit():
             messagebox.showerror("Error", "Ingresa un número válido de iteraciones.")
@@ -87,7 +158,7 @@ def setup_ui(logged_in_user, on_login_success):
             messagebox.showerror("Error", "Ingresa un número válido de minutos para la pausa.")
             return
 
-        success = save_bot_settings(int(iterations), int(pause_minutes))
+        success = save_bot_settings(int(iterations), int(pause_minutes), enable_adb, enable_proxy)
         if success:
             messagebox.showinfo("Guardado", "✅ Configuración del bot guardada correctamente.")
         else:
