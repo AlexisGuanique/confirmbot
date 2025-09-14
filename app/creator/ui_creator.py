@@ -41,9 +41,9 @@ def create_new_window(parent_root):
         "Click del Brave",
         "Click del link de LinkedIn en fav",
         "Click input email",
-        "Click botón continue",
+        "Click botón Agree",
         "Click input de nombre",
-        "Click botón continue (2)",
+        "Click botón continue",
         "Click cerrar captcha",
         "Click cerrar número",
         "Click icono cookie editor",
@@ -55,9 +55,9 @@ def create_new_window(parent_root):
         "Click del Brave": "brave_click",
         "Click del link de LinkedIn en fav": "linkedin_fav_click",
         "Click input email": "email_input_click",
-        "Click botón continue": "continue_button_click",
+        "Click botón Agree": "continue_button_click",
         "Click input de nombre": "name_input_click",
-        "Click botón continue (2)": "continue_button2_click",
+        "Click botón continue": "continue_button2_click",
         "Click cerrar captcha": "close_captcha_click",
         "Click cerrar número": "close_number_click",
         "Click icono cookie editor": "cookie_editor_icon_click",
@@ -68,7 +68,7 @@ def create_new_window(parent_root):
     saved_coordinates = get_creator_coordinates()
     
     # Función para capturar coordenadas (igual que en ui.py)
-    def capture_coordinate(coord_name, field_name):
+    def capture_coordinate(coord_name, field_name, value_label_ref):
         # Crear popup para capturar coordenada
         popup = ctk.CTkToplevel(new_window)
         popup.geometry("420x220")
@@ -97,46 +97,58 @@ def create_new_window(parent_root):
         def capturar():
             coord_raw = get_mouse_coordinate_on_keypress("c")  # formato "123x456"
             coordenada_capturada = coord_raw
-            popup.after(0, lambda: coord_label.configure(text=f"{coord_name}: {coordenada_capturada}"))
             
-            # Mostrar botones de confirmación después de capturar
-            popup.after(0, lambda: mostrar_botones_confirmacion(coordenada_capturada))
+            # Verificar que el popup aún existe antes de actualizar
+            try:
+                if popup.winfo_exists():
+                    coord_label.configure(text=f"{coord_name}: {coordenada_capturada}")
+                    mostrar_botones_confirmacion(coordenada_capturada)
+            except:
+                pass  # El popup ya no existe, ignorar
 
         def mostrar_botones_confirmacion(coord):
-            # Limpiar widgets anteriores
-            for widget in popup.winfo_children():
-                if isinstance(widget, ctk.CTkButton):
-                    widget.destroy()
-            
-            def guardar():
-                if save_creator_coordinates(**{field_name: coord}):
-                    messagebox.showinfo("Guardado", f"✅ Coordenada guardada: {coord}")
+            try:
+                # Verificar que el popup aún existe
+                if not popup.winfo_exists():
+                    return
+                
+                # Limpiar widgets anteriores
+                for widget in popup.winfo_children():
+                    if isinstance(widget, ctk.CTkButton):
+                        widget.destroy()
+                
+                def guardar():
+                    if save_creator_coordinates(**{field_name: coord}):
+                        messagebox.showinfo("Guardado", f"✅ Coordenada guardada: {coord}")
+                        popup.destroy()
+                        # Actualizar solo el label de valor sin refrescar toda la ventana
+                        value_label_ref.configure(text=coord, text_color="black")
+                    else:
+                        messagebox.showerror("Error", "No se pudo guardar la coordenada.")
+
+                def volver_a_capturar():
                     popup.destroy()
-                    refresh_window()
-                else:
-                    messagebox.showerror("Error", "No se pudo guardar la coordenada.")
+                    capture_coordinate(coord_name, field_name, value_label_ref)
 
-            def volver_a_capturar():
-                popup.destroy()
-                capture_coordinate(coord_name, field_name)
+                guardar_button = ctk.CTkButton(
+                    popup,
+                    text="Guardar",
+                    command=guardar,
+                    fg_color="#28a745",
+                    text_color="white"
+                )
+                guardar_button.pack(pady=5)
 
-            guardar_button = ctk.CTkButton(
-                popup,
-                text="Guardar",
-                command=guardar,
-                fg_color="#28a745",
-                text_color="white"
-            )
-            guardar_button.pack(pady=5)
-
-            volver_button = ctk.CTkButton(
-                popup,
-                text="Volver a Capturar",
-                command=volver_a_capturar,
-                fg_color="#dc3545",
-                text_color="white"
-            )
-            volver_button.pack(pady=5)
+                volver_button = ctk.CTkButton(
+                    popup,
+                    text="Volver a Capturar",
+                    command=volver_a_capturar,
+                    fg_color="#dc3545",
+                    text_color="white"
+                )
+                volver_button.pack(pady=5)
+            except:
+                pass  # El popup ya no existe, ignorar
 
         threading.Thread(target=capturar, daemon=True).start()
     
@@ -205,15 +217,15 @@ def create_new_window(parent_root):
         value_label.grid(row=0, column=1, padx=5, pady=8, sticky="w")
         
         # Botón de acción
-        def create_capture_function(coord_name, field_name):
+        def create_capture_function(coord_name, field_name, value_label_ref):
             def capture_coordinates():
-                capture_coordinate(coord_name, field_name)
+                capture_coordinate(coord_name, field_name, value_label_ref)
             return capture_coordinates
         
         action_button = ctk.CTkButton(
             row_frame,
             text="Configurar",
-            command=create_capture_function(coord_name, field_name),
+            command=create_capture_function(coord_name, field_name, value_label),
             fg_color="#007ACC",
             text_color="white",
             font=("Arial", 11),
@@ -298,20 +310,10 @@ def create_new_window(parent_root):
         image_path = get_image_path(image_name)
         has_image = image_path is not None
         
-        # Botón para ver imagen
-        def create_view_function(img_name):
-            def view_image_func():
-                image_path = get_image_path(img_name)
-                if image_path:
-                    view_image(image_path, refresh_window)
-                else:
-                    messagebox.showwarning("Imagen no encontrada", f"No se encontró la imagen: {img_name}\n\nPrimero carga la imagen usando el botón 'Cargar Imagen'.")
-            return view_image_func
-        
+        # Crear botón para ver imagen
         view_button = ctk.CTkButton(
             row_frame,
             text="Ver Imagen",
-            command=create_view_function(image_name),
             fg_color="#17a2b8" if has_image else "#6c757d",
             text_color="white",
             font=("Arial", 11),
@@ -321,19 +323,41 @@ def create_new_window(parent_root):
         )
         view_button.grid(row=0, column=1, padx=5, pady=8)
         
-        # Botón para cargar imagen
-        def create_load_function(img_name):
+        # Función para ver imagen con referencia correcta al botón
+        def create_view_function(img_name, button_ref):
+            def view_image_func():
+                image_path = get_image_path(img_name)
+                if image_path:
+                    # Callback para actualizar el botón cuando se elimine la imagen
+                    def update_button_after_delete():
+                        button_ref.configure(
+                            fg_color="#6c757d",
+                            state="disabled"
+                        )
+                    view_image(image_path, update_button_after_delete)
+                else:
+                    messagebox.showwarning("Imagen no encontrada", f"No se encontró la imagen: {img_name}\n\nPrimero carga la imagen usando el botón 'Cargar Imagen'.")
+            return view_image_func
+        
+        # Función para cargar imagen con referencia correcta al botón
+        def create_load_function(img_name, button_ref):
             def load_image_func():
                 result = load_image(img_name)
                 if result:
-                    # Actualizar la ventana para mostrar el botón "Ver Imagen" habilitado
-                    refresh_window()
+                    # Actualizar solo el botón "Ver Imagen" sin refrescar toda la ventana
+                    button_ref.configure(
+                        fg_color="#17a2b8",
+                        state="normal"
+                    )
             return load_image_func
+        
+        # Asignar comandos a los botones con las referencias correctas
+        view_button.configure(command=create_view_function(image_name, view_button))
         
         load_button = ctk.CTkButton(
             row_frame,
             text="Cargar Imagen",
-            command=create_load_function(image_name),
+            command=create_load_function(image_name, view_button),
             fg_color="#007ACC",
             text_color="white",
             font=("Arial", 11),
