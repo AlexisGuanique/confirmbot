@@ -15,25 +15,31 @@ def get_resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-def find_image(image_path, confidence=0.7):
+def find_image(image_path, confidence=0.7, silent=False):
     """Busca una imagen en la pantalla y devuelve su ubicación si la encuentra."""
     image_path = get_resource_path(image_path)
     try:
         if not os.path.exists(image_path):
-            print(f"⚠️ La imagen no existe: {image_path}")
+            #if not silent:
+            #    print(f"⚠️ La imagen no existe: {image_path}")
             return None
 
         location = pyautogui.locateCenterOnScreen(
             image_path, confidence=confidence, grayscale=True)
         
         if location:
-            print(f"✅ Imagen detectada: {image_path} en {location}")
+            #if not silent:
+            #    print(f"✅ Imagen detectada: {image_path} en {location}")
             return location
         else:
-            print(f"❌ Imagen no encontrada: {image_path}")
+            #if not silent:
+            #    print(f"❌ Imagen no encontrada: {image_path}")
+            pass
 
     except Exception as e:
-        print(f"⚠️ Error detectando {image_path}: {e}")
+        #if not silent:
+        #    print(f"⚠️ Error detectando {image_path}: {e}")
+        pass
     return None
 
 def find_creator_image(image_name, confidence=0.7):
@@ -72,17 +78,17 @@ def click_coordinates(coordinates, double_click=False, button='left'):
         pyautogui.FAILSAFE = False
         
         # Mover mouse a la posición
-        print(f"🖱️ Moviendo mouse a coordenadas: {x}, {y}")
+        #print(f"🖱️ Moviendo mouse a coordenadas: {x}, {y}")
         pyautogui.moveTo(x, y, duration=0.5)  # Movimiento más lento
         time.sleep(0.3)  # Esperar más tiempo a que llegue
         
         # Verificar que el mouse llegó a la posición correcta
         current_pos = pyautogui.position()
-        print(f"📍 Posición actual del mouse: {current_pos}")
+        #print(f"📍 Posición actual del mouse: {current_pos}")
         
         # Verificar si está cerca de la posición objetivo (tolerancia de 5 píxeles)
         if abs(current_pos.x - x) <= 5 and abs(current_pos.y - y) <= 5:
-            print("✅ Mouse en posición correcta, haciendo click")
+            #print("✅ Mouse en posición correcta, haciendo click")
             if double_click:
                 # Doble click
                 pyautogui.click(button=button)
@@ -92,7 +98,7 @@ def click_coordinates(coordinates, double_click=False, button='left'):
                 # Click simple
                 pyautogui.click(button=button)
         else:
-            print(f"⚠️ Mouse no llegó a la posición correcta. Objetivo: ({x}, {y}), Actual: ({current_pos.x}, {current_pos.y})")
+            #print(f"⚠️ Mouse no llegó a la posición correcta. Objetivo: ({x}, {y}), Actual: ({current_pos.x}, {current_pos.y})")
             return False
         
         return True
@@ -123,7 +129,7 @@ def type_text(text):
         # Restaurar el contenido original del portapapeles
         pyperclip.copy(original_clipboard)
         
-        print(f"✅ Texto pegado: {text}")
+        #print(f"✅ Texto pegado: {text}")
         return True
     except Exception as e:
         print(f"⚠️ Error pegando texto '{text}': {e}")
@@ -135,7 +141,7 @@ def press_key(key):
     """
     try:
         pyautogui.press(key)
-        print(f"✅ Tecla presionada: {key}")
+        #print(f"✅ Tecla presionada: {key}")
         return True
     except Exception as e:
         print(f"⚠️ Error presionando tecla '{key}': {e}")
@@ -149,56 +155,40 @@ def generate_random_password(length=12):
     password = ''.join(random.choice(characters) for _ in range(length))
     return password
 
-def wait_for_image(image_path, max_attempts=10, delay_between_attempts=1, confidence=0.7):
-    """
-    Observa la pantalla buscando una imagen hasta que aparezca o se agoten los intentos.
-    
-    Args:
-        image_path (str): Ruta de la imagen a buscar
-        max_attempts (int): Número máximo de intentos (default: 10)
-        delay_between_attempts (float): Segundos de espera entre intentos (default: 1)
-        confidence (float): Nivel de confianza para la detección (default: 0.7)
-    
-    Returns:
-        tuple: (x, y) coordenadas si encuentra la imagen, None si no la encuentra
-    """
-    print(f"🔍 Iniciando observador para imagen: {os.path.basename(image_path)}")
-    print(f"📊 Configuración: {max_attempts} intentos, {delay_between_attempts}s entre intentos")
+def wait_for_image(image_path, max_attempts=10, delay_between_attempts=1, confidence=0.7, silent=False):
+
+    if not silent:
+        print(f"🔍 Iniciando observador para imagen: {os.path.basename(image_path)}")
+        print(f"📊 Configuración: {max_attempts} intentos, {delay_between_attempts}s entre intentos")
     
     for attempt in range(1, max_attempts + 1):
-        print(f"🔎 Intento {attempt}/{max_attempts}...")
+        #if not silent:
+        #    print(f"🔎 Intento {attempt}/{max_attempts}...")
         
-        location = find_image(image_path, confidence)
+        location = find_image(image_path, confidence, silent)
         if location:
-            print(f"✅ ¡Imagen encontrada en el intento {attempt}!")
+            if not silent:
+                print(f"✅ ¡Imagen encontrada en el intento {attempt}!")
             return location
         
         if attempt < max_attempts:
-            print(f"⏳ Esperando {delay_between_attempts}s antes del siguiente intento...")
+            #if not silent:
+            #    print(f"⏳ Esperando {delay_between_attempts}s antes del siguiente intento...")
             time.sleep(delay_between_attempts)
     
-    print(f"❌ No se encontró la imagen después de {max_attempts} intentos")
+    if not silent:
+        print(f"❌ No se encontró la imagen después de {max_attempts} intentos")
     return None
 
-def wait_for_creator_image(image_name, max_attempts=10, delay_between_attempts=1, confidence=0.7):
-    """
-    Observa la pantalla buscando una imagen del creator hasta que aparezca o se agoten los intentos.
-    
-    Args:
-        image_name (str): Nombre de la imagen del creator
-        max_attempts (int): Número máximo de intentos (default: 10)
-        delay_between_attempts (float): Segundos de espera entre intentos (default: 1)
-        confidence (float): Nivel de confianza para la detección (default: 0.7)
-    
-    Returns:
-        tuple: (x, y) coordenadas si encuentra la imagen, None si no la encuentra
-    """
+def wait_for_creator_image(image_name, max_attempts=10, delay_between_attempts=1, confidence=0.7, silent=False):
+
     image_path = get_image_path(image_name)
     if not image_path:
-        print(f"❌ No se encontró la imagen del creator: {image_name}")
+        if not silent:
+            print(f"❌ No se encontró la imagen del creator: {image_name}")
         return None
     
-    return wait_for_image(image_path, max_attempts, delay_between_attempts, confidence)
+    return wait_for_image(image_path, max_attempts, delay_between_attempts, confidence, silent)
 
 def generate_random_name():
     """

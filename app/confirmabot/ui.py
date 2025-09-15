@@ -100,7 +100,7 @@ def setup_ui(logged_in_user, on_login_success):
 
 
     # 👉 Botón para ejecutar creator
-    from app.creator.creator import execute_creator, handle_creacion_exitosa
+    from app.creator.creator import execute_creator, observador_unificado
 
     creator_button = ctk.CTkButton(
         options_frame,

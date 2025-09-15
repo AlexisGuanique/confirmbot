@@ -1,143 +1,175 @@
-def handle_imagenes_verificacion(coordinates):
-    """
-    Maneja la lógica de verificación de número y captcha:
-    - Si encuentra número: cierra número → clic continuar → evalúa número nuevamente
-    - Si encuentra captcha: cierra captcha → clic continuar → espera resolución → evalúa captcha nuevamente
-    """
-    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
-    import time
+def observador_unificado(coordinates, email, password):
     
-    # Evaluar número primero
-    print("🔍 Evaluando número...")
-    numero_found = wait_for_creator_image("imagen_numero", max_attempts=15, delay_between_attempts=3)
-    
-    if numero_found:
-        print("✅ Número encontrado")
-        
-        # Cerrar número
-        close_number_coords = coordinates.get("close_number_click")
-        if close_number_coords:
-            click_coordinates(close_number_coords)
-            time.sleep(1)
-            
-            # Clic en continuar
-            continue2_coords = coordinates.get("continue_button2_click")
-            if continue2_coords:
-                click_coordinates(continue2_coords)
-                time.sleep(3)  # Esperar más tiempo después del clic
-                
-                # Evaluar número nuevamente
-                print("🔍 Evaluando número nuevamente...")
-                numero_found_again = wait_for_creator_image("imagen_numero", max_attempts=5, delay_between_attempts=2)
-                
-                if numero_found_again:
-                    print("✅ Número encontrado por segunda vez - retornando True")
-                    return True
-                else:
-                    print("ℹ️ Número no encontrado en segunda evaluación, pasando a evaluar captcha")
-                    # No retornar False aquí, continuar con la evaluación de captcha
-    
-    time.sleep(8)
-    # Si no encontró número, evaluar captcha
-    print("🔍 Evaluando captcha...")
-    captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=15, delay_between_attempts=3)
-    
-    if captcha_found:
-        print("✅ Captcha encontrado")
-        
-        # Cerrar captcha
-        close_captcha_coords = coordinates.get("close_captcha_click")
-        if close_captcha_coords:
-            click_coordinates(close_captcha_coords)
-            time.sleep(1)
-            
-            # Clic en continuar
-            continue2_coords = coordinates.get("continue_button2_click")
-            if continue2_coords:
-                click_coordinates(continue2_coords)
-                time.sleep(2)
-                
-                # Esperar tiempo para resolver captcha
-                print("⏳ Esperando resolución del captcha...")
-                time.sleep(10)  # Esperar 10 segundos para resolver captcha
-                
-                # Evaluar captcha nuevamente
-                print("🔍 Evaluando captcha nuevamente...")
-                captcha_found_again = wait_for_creator_image("imagen_captcha_rojo", max_attempts=3, delay_between_attempts=1)
-                
-                if captcha_found_again:
-                    print("✅ Captcha encontrado por segunda vez - retornando True")
-                    return True
-                else:
-                    print("ℹ️ Captcha resuelto exitosamente - retornando False")
-                    return False
-    
-    
-    print("ℹ️ No se encontró ni número ni captcha")
-    return False
-
-def handle_creacion_exitosa(email="test@test.com", password="test123456"):
-    """
-    Maneja la lógica cuando se crea la cuenta exitosamente
-    """
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, get_clipboard_content
-    from app.database.database import get_creator_setting, get_creator_coordinates
+    from app.database.database import get_creator_setting
     import time
     import os
+    import json
     from datetime import datetime
-
-
-    coordinates = get_creator_coordinates()
-    if not coordinates:
-        print("❌ No se encontraron coordenadas configuradas")
-        return
     
-    print("🔍 Buscando imagen de creación exitosa...")
-    imagen_exitosa_found = wait_for_creator_image("imagen_de_creacion_de_cuenta_con_exito_logo_linkedin", max_attempts=5, delay_between_attempts=2)
-    
-    if imagen_exitosa_found:
-        print("✅ Cuenta creada exitosamente")
-        
-        # Clic en cookie_editor_icon_click
-        cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
-        if cookie_editor_coords:
-            click_coordinates(cookie_editor_coords)
-            time.sleep(1)
+    def format_cookie_to_single_line(cookie_content):
+        """
+        Convierte el contenido de cookies del portapapeles a formato de una sola línea
+        """
+        try:
+            # Buscar el inicio del JSON (primer '[')
+            json_start = cookie_content.find('[')
+            if json_start == -1:
+                print("⚠️ No se encontró un array JSON válido en las cookies")
+                return cookie_content
             
-            # Clic en save_cookie_clipboard_click
-            save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
-            if save_cookie_coords:
-                click_coordinates(save_cookie_coords)
+            # Extraer solo la parte JSON
+            json_content = cookie_content[json_start:]
+            
+            # Parsear el JSON
+            data = json.loads(json_content)
+            
+            # Convertir a JSON compacto (una sola línea)
+            json_single_line = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+            
+            # Si hay contenido antes del JSON, mantenerlo
+            if json_start > 0:
+                prefix = cookie_content[:json_start]
+                return prefix + json_single_line
+            else:
+                return json_single_line
+                
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Error al parsear cookies JSON: {e}")
+            return cookie_content
+        except Exception as e:
+            print(f"⚠️ Error inesperado al formatear cookies: {e}")
+            return cookie_content
+    
+    print("👁️ Observando número, captcha rojo o éxito...")
+    
+    start_time = time.time()
+    timeout_seconds = 120  # 2 minutos
+    
+    # Contadores para evitar bucles infinitos
+    numero_count = 0
+    captcha_count = 0
+    
+    while True:
+        # Verificar si ha pasado el timeout
+        elapsed_time = time.time() - start_time
+        if elapsed_time > timeout_seconds:
+            print("⏰ Timeout de 120 segundos - cerrando ventana")
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False
+        
+        # Verificar número
+        numero_found = wait_for_creator_image("imagen_numero", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if numero_found:
+            numero_count += 1
+            print(f"✅ Número encontrado (vez #{numero_count}) - cerrando")
+            
+            if numero_count >= 2:
+                print("🔄 Segundo número detectado - cerrando ventana directamente")
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
+                return False
+            
+            close_number_coords = coordinates.get("close_number_click")
+            if close_number_coords:
+                click_coordinates(close_number_coords)
                 time.sleep(1)
                 
-                # Obtener cookie del portapapeles
-                cookie = get_clipboard_content()
+                continue2_coords = coordinates.get("continue_button2_click")
+                if continue2_coords:
+                    click_coordinates(continue2_coords)
+                    time.sleep(2)
+                    continue
+        
+        # Verificar captcha rojo
+        captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if captcha_found:
+            captcha_count += 1
+            print(f"✅ Captcha encontrado (vez #{captcha_count}) - cerrando")
+            
+            if captcha_count >= 2:
+                print("🔄 Segundo captcha detectado - cerrando ventana directamente")
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
+                return False
+            
+            close_captcha_coords = coordinates.get("close_captcha_click")
+            if close_captcha_coords:
+                click_coordinates(close_captcha_coords)
+                time.sleep(1)
                 
-                # Obtener user agent desde la base de datos
-                creator_settings = get_creator_setting()
-                if creator_settings and creator_settings.get('user_agent'):
-                    user_agent = creator_settings.get('user_agent')
-                else:
-                    print("❌ No se encontró user agent en la base de datos")
-                    return False
+                continue2_coords = coordinates.get("continue_button2_click")
+                if continue2_coords:
+                    click_coordinates(continue2_coords)
+                    time.sleep(2)
+                    continue
+        
+        # Verificar imagen de éxito
+        exito_found = wait_for_creator_image("imagen_de_creacion_de_cuenta_con_exito_logo_linkedin", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if exito_found:
+            print("✅ Imagen de éxito encontrada - guardando información")
+            
+            # Clic en cookie_editor_icon_click
+            cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
+            if cookie_editor_coords:
+                click_coordinates(cookie_editor_coords)
+                time.sleep(1)
                 
-                # Crear contenido del archivo con formato correcto (separado por tabs)
-                contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
-                
-                # Guardar en archivo .txt
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"cuenta_creada_{timestamp}.txt"
-                filepath = os.path.join("linkedin_accounts", filename)
-                
-                try:
-                    with open(filepath, 'w', encoding='utf-8') as f:
-                        f.write(contenido)
-                    print(f"✅ Información guardada en {filepath}")
-                except Exception as e:
-                    print(f"❌ Error guardando archivo: {e}")
-                
-                return True
-    return False
+                # Clic en save_cookie_clipboard_click
+                save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
+                if save_cookie_coords:
+                    click_coordinates(save_cookie_coords)
+                    time.sleep(1)
+                    
+                    # Obtener cookie del portapapeles
+                    cookie_raw = get_clipboard_content()
+                    
+                    # Formatear cookie a una sola línea
+                    cookie = format_cookie_to_single_line(cookie_raw)
+                    print(f"📋 Cookie formateada: {len(cookie)} caracteres")
+                    
+                    # Obtener user agent desde la base de datos
+                    creator_settings = get_creator_setting()
+                    if creator_settings and creator_settings.get('user_agent'):
+                        user_agent = creator_settings.get('user_agent')
+                        
+                        # Crear contenido del archivo con formato correcto (separado por tabs)
+                        contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
+                        
+                        # Crear carpeta linkedin_accounts si no existe
+                        folder_path = "linkedin_accounts"
+                        if not os.path.exists(folder_path):
+                            os.makedirs(folder_path)
+                        
+                        # Guardar en archivo .txt
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"cuenta_creada_{timestamp}.txt"
+                        filepath = os.path.join(folder_path, filename)
+                        
+                        try:
+                            with open(filepath, 'w', encoding='utf-8') as f:
+                                f.write(contenido)
+                            print(f"✅ Información guardada en {filepath}")
+                            return True
+                        except Exception as e:
+                            print(f"❌ Error guardando archivo: {e}")
+                            return False
+                    else:
+                        print("❌ No se encontró user agent en la base de datos")
+                        return False
+        
+        # Pequeña pausa antes del siguiente ciclo
+        time.sleep(0.5)
 
 
 
@@ -226,7 +258,7 @@ def execute_creator():
             time.sleep(0.5)
             
             # Escribir email
-            type_text("askdjahdkja345435shdsad@mmmmmadasd.com")
+            type_text("zzzsdfsdfae345445d@mmasdfsdfdasd.com")
             time.sleep(0.5)
             
             # Ir al campo de contraseña
@@ -242,7 +274,7 @@ def execute_creator():
             continue_coords = coordinates.get("continue_button_click")
             if continue_coords:
                 click_coordinates(continue_coords)
-                time.sleep(1)
+                time.sleep(2)
                 
                 # Click en name_input_click
                 name_coords = coordinates.get("name_input_click")
@@ -270,18 +302,8 @@ def execute_creator():
                         click_coordinates(continue2_coords)
                         time.sleep(2)
                         
-                        # Manejar imágenes de verificación (unificadas)
-                        imagen_encontrada_dos_veces = handle_imagenes_verificacion(coordinates)
-                        
-                        # Si se encontró la imagen por segunda vez, hacer clic en close_window
-                        if imagen_encontrada_dos_veces:
-                            close_window_coords = coordinates.get("close_window")
-                            if close_window_coords:
-                                click_coordinates(close_window_coords)
-                                time.sleep(1)
-                        
-                        # Manejar creación exitosa
-                        handle_creacion_exitosa("askdjahdkjashdsad@asdadasd.com", random_password)
+                        # Iniciar observador unificado
+                        observador_unificado(coordinates, "zzzdjaewrwerdk435shdsad@mmadasd.com", random_password)
                     
 
                     
