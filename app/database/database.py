@@ -121,7 +121,38 @@ def create_database():
                 close_captcha_click TEXT NOT NULL,
                 close_number_click TEXT NOT NULL,
                 cookie_editor_icon_click TEXT NOT NULL,
-                save_cookie_clipboard_click TEXT NOT NULL
+                save_cookie_clipboard_click TEXT NOT NULL,
+                close_window TEXT NOT NULL
+            )
+            '''
+        )
+        
+        # Migrar tabla existente si no tiene la columna close_window
+        try:
+            cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN close_window TEXT NOT NULL DEFAULT ''")
+            print("✅ Columna close_window agregada a creator_coordinates")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+
+        # 🔹 Tabla para configuración del creator
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS creator_setting (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                user_agent TEXT NOT NULL,
+                accounts_to_create INTEGER NOT NULL DEFAULT 1
+            )
+            '''
+        )
+
+        # 🔹 Tabla para emails del creator
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS creator_email (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             '''
         )
@@ -498,7 +529,7 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
         if existing_row:
             values = list(existing_row[1:])  # Excluir el id
         else:
-            values = [''] * 10  # 10 campos vacíos
+            values = [''] * 11  # 11 campos vacíos
 
         # Mapeo de nombres de campos a índices
         field_mapping = {
@@ -511,7 +542,8 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
             'close_captcha_click': 6,
             'close_number_click': 7,
             'cookie_editor_icon_click': 8,
-            'save_cookie_clipboard_click': 9
+            'save_cookie_clipboard_click': 9,
+            'close_window': 10
         }
 
         # Actualizar valores desde coordinates_dict si se proporciona
@@ -531,8 +563,8 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
                 id, brave_click, linkedin_fav_click, email_input_click,
                 continue_button_click, name_input_click, continue_button2_click,
                 close_captcha_click, close_number_click, cookie_editor_icon_click,
-                save_cookie_clipboard_click
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                save_cookie_clipboard_click, close_window
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             tuple(values)
         )
@@ -570,7 +602,8 @@ def get_creator_coordinates(*field_names):
             'close_captcha_click': 7,
             'close_number_click': 8,
             'cookie_editor_icon_click': 9,
-            'save_cookie_clipboard_click': 10
+            'save_cookie_clipboard_click': 10,
+            'close_window': 11
         }
 
         # Si no se especifican campos, devolver todos
@@ -585,7 +618,8 @@ def get_creator_coordinates(*field_names):
                 'close_captcha_click': row[7],
                 'close_number_click': row[8],
                 'cookie_editor_icon_click': row[9],
-                'save_cookie_clipboard_click': row[10]
+                'save_cookie_clipboard_click': row[10],
+                'close_window': row[11]
             }
 
         # Devolver solo los campos solicitados
@@ -599,3 +633,280 @@ def get_creator_coordinates(*field_names):
     except Exception as e:
         print(f"❌ Error al obtener coordenadas del creator: {e}")
         return None
+
+
+#! FUNCIONES DE CREATOR_SETTING
+def save_creator_setting(user_agent, accounts_to_create=1):
+    """
+    Guarda o actualiza la configuración del creator
+    
+    Args:
+        user_agent (str): User agent a utilizar
+        accounts_to_create (int): Cantidad de cuentas a crear (default: 1)
+    
+    Returns:
+        bool: True si se guardó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Insertar o actualizar (UPSERT)
+        cursor.execute('''
+            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create)
+            VALUES (1, ?, ?)
+        ''', (user_agent, accounts_to_create))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al guardar configuración del creator: {e}")
+        return False
+
+
+def get_creator_setting():
+    """
+    Obtiene la configuración del creator
+    
+    Returns:
+        dict: Diccionario con user_agent y accounts_to_create, o None si no existe
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_agent, accounts_to_create FROM creator_setting WHERE id = 1")
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'user_agent': row[0],
+                'accounts_to_create': row[1]
+            }
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error al obtener configuración del creator: {e}")
+        return None
+
+
+#! FUNCIONES DE CREATOR_EMAIL
+def save_creator_email(email):
+    """
+    Guarda un email en la tabla creator_email
+    
+    Args:
+        email (str): Email a guardar (formato: holamundo@hola.com)
+    
+    Returns:
+        bool: True si se guardó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO creator_email (email)
+            VALUES (?)
+        ''', (email,))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Email guardado: {email}")
+        return True
+        
+    except sqlite3.IntegrityError:
+        print(f"⚠️ El email {email} ya existe en la base de datos")
+        return False
+    except Exception as e:
+        print(f"❌ Error al guardar email: {e}")
+        return False
+
+
+def get_all_creator_emails():
+    """
+    Obtiene todos los emails de la tabla creator_email
+    
+    Returns:
+        list: Lista de emails, o lista vacía si no hay emails
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT email FROM creator_email ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        emails = [row[0] for row in rows]
+        print(f"📧 Se encontraron {len(emails)} emails")
+        return emails
+        
+    except Exception as e:
+        print(f"❌ Error al obtener emails: {e}")
+        return []
+
+
+def get_creator_email_count():
+    """
+    Obtiene la cantidad de emails en la tabla creator_email
+    
+    Returns:
+        int: Cantidad de emails, 0 si no hay emails o error
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM creator_email")
+        count = cursor.fetchone()[0]
+        conn.close()
+        
+        print(f"📊 Total de emails: {count}")
+        return count
+        
+    except Exception as e:
+        print(f"❌ Error al contar emails: {e}")
+        return 0
+
+
+def delete_all_creator_emails():
+    """
+    Elimina todos los emails de la tabla creator_email y reinicia los IDs
+    
+    Returns:
+        bool: True si se eliminaron correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Contar emails antes de eliminar
+        cursor.execute("SELECT COUNT(*) FROM creator_email")
+        count_before = cursor.fetchone()[0]
+        
+        # Eliminar todos los emails
+        cursor.execute("DELETE FROM creator_email")
+        
+        # Reiniciar el contador de AUTOINCREMENT
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='creator_email'")
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Se eliminaron {count_before} emails y se reiniciaron los IDs")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al eliminar todos los emails: {e}")
+        return False
+
+def get_creator_email_by_id(id):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT email FROM creator_email WHERE id = ?", (id,))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0]
+    except Exception as e:
+        print(f"❌ Error al obtener email por ID: {e}")
+        return None
+
+
+def load_emails_from_file(file_path):
+    """
+    Carga emails desde un archivo .txt y los guarda en la tabla creator_email
+    
+    Args:
+        file_path (str): Ruta del archivo .txt con emails
+    
+    Returns:
+        dict: Resultado con estadísticas de la carga
+    """
+    try:
+        # Leer el archivo
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f if line.strip()]
+        
+        if not lines:
+            return {
+                'success': False,
+                'message': 'El archivo está vacío',
+                'total_lines': 0,
+                'valid_emails': 0,
+                'saved_emails': 0,
+                'duplicate_emails': 0,
+                'invalid_emails': 0
+            }
+        
+        # Validar formato de email (debe contener @ y .)
+        valid_emails = []
+        invalid_emails = []
+        
+        for line in lines:
+            if '@' in line and '.' in line and len(line) > 5:
+                valid_emails.append(line)
+            else:
+                invalid_emails.append(line)
+        
+        if not valid_emails:
+            return {
+                'success': False,
+                'message': 'No se encontraron emails válidos en el archivo',
+                'total_lines': len(lines),
+                'valid_emails': 0,
+                'saved_emails': 0,
+                'duplicate_emails': 0,
+                'invalid_emails': len(invalid_emails)
+            }
+        
+        # Guardar emails válidos en la base de datos
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        saved_count = 0
+        duplicate_count = 0
+        
+        for email in valid_emails:
+            try:
+                cursor.execute("INSERT INTO creator_email (email) VALUES (?)", (email,))
+                saved_count += 1
+            except sqlite3.IntegrityError:
+                duplicate_count += 1
+                print(f"⚠️ Email duplicado: {email}")
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            'success': True,
+            'message': f'Carga completada exitosamente',
+            'total_lines': len(lines),
+            'valid_emails': len(valid_emails),
+            'saved_emails': saved_count,
+            'duplicate_emails': duplicate_count,
+            'invalid_emails': len(invalid_emails)
+        }
+        
+    except FileNotFoundError:
+        return {
+            'success': False,
+            'message': 'El archivo no existe',
+            'total_lines': 0,
+            'valid_emails': 0,
+            'saved_emails': 0,
+            'duplicate_emails': 0,
+            'invalid_emails': 0
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Error al procesar el archivo: {e}',
+            'total_lines': 0,
+            'valid_emails': 0,
+            'saved_emails': 0,
+            'duplicate_emails': 0,
+            'invalid_emails': 0
+        }

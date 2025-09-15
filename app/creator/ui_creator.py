@@ -5,9 +5,10 @@ def create_new_window(parent_root):
     import customtkinter as ctk
     from tkinter import messagebox
     import threading
-    from app.database.database import get_creator_coordinates, save_creator_coordinates
+    from app.database.database import get_creator_coordinates, save_creator_coordinates, save_creator_setting, get_creator_setting, load_emails_from_file, get_creator_email_count
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
     from app.creator.image_config import view_image, load_image, get_image_path
+    from tkinter import filedialog
     
     # Crear la nueva ventana
     new_window = ctk.CTkToplevel(parent_root)
@@ -32,6 +33,227 @@ def create_new_window(parent_root):
     )
     title_label.pack(pady=(20, 30))
     
+    # ================= SECCIÓN USER AGENT =================
+    
+    # Título de la sección User Agent
+    user_agent_title = ctk.CTkLabel(
+        main_scroll_frame,
+        text="🌐 Configuración de User Agent",
+        font=("Arial", 16, "bold"),
+        text_color="black"
+    )
+    user_agent_title.pack(pady=(0, 15))
+    
+    # Frame para el User Agent
+    user_agent_frame = ctk.CTkFrame(main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    user_agent_frame.pack(fill="x", padx=20, pady=(0, 20))
+    
+    # Obtener configuración actual
+    current_settings = get_creator_setting()
+    current_user_agent = current_settings.get('user_agent', '') if current_settings else ''
+    current_accounts_to_create = current_settings.get('accounts_to_create', 1) if current_settings else 1
+    
+    # Frame para los inputs (User Agent y Cantidad de cuentas)
+    inputs_frame = ctk.CTkFrame(user_agent_frame, fg_color="transparent")
+    inputs_frame.pack(fill="x", padx=20, pady=(15, 10))
+    
+    # === USER AGENT ===
+    # Label para el User Agent
+    user_agent_label = ctk.CTkLabel(
+        inputs_frame,
+        text="User Agent:",
+        font=("Arial", 12, "bold"),
+        text_color="black"
+    )
+    user_agent_label.pack(anchor="w")
+    
+    # Input para el User Agent
+    user_agent_entry = ctk.CTkEntry(
+        inputs_frame,
+        placeholder_text="Ingresa tu User Agent aquí...",
+        font=("Arial", 11),
+        height=35
+    )
+    user_agent_entry.pack(fill="x", pady=(5, 15))
+    
+    # Insertar el valor actual si existe
+    if current_user_agent:
+        user_agent_entry.insert(0, current_user_agent)
+    
+    # === CANTIDAD DE CUENTAS ===
+    # Label para la cantidad de cuentas
+    accounts_label = ctk.CTkLabel(
+        inputs_frame,
+        text="Cantidad de cuentas a crear:",
+        font=("Arial", 12, "bold"),
+        text_color="black"
+    )
+    accounts_label.pack(anchor="w")
+    
+    # Input para la cantidad de cuentas
+    accounts_entry = ctk.CTkEntry(
+        inputs_frame,
+        placeholder_text="Ingresa la cantidad de cuentas...",
+        font=("Arial", 11),
+        height=35
+    )
+    accounts_entry.pack(fill="x", pady=(5, 15))
+    
+    # Insertar el valor actual si existe
+    accounts_entry.insert(0, str(current_accounts_to_create))
+    
+    # Función para guardar configuración completa
+    def save_creator_settings():
+        user_agent = user_agent_entry.get().strip()
+        accounts_text = accounts_entry.get().strip()
+        
+        if not user_agent:
+            messagebox.showwarning("Advertencia", "Por favor ingresa un User Agent válido.")
+            return
+        
+        if not accounts_text:
+            messagebox.showwarning("Advertencia", "Por favor ingresa la cantidad de cuentas a crear.")
+            return
+        
+        try:
+            accounts_to_create = int(accounts_text)
+            if accounts_to_create <= 0:
+                messagebox.showwarning("Advertencia", "La cantidad de cuentas debe ser mayor a 0.")
+                return
+        except ValueError:
+            messagebox.showwarning("Advertencia", "Por favor ingresa un número válido para la cantidad de cuentas.")
+            return
+        
+        if save_creator_setting(user_agent, accounts_to_create):
+            messagebox.showinfo("Éxito", f"✅ Configuración guardada correctamente.\n\nUser Agent: {user_agent}\nCuentas a crear: {accounts_to_create}")
+        else:
+            messagebox.showerror("Error", "❌ No se pudo guardar la configuración.")
+    
+    # Botón para guardar configuración
+    save_settings_button = ctk.CTkButton(
+        user_agent_frame,
+        text="💾 Guardar Configuración",
+        command=save_creator_settings,
+        fg_color="#28a745",
+        text_color="white",
+        font=("Arial", 12, "bold"),
+        height=35,
+        width=250
+    )
+    save_settings_button.pack(pady=(0, 15), padx=20)
+    
+    # ================= SECCIÓN GESTIÓN DE EMAILS =================
+    
+    # Título de la sección de emails
+    emails_title = ctk.CTkLabel(
+        main_scroll_frame,
+        text="📧 Gestión de Emails del Creator",
+        font=("Arial", 16, "bold"),
+        text_color="black"
+    )
+    emails_title.pack(pady=(0, 15))
+    
+    # Frame para la gestión de emails
+    emails_frame = ctk.CTkFrame(main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    emails_frame.pack(fill="x", padx=20, pady=(0, 20))
+    
+    # Obtener cantidad actual de emails
+    current_email_count = get_creator_email_count()
+    
+    # Label con información de emails
+    emails_info_label = ctk.CTkLabel(
+        emails_frame,
+        text=f"📊 Emails actuales en la base de datos: {current_email_count}",
+        font=("Arial", 12, "bold"),
+        text_color="black"
+    )
+    emails_info_label.pack(pady=(15, 10), padx=20, anchor="w")
+    
+    # Función para cargar emails desde archivo
+    def load_emails_from_file_ui():
+        file_path = filedialog.askopenfilename(
+            title="Seleccionar archivo de emails",
+            filetypes=[
+                ("Archivos de texto", "*.txt"),
+                ("Todos los archivos", "*.*")
+            ]
+        )
+        
+        if not file_path:
+            return
+        
+        # Mostrar mensaje de procesamiento
+        messagebox.showinfo("Procesando", "📧 Procesando archivo de emails...")
+        
+        # Cargar emails usando la función de la base de datos
+        result = load_emails_from_file(file_path)
+        
+        # Mostrar resultado
+        if result['success']:
+            message = f"""✅ Carga completada exitosamente!
+
+            📊 Estadísticas:
+            • Total de líneas: {result['total_lines']}
+            • Emails válidos: {result['valid_emails']}
+            • Emails guardados: {result['saved_emails']}
+            • Emails duplicados: {result['duplicate_emails']}
+            • Emails inválidos: {result['invalid_emails']}
+
+            📧 Total de emails en la base de datos: {get_creator_email_count()}"""
+            messagebox.showinfo("Éxito", message)
+            
+            # Actualizar el contador
+            emails_info_label.configure(text=f"📊 Emails actuales en la base de datos: {get_creator_email_count()}")
+        else:
+            messagebox.showerror("Error", f"❌ {result['message']}")
+    
+    # Función para eliminar todos los emails
+    def delete_all_emails():
+        from app.database.database import delete_all_creator_emails
+        
+        result = messagebox.askyesno(
+            "Confirmar Eliminación",
+            f"¿Estás seguro de que quieres eliminar TODOS los emails?\n\n📧 Emails actuales: {current_email_count}\n\nEsta acción no se puede deshacer."
+        )
+        
+        if result:
+            if delete_all_creator_emails():
+                messagebox.showinfo("Éxito", "✅ Todos los emails han sido eliminados.")
+                # Actualizar el contador
+                emails_info_label.configure(text=f"📊 Emails actuales en la base de datos: {get_creator_email_count()}")
+            else:
+                messagebox.showerror("Error", "❌ No se pudieron eliminar los emails.")
+    
+    # Frame para los botones
+    buttons_frame = ctk.CTkFrame(emails_frame, fg_color="transparent")
+    buttons_frame.pack(fill="x", padx=20, pady=(0, 15))
+    
+    # Botón para cargar emails
+    load_emails_button = ctk.CTkButton(
+        buttons_frame,
+        text="📁 Cargar Emails desde Archivo",
+        command=load_emails_from_file_ui,
+        fg_color="#007ACC",
+        text_color="white",
+        font=("Arial", 12, "bold"),
+        height=35,
+        width=250
+    )
+    load_emails_button.pack(side="left", padx=(0, 10))
+    
+    # Botón para eliminar todos los emails
+    delete_emails_button = ctk.CTkButton(
+        buttons_frame,
+        text="🗑️ Eliminar Todos los Emails",
+        command=delete_all_emails,
+        fg_color="#dc3545",
+        text_color="white",
+        font=("Arial", 12, "bold"),
+        height=35,
+        width=250
+    )
+    delete_emails_button.pack(side="left", padx=(10, 0))
+    
     # Crear frame principal para la tabla de coordenadas
     main_frame = ctk.CTkFrame(main_scroll_frame, fg_color="transparent")
     main_frame.pack(fill="x", padx=20, pady=10)
@@ -47,7 +269,8 @@ def create_new_window(parent_root):
         "Click cerrar captcha",
         "Click cerrar número",
         "Click icono cookie editor",
-        "Click guardar cookie portapapeles"
+        "Click guardar cookie portapapeles",
+        "Click cerrar ventana"
     ]
     
     # Mapeo de nombres a campos de la base de datos
@@ -61,7 +284,8 @@ def create_new_window(parent_root):
         "Click cerrar captcha": "close_captcha_click",
         "Click cerrar número": "close_number_click",
         "Click icono cookie editor": "cookie_editor_icon_click",
-        "Click guardar cookie portapapeles": "save_cookie_clipboard_click"
+        "Click guardar cookie portapapeles": "save_cookie_clipboard_click",
+        "Click cerrar ventana": "close_window"
     }
     
     # Obtener coordenadas guardadas
