@@ -544,6 +544,71 @@ def _inicializar_archivo_salida(total_emails):
         return None
 
 
+def _verificar_hora_programada():
+    """
+    Verifica si hay una hora programada y espera hasta esa hora si es necesario.
+    
+    Returns:
+        bool: True si debe continuar con el proceso, False si debe detenerse
+    """
+    from app.database.database import get_creator_setting
+    import time
+    import datetime
+    import pytz
+    import re
+    
+    settings = get_creator_setting()
+    if not settings or not settings.get('scheduled_time') or not settings.get('timezone'):
+        return True  # No hay hora programada, continuar inmediatamente
+    
+    scheduled_time = settings.get('scheduled_time')
+    timezone_str = settings.get('timezone')
+    
+    try:
+        # Extraer el offset GMT del string del país
+        offset_match = re.search(r'GMT([+-]\d{1,2}(?::\d{2})?)', timezone_str)
+        if not offset_match:
+            return True  # No se pudo parsear, continuar inmediatamente
+        
+        offset_str = offset_match.group(1)
+        
+        # Manejar formato GMT+5:30 (India)
+        if ':' in offset_str:
+            hours, minutes = offset_str.split(':')
+            offset_hours = int(hours) + (int(minutes) / 60)
+        else:
+            offset_hours = int(offset_str)
+        
+        # Crear zona horaria personalizada
+        custom_tz = pytz.FixedOffset(offset_hours * 60)
+        
+        # Obtener hora actual y objetivo
+        now = datetime.datetime.now(custom_tz)
+        target_hour, target_minute = map(int, scheduled_time.split(':'))
+        target_datetime = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        
+        # Si la hora ya pasó hoy, programar para mañana
+        if target_datetime <= now:
+            target_datetime += datetime.timedelta(days=1)
+        
+        # Calcular tiempo de espera
+        wait_seconds = (target_datetime - now).total_seconds()
+        
+        if wait_seconds > 0:
+            wait_hours = wait_seconds / 3600
+            print(f"⏳ Esperando {wait_hours:.1f}h para iniciar...")
+            
+            # Esperar hasta la hora programada
+            time.sleep(wait_seconds)
+            print("🚀 ¡Iniciando proceso!")
+        
+        return True
+        
+    except Exception as e:
+        print(f"⚠️ Error en hora programada: {e}")
+        return True  # En caso de error, continuar inmediatamente
+
+
 def execute_creator():
     """
     Función principal del creator que ejecuta todas las acciones
@@ -555,48 +620,50 @@ def execute_creator():
     global _password_usado
     _password_usado = ""
     
+    # Verificar hora programada
+    if not _verificar_hora_programada():
+        return
 
-    # Paso 2: Obtener emails de la base de datos
+    # Obtener emails de la base de datos
     email_ids = get_all_creator_email_ids()
     if not email_ids:
         print("❌ No se encontraron emails en la base de datos")
         return
     
-    print(f"🔄 Iniciando proceso con {len(email_ids)} emails")
+    print(f"🔄 Procesando {len(email_ids)} emails")
     
-    # Paso 3: Obtener coordenadas
+    # Obtener coordenadas
     coordinates = get_creator_coordinates()
     if not coordinates:
         print("❌ No se encontraron coordenadas configuradas")
         return
     
-    # Paso 4: Inicializar archivo de salida
+    # Inicializar archivo de salida
     filepath = _inicializar_archivo_salida(len(email_ids))
     if not filepath:
         return
     
-    # Paso 5: BUCLE PRINCIPAL - Procesar cada email
+    # BUCLE PRINCIPAL - Procesar cada email
     emails_exitosos = 0
     
     for i, email_id in enumerate(email_ids, 1):
-
-        # Paso 1: Ejecutar modo avión
+        # Ejecutar modo avión
         _ejecutar_modo_avion()
-        print(f"📧 Procesando email {i}/{len(email_ids)}")
+        print(f"📧 Email {i}/{len(email_ids)}")
         
         # Procesar email individual
         exito = procesar_email_individual(email_id, coordinates, filepath, i, len(email_ids))
         
         if exito:
             emails_exitosos += 1
-            print(f"✅ Email {i}/{len(email_ids)} completado")
+            print(f"✅ Completado")
         else:
-            print(f"❌ Email {i}/{len(email_ids)} falló")
+            print(f"❌ Falló")
         
         # Pausa entre emails (excepto en el último)
         if i < len(email_ids):
             time.sleep(5)
     
-    # Paso 6: Finalizar proceso y actualizar encabezado
-    print(f"🎉 Proceso completado - {emails_exitosos}/{len(email_ids)} emails exitosos")
+    # Finalizar proceso
+    print(f"🎉 Proceso completado: {emails_exitosos}/{len(email_ids)} exitosos")
     _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)

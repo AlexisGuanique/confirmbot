@@ -5,7 +5,9 @@ def create_new_window(parent_root):
     import customtkinter as ctk
     from tkinter import messagebox
     import threading
-    from app.database.database import get_creator_coordinates, save_creator_coordinates, save_creator_setting, get_creator_setting, load_emails_from_file, get_creator_email_count
+    import datetime
+    import pytz
+    from app.database.database import get_creator_coordinates, save_creator_coordinates, save_creator_setting, get_creator_setting, load_emails_from_file, get_creator_email_count, clear_scheduled_time
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
     from app.creator.image_config import view_image, load_image, get_image_path
     from tkinter import filedialog
@@ -51,9 +53,8 @@ def create_new_window(parent_root):
     # Obtener configuración actual
     current_settings = get_creator_setting()
     current_user_agent = current_settings.get('user_agent', '') if current_settings else ''
-    current_accounts_to_create = current_settings.get('accounts_to_create', 1) if current_settings else 1
     
-    # Frame para los inputs (User Agent y Cantidad de cuentas)
+    # Frame para los inputs (User Agent y Hora Programada)
     inputs_frame = ctk.CTkFrame(user_agent_frame, fg_color="transparent")
     inputs_frame.pack(fill="x", padx=20, pady=(15, 10))
     
@@ -80,52 +81,205 @@ def create_new_window(parent_root):
     if current_user_agent:
         user_agent_entry.insert(0, current_user_agent)
     
-    # === CANTIDAD DE CUENTAS ===
-    # Label para la cantidad de cuentas
-    accounts_label = ctk.CTkLabel(
-        inputs_frame,
-        text="Cantidad de cuentas a crear:",
-        font=("Arial", 12, "bold"),
-        text_color="black"
-    )
-    accounts_label.pack(anchor="w")
+    # ================= CONFIGURACIÓN DE HORA PROGRAMADA =================
     
-    # Input para la cantidad de cuentas
-    accounts_entry = ctk.CTkEntry(
+    # Lista de países con sus zonas horarias
+    countries = [
+        "Argentina (GMT-3)",
+        "Brasil (GMT-3)",
+        "Chile (GMT-3)",
+        "Uruguay (GMT-3)",
+        "Paraguay (GMT-3)",
+        "Estados Unidos - Este (GMT-5)",
+        "Estados Unidos - Central (GMT-6)",
+        "Estados Unidos - Montaña (GMT-7)",
+        "Estados Unidos - Pacífico (GMT-8)",
+        "México (GMT-6)",
+        "Colombia (GMT-5)",
+        "Perú (GMT-5)",
+        "Venezuela (GMT-4)",
+        "Ecuador (GMT-5)",
+        "Bolivia (GMT-4)",
+        "España (GMT+1)",
+        "Francia (GMT+1)",
+        "Alemania (GMT+1)",
+        "Italia (GMT+1)",
+        "Reino Unido (GMT+0)",
+        "Portugal (GMT+0)",
+        "Rusia - Moscú (GMT+3)",
+        "China (GMT+8)",
+        "Japón (GMT+9)",
+        "India (GMT+5:30)",
+        "Australia - Sydney (GMT+10)",
+        "Nueva Zelanda (GMT+12)",
+        "Canadá - Este (GMT-5)",
+        "Canadá - Central (GMT-6)",
+        "Canadá - Montaña (GMT-7)",
+        "Canadá - Pacífico (GMT-8)"
+    ]
+    
+    # Detectar país automáticamente
+    def get_user_country():
+        """Detecta automáticamente el país del usuario basado en la zona horaria"""
+        try:
+            # Obtener la zona horaria local del sistema
+            local_tz = datetime.datetime.now().astimezone().tzinfo
+            
+            # Convertir a formato legible
+            if hasattr(local_tz, 'zone'):
+                # Para zonas horarias con nombre (ej: 'America/Argentina/Buenos_Aires')
+                zone_name = local_tz.zone
+                try:
+                    tz = pytz.timezone(zone_name)
+                    utc_offset = tz.utcoffset(datetime.datetime.now())
+                    offset_hours = int(utc_offset.total_seconds() / 3600)
+                    
+                    # Mapear offset a países conocidos
+                    if offset_hours == -3:
+                        # Verificar si es específicamente Argentina
+                        if 'Argentina' in zone_name or 'Buenos_Aires' in zone_name:
+                            return "Argentina (GMT-3)"
+                        else:
+                            return "Brasil (GMT-3)"  # Fallback para GMT-3
+                    elif offset_hours == -5:
+                        return "Estados Unidos - Este (GMT-5)"
+                    elif offset_hours == -6:
+                        return "Estados Unidos - Central (GMT-6)"
+                    elif offset_hours == -7:
+                        return "Estados Unidos - Montaña (GMT-7)"
+                    elif offset_hours == -8:
+                        return "Estados Unidos - Pacífico (GMT-8)"
+                    elif offset_hours == 0:
+                        return "Reino Unido (GMT+0)"
+                    elif offset_hours == 1:
+                        return "España (GMT+1)"
+                    elif offset_hours == 3:
+                        return "Rusia - Moscú (GMT+3)"
+                    elif offset_hours == 8:
+                        return "China (GMT+8)"
+                    elif offset_hours == 9:
+                        return "Japón (GMT+9)"
+                    else:
+                        # Buscar en nuestra lista de países por offset
+                        for country in countries:
+                            if f"GMT{offset_hours:+d}" in country:
+                                return country
+                        
+                        # Si no se encuentra, usar Argentina como default
+                        return "Argentina (GMT-3)"
+                    
+                except:
+                    # Fallback si no se puede determinar
+                    return "Argentina (GMT-3)"
+            else:
+                # Fallback para sistemas sin información de zona horaria
+                return "Argentina (GMT-3)"
+                
+        except Exception as e:
+            print(f"Error detectando país: {e}")
+            return "Argentina (GMT-3)"
+    
+    # Función para eliminar hora programada
+    def clear_schedule():
+        time_entry.delete(0, 'end')
+        country_dropdown.set(detected_country)  # Restaurar país detectado
+        if clear_scheduled_time():
+            messagebox.showinfo("Éxito", "✅ Hora programada eliminada correctamente")
+        else:
+            messagebox.showerror("Error", "❌ No se pudo eliminar la hora programada")
+    
+    # Input específico para hora con formato HH:MM
+    time_entry = ctk.CTkEntry(
         inputs_frame,
-        placeholder_text="Ingresa la cantidad de cuentas...",
+        placeholder_text="HH:MM",
         font=("Arial", 11),
-        height=35
+        height=35,
+        width=80
     )
-    accounts_entry.pack(fill="x", pady=(5, 15))
+    time_entry.pack(side="left", padx=(0, 10), pady=(5, 15))
     
-    # Insertar el valor actual si existe
-    accounts_entry.insert(0, str(current_accounts_to_create))
+    # Función para validar formato de hora
+    def validate_time_format(event=None):
+        """Valida que el formato de hora sea correcto (HH:MM)"""
+        value = time_entry.get()
+        if value:
+            # Permitir solo números y dos puntos
+            if not all(c.isdigit() or c == ':' for c in value):
+                time_entry.delete(len(value)-1, 'end')
+                return
+            
+            # Limitar a 5 caracteres máximo (HH:MM)
+            if len(value) > 5:
+                time_entry.delete(5, 'end')
+                return
+            
+            # Auto-insertar dos puntos después de 2 dígitos
+            if len(value) == 2 and ':' not in value:
+                time_entry.insert(2, ':')
+    
+    # Bind para validar formato mientras se escribe
+    time_entry.bind('<KeyRelease>', validate_time_format)
+    
+    # Selector de país (más pequeño)
+    country_dropdown = ctk.CTkComboBox(
+        inputs_frame,
+        values=countries,
+        font=("Arial", 11),
+        height=35,
+        width=200
+    )
+    country_dropdown.pack(side="left", padx=(0, 10), pady=(5, 15))
+    
+    # Detectar y establecer país automáticamente
+    detected_country = get_user_country()
+    country_dropdown.set(detected_country)
+    
+    # Insertar valores actuales si existen
+    if current_settings:
+        if current_settings.get('scheduled_time'):
+            time_entry.insert(0, current_settings.get('scheduled_time'))
+        if current_settings.get('timezone'):
+            country_dropdown.set(current_settings.get('timezone'))
+    
+    # Botón para eliminar hora programada (más pequeño)
+    clear_schedule_button = ctk.CTkButton(
+        inputs_frame,
+        text="🗑️ Eliminar Hora",
+        command=clear_schedule,
+        fg_color="#dc3545",
+        text_color="white",
+        font=("Arial", 10),
+        height=35,
+        width=120
+    )
+    clear_schedule_button.pack(side="left", padx=(0, 10), pady=(5, 15))
     
     # Función para guardar configuración completa
     def save_creator_settings():
         user_agent = user_agent_entry.get().strip()
-        accounts_text = accounts_entry.get().strip()
+        scheduled_time = time_entry.get().strip()
+        timezone = country_dropdown.get().strip()
         
         if not user_agent:
             messagebox.showwarning("Advertencia", "Por favor ingresa un User Agent válido.")
             return
         
-        if not accounts_text:
-            messagebox.showwarning("Advertencia", "Por favor ingresa la cantidad de cuentas a crear.")
-            return
-        
-        try:
-            accounts_to_create = int(accounts_text)
-            if accounts_to_create <= 0:
-                messagebox.showwarning("Advertencia", "La cantidad de cuentas debe ser mayor a 0.")
+        # Validar hora si se proporciona
+        if scheduled_time:
+            import re
+            if not re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', scheduled_time):
+                messagebox.showwarning("Advertencia", "Por favor ingresa una hora válida en formato HH:MM (ej: 14:30).")
                 return
-        except ValueError:
-            messagebox.showwarning("Advertencia", "Por favor ingresa un número válido para la cantidad de cuentas.")
-            return
+            
+            if not timezone:
+                messagebox.showwarning("Advertencia", "Si especificas una hora, debes seleccionar una zona horaria.")
+                return
         
-        if save_creator_setting(user_agent, accounts_to_create):
-            messagebox.showinfo("Éxito", f"✅ Configuración guardada correctamente.\n\nUser Agent: {user_agent}\nCuentas a crear: {accounts_to_create}")
+        if save_creator_setting(user_agent, 1, scheduled_time if scheduled_time else None, timezone if timezone else None):
+            success_msg = f"✅ Configuración guardada correctamente.\n\nUser Agent: {user_agent}"
+            if scheduled_time and timezone:
+                success_msg += f"\nHora programada: {scheduled_time}\nZona horaria: {timezone}"
+            messagebox.showinfo("Éxito", success_msg)
         else:
             messagebox.showerror("Error", "❌ No se pudo guardar la configuración.")
     

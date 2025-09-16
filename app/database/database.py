@@ -150,10 +150,27 @@ def create_database():
             CREATE TABLE IF NOT EXISTS creator_setting (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 user_agent TEXT NOT NULL,
-                accounts_to_create INTEGER NOT NULL DEFAULT 1
+                accounts_to_create INTEGER NOT NULL DEFAULT 1,
+                scheduled_time TEXT,
+                timezone TEXT
             )
             '''
         )
+        
+        # Agregar columnas de hora programada si no existen
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN scheduled_time TEXT")
+            print("✅ Columna scheduled_time agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN timezone TEXT")
+            print("✅ Columna timezone agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
 
         # 🔹 Tabla para emails del creator
         cursor.execute(
@@ -648,13 +665,15 @@ def get_creator_coordinates(*field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(user_agent, accounts_to_create=1):
+def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None):
     """
     Guarda o actualiza la configuración del creator
     
     Args:
         user_agent (str): User agent a utilizar
         accounts_to_create (int): Cantidad de cuentas a crear (default: 1)
+        scheduled_time (str): Hora programada en formato HH:MM (opcional)
+        timezone (str): Zona horaria (opcional)
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -665,13 +684,13 @@ def save_creator_setting(user_agent, accounts_to_create=1):
         
         # Insertar o actualizar (UPSERT)
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create)
-            VALUES (1, ?, ?)
-        ''', (user_agent, accounts_to_create))
+            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone)
+            VALUES (1, ?, ?, ?, ?)
+        ''', (user_agent, accounts_to_create, scheduled_time, timezone))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}")
+        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}")
         return True
         
     except Exception as e:
@@ -684,25 +703,55 @@ def get_creator_setting():
     Obtiene la configuración del creator
     
     Returns:
-        dict: Diccionario con user_agent y accounts_to_create, o None si no existe
+        dict: Diccionario con user_agent, accounts_to_create, scheduled_time y timezone, o None si no existe
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create FROM creator_setting WHERE id = 1")
+        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone FROM creator_setting WHERE id = 1")
         row = cursor.fetchone()
         conn.close()
         
         if row:
             return {
                 'user_agent': row[0],
-                'accounts_to_create': row[1]
+                'accounts_to_create': row[1],
+                'scheduled_time': row[2],
+                'timezone': row[3]
             }
         return None
         
     except Exception as e:
         print(f"❌ Error al obtener configuración del creator: {e}")
         return None
+
+
+def clear_scheduled_time():
+    """
+    Elimina la hora programada de la configuración del creator
+    
+    Returns:
+        bool: True si se eliminó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Actualizar solo los campos de hora programada
+        cursor.execute('''
+            UPDATE creator_setting 
+            SET scheduled_time = NULL, timezone = NULL 
+            WHERE id = 1
+        ''')
+        
+        conn.commit()
+        conn.close()
+        print("✅ Hora programada eliminada correctamente")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al eliminar hora programada: {e}")
+        return False
 
 
 #! FUNCIONES DE CREATOR_EMAIL
