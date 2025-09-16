@@ -13,7 +13,7 @@ def create_new_window(parent_root):
     # Crear la nueva ventana
     new_window = ctk.CTkToplevel(parent_root)
     new_window.title("Configuración del Creator")
-    new_window.geometry("800x600")
+    new_window.geometry("650x600")
     new_window.configure(fg_color="#FFFFFF")
     
     # Centrar la ventana y hacerla modal
@@ -264,6 +264,7 @@ def create_new_window(parent_root):
         "Click del link de LinkedIn en fav",
         "Click input email",
         "Click botón Agree",
+        "Click botón Agree opcional",
         "Click input de nombre",
         "Click botón continue",
         "Click cerrar captcha",
@@ -279,6 +280,7 @@ def create_new_window(parent_root):
         "Click del link de LinkedIn en fav": "linkedin_fav_click",
         "Click input email": "email_input_click",
         "Click botón Agree": "continue_button_click",
+        "Click botón Agree opcional": "continue_button_click_optional",
         "Click input de nombre": "name_input_click",
         "Click botón continue": "continue_button2_click",
         "Click cerrar captcha": "close_captcha_click",
@@ -484,9 +486,12 @@ def create_new_window(parent_root):
     # Definir las imágenes
     images_list = [
         "Imagen de verificación de éxito carga LinkedIn",
+        "Checkbox recuerdame",
         "Imagen captcha rojo",
         "Imagen número",
-        "Imagen de creación de cuenta con éxito (logo LinkedIn)"
+        "Imagen de creación de cuenta con éxito (logo LinkedIn)",
+        "Imagen de creación de cuenta con éxito (logo LinkedIn) 2",
+        "Imagen de confirmación de código",
     ]
     
     # Crear encabezados de la tabla de imágenes

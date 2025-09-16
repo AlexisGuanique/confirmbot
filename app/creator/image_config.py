@@ -2,6 +2,7 @@ import os
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
+from app.utils.path_utils import get_images_path, ensure_directory_exists
 
 def view_image(image_path, refresh_callback=None):
     """
@@ -110,9 +111,9 @@ def load_image(image_name):
         str: Ruta de la imagen cargada o None si se canceló
     """
     try:
-        # Crear carpeta /images si no existe
-        images_dir = os.path.join(os.path.dirname(__file__), "images")
-        os.makedirs(images_dir, exist_ok=True)
+        # Crear carpeta /images si no existe (al lado del ejecutable)
+        images_dir = get_images_path()
+        ensure_directory_exists(images_dir)
         
         # Abrir diálogo para seleccionar imagen
         file_path = filedialog.askopenfilename(
@@ -166,7 +167,7 @@ def get_image_path(image_name):
         str: Ruta de la imagen si existe, None si no existe
     """
     try:
-        images_dir = os.path.join(os.path.dirname(__file__), "images")
+        images_dir = get_images_path()
         
         if not os.path.exists(images_dir):
             return None

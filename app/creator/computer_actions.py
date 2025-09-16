@@ -7,11 +7,19 @@ import string
 import pyperclip
 from faker import Faker
 from app.creator.image_config import get_image_path
+from app.utils.path_utils import get_base_path
 
 def get_resource_path(relative_path):
+    """
+    Obtiene la ruta de un recurso tanto en desarrollo como en ejecutable.
+    Esta función es específica para recursos que van dentro del ejecutable.
+    Para archivos de usuario (imágenes, cuentas), usar get_base_path().
+    """
     if getattr(sys, 'frozen', False):
+        # Si estamos ejecutando desde un ejecutable (PyInstaller)
         base_path = sys._MEIPASS
     else:
+        # Si estamos en desarrollo, usar el directorio raíz del proyecto
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 

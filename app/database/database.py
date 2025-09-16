@@ -122,7 +122,8 @@ def create_database():
                 close_number_click TEXT NOT NULL,
                 cookie_editor_icon_click TEXT NOT NULL,
                 save_cookie_clipboard_click TEXT NOT NULL,
-                close_window TEXT NOT NULL
+                close_window TEXT NOT NULL,
+                continue_button_click_optional TEXT NOT NULL
             )
             '''
         )
@@ -131,6 +132,14 @@ def create_database():
         try:
             cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN close_window TEXT NOT NULL DEFAULT ''")
             print("✅ Columna close_window agregada a creator_coordinates")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+        
+        # Migrar tabla existente si no tiene la columna continue_button_click_optional
+        try:
+            cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN continue_button_click_optional TEXT")
+            print("✅ Columna continue_button_click_optional agregada a creator_coordinates")
         except sqlite3.OperationalError:
             # La columna ya existe, no hacer nada
             pass
@@ -529,7 +538,7 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
         if existing_row:
             values = list(existing_row[1:])  # Excluir el id
         else:
-            values = [''] * 11  # 11 campos vacíos
+            values = [''] * 12  # 12 campos vacíos
 
         # Mapeo de nombres de campos a índices
         field_mapping = {
@@ -543,7 +552,8 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
             'close_number_click': 7,
             'cookie_editor_icon_click': 8,
             'save_cookie_clipboard_click': 9,
-            'close_window': 10
+            'close_window': 10,
+            'continue_button_click_optional': 11
         }
 
         # Actualizar valores desde coordinates_dict si se proporciona
@@ -563,8 +573,8 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
                 id, brave_click, linkedin_fav_click, email_input_click,
                 continue_button_click, name_input_click, continue_button2_click,
                 close_captcha_click, close_number_click, cookie_editor_icon_click,
-                save_cookie_clipboard_click, close_window
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                save_cookie_clipboard_click, close_window, continue_button_click_optional
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             tuple(values)
         )
@@ -603,7 +613,8 @@ def get_creator_coordinates(*field_names):
             'close_number_click': 8,
             'cookie_editor_icon_click': 9,
             'save_cookie_clipboard_click': 10,
-            'close_window': 11
+            'close_window': 11,
+            'continue_button_click_optional': 12
         }
 
         # Si no se especifican campos, devolver todos
@@ -619,7 +630,8 @@ def get_creator_coordinates(*field_names):
                 'close_number_click': row[8],
                 'cookie_editor_icon_click': row[9],
                 'save_cookie_clipboard_click': row[10],
-                'close_window': row[11]
+                'close_window': row[11],
+                'continue_button_click_optional': row[12]
             }
 
         # Devolver solo los campos solicitados
@@ -813,6 +825,29 @@ def get_creator_email_by_id(id):
     except Exception as e:
         print(f"❌ Error al obtener email por ID: {e}")
         return None
+
+
+def get_all_creator_email_ids():
+    """
+    Obtiene todos los IDs de emails de la tabla creator_email
+    
+    Returns:
+        list: Lista de IDs de emails, o lista vacía si no hay emails
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM creator_email ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        ids = [row[0] for row in rows]
+        print(f"📧 Se encontraron {len(ids)} emails con IDs")
+        return ids
+        
+    except Exception as e:
+        print(f"❌ Error al obtener IDs de emails: {e}")
+        return []
 
 
 def load_emails_from_file(file_path):
