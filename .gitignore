@@ -7,6 +7,7 @@ venv/
 
 # Ignorar archivos de verificación y la carpeta completa
 verifications/
+linkedin_accounts/
 
 # Ignorar base de datos
 cookies.db
@@ -15,3 +16,9 @@ cookies.db
 /build/
 /dist/
 *.spec
+
+# Ignorar archivos de cuentas LinkedIn creadas
+linkedin_accounts/
+
+# Ignorar imágenes del creator
+app/creator/images/
