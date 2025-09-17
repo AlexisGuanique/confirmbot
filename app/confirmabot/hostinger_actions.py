@@ -1,6 +1,7 @@
 
 
 import imaplib
+import smtplib
 import email
 import logging
 from datetime import datetime
@@ -10,6 +11,10 @@ import os
 import sys
 import re
 import time
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 # Configuración de logging sin archivo
 logging.basicConfig(
@@ -40,6 +45,11 @@ class HostingerEmailClient:
         # Configuración del servidor IMAP de Hostinger
         self.imap_host = 'imap.hostinger.com'
         self.imap_port = 993
+        
+        # Configuración del servidor SMTP de Hostinger
+        self.smtp_host = 'smtp.hostinger.com'
+        self.smtp_port = 587
+        self.smtp_server = None
         
     def connect(self) -> bool:
         """
@@ -87,6 +97,143 @@ class HostingerEmailClient:
                 logger.info("Desconectado del servidor de correo")
             except Exception as e:
                 logger.error(f"Error al desconectar: {e}")
+    
+    def connect_smtp(self) -> bool:
+        """
+        Conecta al servidor SMTP de Hostinger para envío de correos
+        
+        Returns:
+            bool: True si la conexión fue exitosa, False en caso contrario
+        """
+        try:
+            # Crear contexto SSL
+            context = ssl.create_default_context()
+            
+            # Conectar al servidor SMTP con STARTTLS
+            self.smtp_server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+            self.smtp_server.starttls(context=context)
+            
+            # Autenticar
+            self.smtp_server.login(self.email_address, self.password)
+            
+            return True
+            
+        except smtplib.SMTPAuthenticationError as e:
+            return False
+        except Exception as e:
+            return False
+    
+    def disconnect_smtp(self):
+        """Desconecta del servidor SMTP"""
+        if self.smtp_server:
+            try:
+                self.smtp_server.quit()
+                self.smtp_server = None
+            except Exception as e:
+                pass
+    
+    def send_email(self, to_email: str, subject: str, body: str, 
+                   is_html: bool = False, attachments: List[str] = None) -> bool:
+        """
+        Envía un correo electrónico
+        
+        Args:
+            to_email: Dirección de correo del destinatario
+            subject: Asunto del correo
+            body: Cuerpo del correo
+            is_html: Si el cuerpo es HTML (default: False)
+            attachments: Lista de rutas de archivos adjuntos (opcional)
+            
+        Returns:
+            bool: True si el envío fue exitoso, False en caso contrario
+        """
+        try:
+            # Conectar al servidor SMTP si no está conectado
+            if not self.smtp_server:
+                if not self.connect_smtp():
+                    return False
+            
+            # Crear el mensaje
+            msg = MIMEMultipart()
+            msg['From'] = self.email_address
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            
+            # Agregar el cuerpo del mensaje
+            if is_html:
+                msg.attach(MIMEText(body, 'html'))
+            else:
+                msg.attach(MIMEText(body, 'plain'))
+            
+            # Agregar adjuntos si los hay
+            if attachments:
+                for file_path in attachments:
+                    if os.path.isfile(file_path):
+                        with open(file_path, "rb") as attachment:
+                            part = MIMEBase('application', 'octet-stream')
+                            part.set_payload(attachment.read())
+                        
+                        encoders.encode_base64(part)
+                        part.add_header(
+                            'Content-Disposition',
+                            f'attachment; filename= {os.path.basename(file_path)}'
+                        )
+                        msg.attach(part)
+                    else:
+                        pass
+            
+            # Enviar el correo
+            text = msg.as_string()
+            self.smtp_server.sendmail(self.email_address, to_email, text)
+            
+            return True
+            
+        except Exception as e:
+            return False
+    
+    def send_simple_email(self, to_email: str, subject: str, message: str) -> bool:
+        """
+        Envía un correo electrónico simple (texto plano)
+        
+        Args:
+            to_email: Dirección de correo del destinatario
+            subject: Asunto del correo
+            message: Mensaje de texto plano
+            
+        Returns:
+            bool: True si el envío fue exitoso, False en caso contrario
+        """
+        return self.send_email(to_email, subject, message, is_html=False)
+    
+    def send_html_email(self, to_email: str, subject: str, html_content: str) -> bool:
+        """
+        Envía un correo electrónico con contenido HTML
+        
+        Args:
+            to_email: Dirección de correo del destinatario
+            subject: Asunto del correo
+            html_content: Contenido HTML del correo
+            
+        Returns:
+            bool: True si el envío fue exitoso, False en caso contrario
+        """
+        return self.send_email(to_email, subject, html_content, is_html=True)
+    
+    def send_email_with_attachment(self, to_email: str, subject: str, body: str, 
+                                  attachment_path: str) -> bool:
+        """
+        Envía un correo electrónico con un archivo adjunto
+        
+        Args:
+            to_email: Dirección de correo del destinatario
+            subject: Asunto del correo
+            body: Cuerpo del correo
+            attachment_path: Ruta del archivo adjunto
+            
+        Returns:
+            bool: True si el envío fue exitoso, False en caso contrario
+        """
+        return self.send_email(to_email, subject, body, attachments=[attachment_path])
     
     def list_folders(self) -> List[str]:
         """
@@ -970,9 +1117,101 @@ def go_directly_to_confirmar(email_address: str, password: str):
         email_client.disconnect()
 
 
+def send_quick_email(email_address: str, password: str, to_email: str, 
+                    subject: str, message: str) -> bool:
+    """
+    Función rápida para enviar un correo electrónico simple
+    
+    Args:
+        email_address: Dirección de correo del remitente
+        password: Contraseña de la cuenta
+        to_email: Dirección de correo del destinatario
+        subject: Asunto del correo
+        message: Mensaje de texto plano
+        
+    Returns:
+        bool: True si el envío fue exitoso, False en caso contrario
+    """
+    email_client = HostingerEmailClient(email_address, password)
+    
+    try:
+        if email_client.connect_smtp():
+            success = email_client.send_simple_email(to_email, subject, message)
+            return success
+        else:
+            return False
+    except Exception as e:
+        return False
+    finally:
+        email_client.disconnect_smtp()
+
+
+def send_html_email_quick(email_address: str, password: str, to_email: str, 
+                        subject: str, html_content: str) -> bool:
+    """
+    Función rápida para enviar un correo electrónico con contenido HTML
+    
+    Args:
+        email_address: Dirección de correo del remitente
+        password: Contraseña de la cuenta
+        to_email: Dirección de correo del destinatario
+        subject: Asunto del correo
+        html_content: Contenido HTML del correo
+        
+    Returns:
+        bool: True si el envío fue exitoso, False en caso contrario
+    """
+    email_client = HostingerEmailClient(email_address, password)
+    
+    try:
+        if email_client.connect_smtp():
+            success = email_client.send_html_email(to_email, subject, html_content)
+            return success
+        else:
+            return False
+    except Exception as e:
+        return False
+    finally:
+        email_client.disconnect_smtp()
+
+
+def send_email_with_file(email_address: str, password: str, to_email: str, 
+                        subject: str, body: str, attachment_path: str) -> bool:
+    """
+    Función rápida para enviar un correo electrónico con archivo adjunto
+    
+    Args:
+        email_address: Dirección de correo del remitente
+        password: Contraseña de la cuenta
+        to_email: Dirección de correo del destinatario
+        subject: Asunto del correo
+        body: Cuerpo del correo
+        attachment_path: Ruta del archivo adjunto
+        
+    Returns:
+        bool: True si el envío fue exitoso, False en caso contrario
+    """
+    email_client = HostingerEmailClient(email_address, password)
+    
+    try:
+        if email_client.connect_smtp():
+            success = email_client.send_email_with_attachment(to_email, subject, body, attachment_path)
+            return success
+        else:
+            return False
+    except Exception as e:
+        return False
+    finally:
+        email_client.disconnect_smtp()
+
+
 if __name__ == "__main__":
     # Función automatizada que espera por nuevos emails y extrae la URL
     print("🔍 Esperando nuevos emails de 33mail.com para extraer URL de confirmación...")
     # Nota: Esta función ahora requiere credenciales como parámetros
     print("⚠️ Esta función ahora requiere credenciales como parámetros.")
     print("   Usa: wait_for_confirmation_email(email_address, password, timeout_seconds)")
+    print("\n📧 Funciones de envío de correos disponibles:")
+    print("   - send_quick_email(email_address, password, to_email, subject, message)")
+    print("   - send_html_email_quick(email_address, password, to_email, subject, html_content)")
+    print("   - send_email_with_file(email_address, password, to_email, subject, body, attachment_path)")

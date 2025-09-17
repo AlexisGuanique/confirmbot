@@ -81,6 +81,30 @@ def create_new_window(parent_root):
     if current_user_agent:
         user_agent_entry.insert(0, current_user_agent)
     
+    # === EMAIL DE NOTIFICACIÓN ===
+    # Label para el Email de Notificación
+    notification_email_label = ctk.CTkLabel(
+        inputs_frame,
+        text="📧 Email de Notificación:",
+        font=("Arial", 12, "bold"),
+        text_color="black"
+    )
+    notification_email_label.pack(anchor="w")
+    
+    # Input para el Email de Notificación
+    notification_email_entry = ctk.CTkEntry(
+        inputs_frame,
+        placeholder_text="ejemplo@gmail.com",
+        font=("Arial", 11),
+        height=35
+    )
+    notification_email_entry.pack(fill="x", pady=(5, 15))
+    
+    # Insertar el valor actual si existe
+    current_settings = get_creator_setting()
+    if current_settings and current_settings.get('notification_email'):
+        notification_email_entry.insert(0, current_settings['notification_email'])
+    
     # ================= CONFIGURACIÓN DE HORA PROGRAMADA =================
     
     # Lista de países con sus zonas horarias
@@ -257,12 +281,21 @@ def create_new_window(parent_root):
     # Función para guardar configuración completa
     def save_creator_settings():
         user_agent = user_agent_entry.get().strip()
+        notification_email = notification_email_entry.get().strip()
         scheduled_time = time_entry.get().strip()
         timezone = country_dropdown.get().strip()
         
         if not user_agent:
             messagebox.showwarning("Advertencia", "Por favor ingresa un User Agent válido.")
             return
+        
+        # Validar email de notificación si se proporciona
+        if notification_email:
+            import re
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, notification_email):
+                messagebox.showwarning("Advertencia", "Por favor ingresa un email válido para las notificaciones.")
+                return
         
         # Validar hora si se proporciona
         if scheduled_time:
@@ -275,8 +308,10 @@ def create_new_window(parent_root):
                 messagebox.showwarning("Advertencia", "Si especificas una hora, debes seleccionar una zona horaria.")
                 return
         
-        if save_creator_setting(user_agent, 1, scheduled_time if scheduled_time else None, timezone if timezone else None):
+        if save_creator_setting(user_agent, 1, scheduled_time if scheduled_time else None, timezone if timezone else None, notification_email if notification_email else None):
             success_msg = f"✅ Configuración guardada correctamente.\n\nUser Agent: {user_agent}"
+            if notification_email:
+                success_msg += f"\nEmail de notificación: {notification_email}"
             if scheduled_time and timezone:
                 success_msg += f"\nHora programada: {scheduled_time}\nZona horaria: {timezone}"
             messagebox.showinfo("Éxito", success_msg)
@@ -646,6 +681,7 @@ def create_new_window(parent_root):
         "Imagen de creación de cuenta con éxito (logo LinkedIn)",
         "Imagen de creación de cuenta con éxito (logo LinkedIn) 2",
         "Imagen de confirmación de código",
+        "add_location",
     ]
     
     # Crear encabezados de la tabla de imágenes

@@ -152,7 +152,11 @@ def create_database():
                 user_agent TEXT NOT NULL,
                 accounts_to_create INTEGER NOT NULL DEFAULT 1,
                 scheduled_time TEXT,
-                timezone TEXT
+                timezone TEXT,
+                notification_email TEXT,
+                google_sheets_enabled INTEGER DEFAULT 0,
+                google_sheets_name TEXT,
+                google_credentials_file TEXT
             )
             '''
         )
@@ -168,6 +172,34 @@ def create_database():
         try:
             cursor.execute("ALTER TABLE creator_setting ADD COLUMN timezone TEXT")
             print("✅ Columna timezone agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN notification_email TEXT")
+            print("✅ Columna notification_email agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN google_sheets_enabled INTEGER DEFAULT 0")
+            print("✅ Columna google_sheets_enabled agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN google_sheets_name TEXT")
+            print("✅ Columna google_sheets_name agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN google_credentials_file TEXT")
+            print("✅ Columna google_credentials_file agregada a creator_setting")
         except sqlite3.OperationalError:
             # La columna ya existe, no hacer nada
             pass
@@ -665,7 +697,7 @@ def get_creator_coordinates(*field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None):
+def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None):
     """
     Guarda o actualiza la configuración del creator
     
@@ -674,6 +706,7 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         accounts_to_create (int): Cantidad de cuentas a crear (default: 1)
         scheduled_time (str): Hora programada en formato HH:MM (opcional)
         timezone (str): Zona horaria (opcional)
+        notification_email (str): Email para recibir notificaciones (opcional)
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -684,13 +717,13 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         
         # Insertar o actualizar (UPSERT)
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone)
-            VALUES (1, ?, ?, ?, ?)
-        ''', (user_agent, accounts_to_create, scheduled_time, timezone))
+            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email)
+            VALUES (1, ?, ?, ?, ?, ?)
+        ''', (user_agent, accounts_to_create, scheduled_time, timezone, notification_email))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}")
+        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}")
         return True
         
     except Exception as e:
@@ -703,12 +736,12 @@ def get_creator_setting():
     Obtiene la configuración del creator
     
     Returns:
-        dict: Diccionario con user_agent, accounts_to_create, scheduled_time y timezone, o None si no existe
+        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone y notification_email, o None si no existe
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone FROM creator_setting WHERE id = 1")
+        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email FROM creator_setting WHERE id = 1")
         row = cursor.fetchone()
         conn.close()
         
@@ -717,7 +750,8 @@ def get_creator_setting():
                 'user_agent': row[0],
                 'accounts_to_create': row[1],
                 'scheduled_time': row[2],
-                'timezone': row[3]
+                'timezone': row[3],
+                'notification_email': row[4]
             }
         return None
         
@@ -802,7 +836,7 @@ def get_all_creator_emails():
         conn.close()
         
         emails = [row[0] for row in rows]
-        print(f"📧 Se encontraron {len(emails)} emails")
+        #print(f"📧 Se encontraron {len(emails)} emails")
         return emails
         
     except Exception as e:
@@ -824,7 +858,7 @@ def get_creator_email_count():
         count = cursor.fetchone()[0]
         conn.close()
         
-        print(f"📊 Total de emails: {count}")
+        #print(f"📊 Total de emails: {count}")
         return count
         
     except Exception as e:
@@ -891,7 +925,7 @@ def get_all_creator_email_ids():
         conn.close()
         
         ids = [row[0] for row in rows]
-        print(f"📧 Se encontraron {len(ids)} emails con IDs")
+        #print(f"📧 Se encontraron {len(ids)} emails con IDs")
         return ids
         
     except Exception as e:

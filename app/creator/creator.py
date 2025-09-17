@@ -130,7 +130,8 @@ def observador_unificado(coordinates, email, password, filepath):
         exito_images = [
             "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin",
             "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin_2", 
-            "imagen_de_confirmacion_de_codigo"
+            "imagen_de_confirmacion_de_codigo",
+            "add_location"
         ]
         
         # Buscar cualquiera de las imágenes de éxito
@@ -142,7 +143,7 @@ def observador_unificado(coordinates, email, password, filepath):
         
         if exito_found:
             ciclos_sin_imagen = 0  # Resetear contador
-            print(f"✅ Imagen de éxito encontrada ({exito_image_name}) - guardando información")
+            #print(f"✅ Imagen de éxito encontrada ({exito_image_name}) - guardando información")
             
             # Desactivar proxy después del éxito
             _desactivar_proxy()
@@ -544,6 +545,96 @@ def _inicializar_archivo_salida(total_emails):
         return None
 
 
+def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
+    """
+    Envía el archivo de resultados por correo electrónico
+    
+    Args:
+        filepath: Ruta del archivo a enviar
+        total_emails: Total de emails procesados
+        emails_exitosos: Número de emails exitosos
+    """
+    try:
+        from app.confirmabot.hostinger_actions import send_email_with_file
+        from app.database.database import get_creator_setting
+        import os
+        
+        # Obtener credenciales de correo desde la tabla emails
+        from app.database.database import get_all_emails, get_creator_setting
+        
+        emails_data = get_all_emails()
+        if not emails_data:
+            return False
+        
+        # Usar el primer email con credenciales de Hostinger
+        email_address = None
+        email_password = None
+        
+        for email_data in emails_data:
+            if email_data.get('email_hostinger') and email_data.get('password_hostinger'):
+                email_address = email_data['email_hostinger']
+                email_password = email_data['password_hostinger']
+                break
+        
+        if not email_address or not email_password:
+            return False
+        
+        # Verificar que el archivo existe
+        if not os.path.exists(filepath):
+            return False
+        
+        # Crear el asunto y cuerpo del correo
+        from datetime import datetime
+        fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
+        asunto = f"Reporte LinkedIn Creator - {fecha_hora}"
+        
+        cuerpo = f"""Hola,
+
+            El proceso de creación de cuentas LinkedIn ha finalizado.
+
+            📊 RESUMEN:
+            - Total de emails procesados: {total_emails}
+            - Cuentas creadas exitosamente: {emails_exitosos}
+            - Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
+
+            📎 Adjunto encontrarás el archivo con todos los detalles de las cuentas creadas.
+
+            Saludos,
+            ConfirmaBot
+        """
+        
+        # Obtener email de destino desde la configuración
+        settings = get_creator_setting()
+        email_destino = settings.get('notification_email') if settings else None
+        
+        # Si no hay email configurado, no enviar correo
+        if not email_destino:
+            return True  # Retornar True para no interrumpir el proceso principal
+        
+        print("📧 Enviando reporte por correo...")
+        
+        # Enviar el correo con el archivo adjunto
+        exito = send_email_with_file(
+            email_address=email_address,
+            password=email_password,
+            to_email=email_destino,
+            subject=asunto,
+            body=cuerpo,
+            attachment_path=filepath
+        )
+        
+        if exito:
+            print("✅ Reporte enviado exitosamente")
+            return True
+        else:
+            print("❌ No se pudo enviar el reporte")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error inesperado al enviar correo: {e}")
+        return False
+
+
 def _verificar_hora_programada():
     """
     Verifica si hay una hora programada y espera hasta esa hora si es necesario.
@@ -657,13 +748,19 @@ def execute_creator():
         if exito:
             emails_exitosos += 1
             print(f"✅ Completado")
+
         else:
             print(f"❌ Falló")
         
         # Pausa entre emails (excepto en el último)
         if i < len(email_ids):
-            time.sleep(5)
+            time.sleep(3)
     
     # Finalizar proceso
     print(f"🎉 Proceso completado: {emails_exitosos}/{len(email_ids)} exitosos")
     _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)
+    
+    # Enviar reporte por correo electrónico
+    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos)
+    
+    print(f"###########################################################")
