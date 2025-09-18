@@ -1,3 +1,43 @@
+def _verificar_cookie_duplicada(filepath, nueva_cookie):
+    """
+    Verifica si la nueva cookie ya existe en el archivo
+    
+    Args:
+        filepath: Ruta del archivo de cookies
+        nueva_cookie: Cookie nueva a verificar
+    
+    Returns:
+        bool: True si la cookie es duplicada, False si es única
+    """
+    try:
+        # Leer las últimas 10 líneas del archivo para verificar duplicados
+        with open(filepath, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Buscar solo en las líneas que contienen datos (saltar encabezados)
+        data_lines = []
+        for line in lines:
+            # Si la línea contiene tabs y no es un encabezado
+            if '\t' in line and not line.startswith('CUENTAS') and not line.startswith('=') and not line.startswith('Total') and not line.startswith('Formato'):
+                data_lines.append(line.strip())
+        
+        # Verificar solo las últimas 5 cookies guardadas
+        recent_cookies = data_lines[-5:] if len(data_lines) >= 5 else data_lines
+        
+        for line in recent_cookies:
+            parts = line.split('\t')
+            if len(parts) >= 4:  # user_agent, email, password, cookie
+                existing_cookie = parts[3]
+                # Comparar cookies
+                if existing_cookie == nueva_cookie:
+                    return True
+        
+        return False
+        
+    except Exception as e:
+        return False  # En caso de error, permitir guardar
+
+
 def observador_unificado(coordinates, email, password, filepath):
     
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, get_clipboard_content
@@ -143,48 +183,87 @@ def observador_unificado(coordinates, email, password, filepath):
         
         if exito_found:
             ciclos_sin_imagen = 0  # Resetear contador
-            #print(f"✅ Imagen de éxito encontrada ({exito_image_name}) - guardando información")
+            print(f"✅ Imagen de éxito encontrada - buscando cookie...")
             
             # Desactivar proxy después del éxito
             _desactivar_proxy()
             
-            # Clic en cookie_editor_icon_click
-            cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
-            if cookie_editor_coords:
-                click_coordinates(cookie_editor_coords)
-                time.sleep(1)
+            # Intentar obtener cookie única (máximo 3 intentos)
+            max_intentos = 3
+            for intento in range(1, max_intentos + 1):
+                # Limpiar portapapeles antes de obtener la cookie
+                import pyperclip
+                pyperclip.copy("")
+                time.sleep(0.2)
                 
-                # Clic en save_cookie_clipboard_click
-                save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
-                if save_cookie_coords:
-                    click_coordinates(save_cookie_coords)
+                # Clic en cookie_editor_icon_click
+                cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
+                if cookie_editor_coords:
+                    click_coordinates(cookie_editor_coords)
                     time.sleep(1)
                     
-                    # Obtener cookie del portapapeles
-                    cookie_raw = get_clipboard_content()
-                    
-                    # Formatear cookie a una sola línea
-                    cookie = format_cookie_to_single_line(cookie_raw)
-                    print(f"📋 Cookie formateada: {len(cookie)} caracteres")
-                    
-                    # Obtener user agent desde la base de datos
-                    creator_settings = get_creator_setting()
-                    if creator_settings and creator_settings.get('user_agent'):
-                        user_agent = creator_settings.get('user_agent')
+                    # Clic en save_cookie_clipboard_click
+                    save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
+                    if save_cookie_coords:
+                        click_coordinates(save_cookie_coords)
+                        time.sleep(1)
                         
-                        # Crear contenido del archivo con formato correcto (separado por tabs)
-                        contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
+                        # Obtener cookie del portapapeles
+                        cookie_raw = get_clipboard_content()
                         
-                        # Agregar al archivo existente (modo append)
-                        try:
-                            with open(filepath, 'a', encoding='utf-8') as f:
-                                f.write(contenido + "\n")
-                            return True
-                        except Exception as e:
+                        # Validar que la cookie no esté vacía
+                        if not cookie_raw or len(cookie_raw.strip()) < 10:
+                            if intento < max_intentos:
+                                continue
+                            else:
+                                return False
+                        
+                        # Formatear cookie a una sola línea
+                        cookie = format_cookie_to_single_line(cookie_raw)
+                        
+                        # Validar que la cookie formateada sea válida
+                        if not cookie or len(cookie.strip()) < 10:
+                            if intento < max_intentos:
+                                continue
+                            else:
+                                return False
+                        
+                        # Verificar que la cookie no sea duplicada
+                        if _verificar_cookie_duplicada(filepath, cookie):
+                            if intento < max_intentos:
+                                print(f"⚠️ Cookie duplicada detectada - intento {intento + 1}/{max_intentos}")
+                                time.sleep(1)
+                                continue
+                            else:
+                                print("❌ Cookie duplicada después de todos los intentos")
+                                return False
+                        
+                        # Si llegamos aquí, la cookie es válida y única
+                        print("✅ Cookie única guardada")
+                        
+                        # Obtener user agent desde la base de datos
+                        creator_settings = get_creator_setting()
+                        if creator_settings and creator_settings.get('user_agent'):
+                            user_agent = creator_settings.get('user_agent')
+                            
+                            # Crear contenido del archivo con formato correcto (separado por tabs)
+                            contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
+                            
+                            # Agregar al archivo existente (modo append)
+                            try:
+                                with open(filepath, 'a', encoding='utf-8') as f:
+                                    f.write(contenido + "\n")
+                                return True
+                            except Exception as e:
+                                return False
+                        else:
                             return False
                     else:
-                        print("❌ No se encontró user agent en la base de datos")
                         return False
+                else:
+                    return False
+            
+            return False
         
         # Si no se encontró ninguna imagen, incrementar contador
         if not numero_found and not captcha_found and not exito_found:
@@ -545,94 +624,6 @@ def _inicializar_archivo_salida(total_emails):
         return None
 
 
-def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
-    """
-    Envía el archivo de resultados por correo electrónico
-    
-    Args:
-        filepath: Ruta del archivo a enviar
-        total_emails: Total de emails procesados
-        emails_exitosos: Número de emails exitosos
-    """
-    try:
-        from app.confirmabot.hostinger_actions import send_email_with_file
-        from app.database.database import get_creator_setting
-        import os
-        
-        # Obtener credenciales de correo desde la tabla emails
-        from app.database.database import get_all_emails, get_creator_setting
-        
-        emails_data = get_all_emails()
-        if not emails_data:
-            return False
-        
-        # Usar el primer email con credenciales de Hostinger
-        email_address = None
-        email_password = None
-        
-        for email_data in emails_data:
-            if email_data.get('email_hostinger') and email_data.get('password_hostinger'):
-                email_address = email_data['email_hostinger']
-                email_password = email_data['password_hostinger']
-                break
-        
-        if not email_address or not email_password:
-            return False
-        
-        # Verificar que el archivo existe
-        if not os.path.exists(filepath):
-            return False
-        
-        # Crear el asunto y cuerpo del correo
-        from datetime import datetime
-        fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
-        asunto = f"Reporte LinkedIn Creator - {fecha_hora}"
-        
-        cuerpo = f"""Hola,
-
-            El proceso de creación de cuentas LinkedIn ha finalizado.
-
-            📊 RESUMEN:
-            - Total de emails procesados: {total_emails}
-            - Cuentas creadas exitosamente: {emails_exitosos}
-            - Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
-
-            📎 Adjunto encontrarás el archivo con todos los detalles de las cuentas creadas.
-
-            Saludos,
-            ConfirmaBot
-        """
-        
-        # Obtener email de destino desde la configuración
-        settings = get_creator_setting()
-        email_destino = settings.get('notification_email') if settings else None
-        
-        # Si no hay email configurado, no enviar correo
-        if not email_destino:
-            return True  # Retornar True para no interrumpir el proceso principal
-        
-        print("📧 Enviando reporte por correo...")
-        
-        # Enviar el correo con el archivo adjunto
-        exito = send_email_with_file(
-            email_address=email_address,
-            password=email_password,
-            to_email=email_destino,
-            subject=asunto,
-            body=cuerpo,
-            attachment_path=filepath
-        )
-        
-        if exito:
-            print("✅ Reporte enviado exitosamente")
-            return True
-        else:
-            print("❌ No se pudo enviar el reporte")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Error inesperado al enviar correo: {e}")
-        return False
 
 
 def _verificar_hora_programada():
@@ -700,6 +691,124 @@ def _verificar_hora_programada():
         return True  # En caso de error, continuar inmediatamente
 
 
+def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
+    """
+    Envía el archivo de resultados por correo electrónico
+    
+    Args:
+        filepath: Ruta del archivo a enviar
+        total_emails: Total de emails procesados
+        emails_exitosos: Número de emails exitosos
+    """
+    try:
+        print("🔍 Iniciando proceso de envío de reporte por correo...")
+        
+        from app.confirmabot.hostinger_actions import send_email_with_file
+        from app.database.database import get_creator_setting
+        import os
+        
+        # Obtener credenciales de correo desde la tabla emails
+        print("📋 Obteniendo credenciales de correo desde la base de datos...")
+        from app.database.database import get_all_emails, get_creator_setting
+        
+        emails_data = get_all_emails()
+        if not emails_data:
+            print("❌ No se encontraron emails en la base de datos")
+            return False
+        
+        print(f"✅ Se encontraron {len(emails_data)} emails en la base de datos")
+        
+        # Usar el primer email con credenciales de Hostinger
+        email_address = None
+        email_password = None
+        
+        print("🔍 Buscando email con credenciales de Hostinger...")
+        for i, email_data in enumerate(emails_data):
+            if email_data.get('email_hostinger') and email_data.get('password_hostinger'):
+                email_address = email_data['email_hostinger']
+                email_password = email_data['password_hostinger']
+                print(f"✅ Credenciales encontradas en email #{i+1}: {email_address}")
+                break
+        
+        if not email_address or not email_password:
+            print("❌ No se encontraron credenciales de Hostinger válidas")
+            return False
+        
+        # Verificar que el archivo existe
+        print(f"📁 Verificando existencia del archivo: {filepath}")
+        if not os.path.exists(filepath):
+            print(f"❌ El archivo no existe: {filepath}")
+            return False
+        
+        # Obtener tamaño del archivo
+        file_size = os.path.getsize(filepath)
+        print(f"✅ Archivo encontrado - Tamaño: {file_size} bytes")
+        
+        # Crear el asunto y cuerpo del correo
+        print("📝 Preparando contenido del correo...")
+        from datetime import datetime
+        fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
+        asunto = f"Reporte LinkedIn Creator - {fecha_hora}"
+        
+        cuerpo = f"""Hola,
+
+            El proceso de creación de cuentas LinkedIn ha finalizado.
+
+            📊 RESUMEN:
+            - Total de emails procesados: {total_emails}
+            - Cuentas creadas exitosamente: {emails_exitosos}
+            - Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
+
+            📎 Adjunto encontrarás el archivo con todos los detalles de las cuentas creadas.
+
+            Saludos,
+            ConfirmaBot
+        """
+        
+        print(f"📧 Asunto del correo: {asunto}")
+        
+        # Obtener email de destino desde la configuración
+        print("🔍 Obteniendo email de destino desde configuración...")
+        settings = get_creator_setting()
+        email_destino = settings.get('notification_email') if settings else None
+        
+        # Si no hay email configurado, no enviar correo
+        if not email_destino:
+            print("⚠️ No hay email de destino configurado - saltando envío")
+            return True  # Retornar True para no interrumpir el proceso principal
+        
+        print(f"✅ Email de destino configurado: {email_destino}")
+        
+        print("📧 Iniciando envío del reporte por correo...")
+        print(f"   📤 Remitente: {email_address}")
+        print(f"   📥 Destinatario: {email_destino}")
+        print(f"   📎 Archivo adjunto: {os.path.basename(filepath)}")
+        
+        # Enviar el correo con el archivo adjunto
+        exito = send_email_with_file(
+            email_address=email_address,
+            password=email_password,
+            to_email=email_destino,
+            subject=asunto,
+            body=cuerpo,
+            attachment_path=filepath
+        )
+        
+        if exito:
+            print("✅ Reporte enviado exitosamente")
+            print(f"📊 Resumen enviado: {emails_exitosos}/{total_emails} cuentas creadas")
+            return True
+        else:
+            print("❌ No se pudo enviar el reporte")
+            print("🔍 Verifica las credenciales y la conexión a internet")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error inesperado al enviar correo: {e}")
+        print(f"🔍 Tipo de error: {type(e).__name__}")
+        return False
+
+
 def execute_creator():
     """
     Función principal del creator que ejecuta todas las acciones
@@ -754,7 +863,7 @@ def execute_creator():
         
         # Pausa entre emails (excepto en el último)
         if i < len(email_ids):
-            time.sleep(3)
+            time.sleep(1)
     
     # Finalizar proceso
     print(f"🎉 Proceso completado: {emails_exitosos}/{len(email_ids)} exitosos")
