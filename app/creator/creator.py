@@ -628,8 +628,6 @@ def _inicializar_archivo_salida(total_emails):
         return None
 
 
-
-
 def _verificar_hora_programada():
     """
     Verifica si hay una hora programada y espera hasta esa hora si es necesario.
@@ -709,14 +707,6 @@ def _verificar_hora_programada():
 
 
 def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
-    """
-    Envía el archivo de resultados por correo electrónico
-    
-    Args:
-        filepath: Ruta del archivo a enviar
-        total_emails: Total de emails procesados
-        emails_exitosos: Número de emails exitosos
-    """
     try:
         from app.confirmabot.hostinger_actions import send_email_with_file
         from app.database.database import get_creator_setting, get_all_emails
@@ -757,17 +747,17 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
         
         cuerpo = f"""Hola,
 
-El proceso de creación de cuentas LinkedIn ha finalizado.
+            El proceso de creación de cuentas LinkedIn ha finalizado.
 
-📊 RESUMEN:
-- Total de emails procesados: {total_emails}
-- Cuentas creadas exitosamente: {emails_exitosos}
-- Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
+            📊 RESUMEN:
+            - Total de emails procesados: {total_emails}
+            - Cuentas creadas exitosamente: {emails_exitosos}
+            - Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
 
-📎 Adjunto encontrarás el archivo con todos los detalles de las cuentas creadas.
+            📎 Adjunto encontrarás el archivo con todas de las cuentas creadas.
 
-Saludos,
-ConfirmaBot
+            Saludos,
+            ConfirmaBot
         """
         
         # Enviar correo
@@ -839,7 +829,7 @@ def _ejecutar_proceso_creator():
     
     if not email_ids:
         print("❌ No hay emails disponibles para procesar")
-        return
+        return False  # Retornar False para indicar que no hay más emails
     
     print(f"🔄 Procesando {len(email_ids)} emails")
     
@@ -882,6 +872,8 @@ def _ejecutar_proceso_creator():
     print(f"🎉 Completado: {emails_exitosos}/{len(email_ids)} exitosos")
     _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)
     _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos)
+    
+    return True  # Retornar True para indicar que se procesaron emails
 
 
 def _ejecutar_creator_en_ciclo():
@@ -912,11 +904,10 @@ def _ejecutar_creator_en_ciclo():
                 break
             
             # Ejecutar el proceso de creación
-            _ejecutar_proceso_creator()
+            resultado = _ejecutar_proceso_creator()
             
-            # Verificar si quedan emails después del ciclo
-            emails_restantes = get_creator_email_count()
-            if emails_restantes == 0:
+            # Si no hay más emails disponibles, detener el ciclo
+            if resultado == False:
                 print("🎉 ¡Todos los emails procesados!")
                 break
             
