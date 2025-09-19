@@ -90,6 +90,8 @@ def observador_unificado(coordinates, email, password, filepath):
     numero_count = 0
     captcha_count = 0
     ciclos_sin_imagen = 0
+    # Contador global para cualquier obstáculo (número o captcha)
+    obstaculo_count = 0
     
     while True:
         # Verificar si ha pasado el timeout
@@ -109,12 +111,13 @@ def observador_unificado(coordinates, email, password, filepath):
         
         if numero_found:
             numero_count += 1
+            obstaculo_count += 1
             ciclos_sin_imagen = 0  # Resetear contador
             print(f"✅ Número encontrado (vez #{numero_count}) - cerrando")
             
-            if numero_count >= 2:
-                print("🔄 Segundo número detectado - cerrando ventana directamente")
-                # Desactivar proxy antes de cerrar por segundo número
+            if obstaculo_count >= 2:
+                print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+                # Desactivar proxy antes de cerrar por segundo obstáculo
                 _desactivar_proxy()
                 close_window_coords = coordinates.get("close_window")
                 if close_window_coords:
@@ -138,12 +141,13 @@ def observador_unificado(coordinates, email, password, filepath):
         
         if captcha_found:
             captcha_count += 1
+            obstaculo_count += 1
             ciclos_sin_imagen = 0  # Resetear contador
             print(f"✅ Captcha encontrado (vez #{captcha_count}) - cerrando")
             
-            if captcha_count >= 2:
-                print("🔄 Segundo captcha detectado - cerrando ventana directamente")
-                # Desactivar proxy antes de cerrar por segundo captcha
+            if obstaculo_count >= 2:
+                print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+                # Desactivar proxy antes de cerrar por segundo obstáculo
                 _desactivar_proxy()
                 close_window_coords = coordinates.get("close_window")
                 if close_window_coords:
@@ -640,11 +644,24 @@ def _verificar_hora_programada():
     import re
     
     settings = get_creator_setting()
-    if not settings or not settings.get('scheduled_time') or not settings.get('timezone'):
+    if not settings:
+        print("⚡ No hay configuración de tiempo, ejecutando inmediatamente")
+        return True  # No hay configuración, continuar inmediatamente
+    
+    # Solo verificar hora programada si el tipo de configuración es 'scheduled'
+    if settings.get('time_config_type') != 'scheduled':
+        print("⚡ Configuración de ciclo de tiempo, ejecutando inmediatamente")
+        return True  # No es configuración programada, continuar inmediatamente
+    
+    # Verificar si hay hora programada configurada
+    if not settings.get('scheduled_time') or not settings.get('timezone'):
+        print("⚡ No hay hora programada configurada, ejecutando inmediatamente")
         return True  # No hay hora programada, continuar inmediatamente
     
     scheduled_time = settings.get('scheduled_time')
     timezone_str = settings.get('timezone')
+    
+    print(f"🕐 Hora programada configurada: {scheduled_time} ({timezone_str})")
     
     try:
         # Extraer el offset GMT del string del país
@@ -701,90 +718,59 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
         emails_exitosos: Número de emails exitosos
     """
     try:
-        print("🔍 Iniciando proceso de envío de reporte por correo...")
-        
         from app.confirmabot.hostinger_actions import send_email_with_file
-        from app.database.database import get_creator_setting
+        from app.database.database import get_creator_setting, get_all_emails
         import os
+        from datetime import datetime
         
-        # Obtener credenciales de correo desde la tabla emails
-        print("📋 Obteniendo credenciales de correo desde la base de datos...")
-        from app.database.database import get_all_emails, get_creator_setting
-        
+        # Obtener credenciales de correo
         emails_data = get_all_emails()
         if not emails_data:
-            print("❌ No se encontraron emails en la base de datos")
             return False
         
-        print(f"✅ Se encontraron {len(emails_data)} emails en la base de datos")
-        
-        # Usar el primer email con credenciales de Hostinger
+        # Buscar email con credenciales de Hostinger
         email_address = None
         email_password = None
-        
-        print("🔍 Buscando email con credenciales de Hostinger...")
-        for i, email_data in enumerate(emails_data):
+        for email_data in emails_data:
             if email_data.get('email_hostinger') and email_data.get('password_hostinger'):
                 email_address = email_data['email_hostinger']
                 email_password = email_data['password_hostinger']
-                print(f"✅ Credenciales encontradas en email #{i+1}: {email_address}")
                 break
         
         if not email_address or not email_password:
-            print("❌ No se encontraron credenciales de Hostinger válidas")
             return False
         
-        # Verificar que el archivo existe
-        print(f"📁 Verificando existencia del archivo: {filepath}")
+        # Verificar archivo
         if not os.path.exists(filepath):
-            print(f"❌ El archivo no existe: {filepath}")
             return False
         
-        # Obtener tamaño del archivo
-        file_size = os.path.getsize(filepath)
-        print(f"✅ Archivo encontrado - Tamaño: {file_size} bytes")
+        # Obtener email de destino
+        settings = get_creator_setting()
+        email_destino = settings.get('notification_email') if settings else None
         
-        # Crear el asunto y cuerpo del correo
-        print("📝 Preparando contenido del correo...")
-        from datetime import datetime
+        if not email_destino:
+            return True  # No hay email configurado, continuar
+        
+        # Preparar correo
         fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
         asunto = f"Reporte LinkedIn Creator - {fecha_hora}"
         
         cuerpo = f"""Hola,
 
-            El proceso de creación de cuentas LinkedIn ha finalizado.
+El proceso de creación de cuentas LinkedIn ha finalizado.
 
-            📊 RESUMEN:
-            - Total de emails procesados: {total_emails}
-            - Cuentas creadas exitosamente: {emails_exitosos}
-            - Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
+📊 RESUMEN:
+- Total de emails procesados: {total_emails}
+- Cuentas creadas exitosamente: {emails_exitosos}
+- Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
 
-            📎 Adjunto encontrarás el archivo con todos los detalles de las cuentas creadas.
+📎 Adjunto encontrarás el archivo con todos los detalles de las cuentas creadas.
 
-            Saludos,
-            ConfirmaBot
+Saludos,
+ConfirmaBot
         """
         
-        print(f"📧 Asunto del correo: {asunto}")
-        
-        # Obtener email de destino desde la configuración
-        print("🔍 Obteniendo email de destino desde configuración...")
-        settings = get_creator_setting()
-        email_destino = settings.get('notification_email') if settings else None
-        
-        # Si no hay email configurado, no enviar correo
-        if not email_destino:
-            print("⚠️ No hay email de destino configurado - saltando envío")
-            return True  # Retornar True para no interrumpir el proceso principal
-        
-        print(f"✅ Email de destino configurado: {email_destino}")
-        
-        print("📧 Iniciando envío del reporte por correo...")
-        print(f"   📤 Remitente: {email_address}")
-        print(f"   📥 Destinatario: {email_destino}")
-        print(f"   📎 Archivo adjunto: {os.path.basename(filepath)}")
-        
-        # Enviar el correo con el archivo adjunto
+        # Enviar correo
         exito = send_email_with_file(
             email_address=email_address,
             password=email_password,
@@ -795,17 +781,11 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
         )
         
         if exito:
-            print("✅ Reporte enviado exitosamente")
-            print(f"📊 Resumen enviado: {emails_exitosos}/{total_emails} cuentas creadas")
-            return True
-        else:
-            print("❌ No se pudo enviar el reporte")
-            print("🔍 Verifica las credenciales y la conexión a internet")
-            return False
+            print(f"📧 Reporte enviado: {emails_exitosos}/{total_emails} cuentas")
+        
+        return exito
             
     except Exception as e:
-        print(f"❌ Error inesperado al enviar correo: {e}")
-        print(f"🔍 Tipo de error: {type(e).__name__}")
         return False
 
 
@@ -813,21 +793,52 @@ def execute_creator():
     """
     Función principal del creator que ejecuta todas las acciones
     """
-    from app.database.database import get_creator_coordinates, get_all_creator_email_ids
+    from app.database.database import get_creator_coordinates, get_all_creator_email_ids, get_creator_setting
     import time
     
     # Variable global para almacenar el password usado
     global _password_usado
     _password_usado = ""
     
-    # Verificar hora programada
-    if not _verificar_hora_programada():
+    # Obtener configuración para determinar el tipo de ejecución
+    settings = get_creator_setting()
+    if not settings:
+        print("❌ No se encontró configuración del creator")
         return
+    
+    time_config_type = settings.get('time_config_type', 'scheduled')
+    
+    if time_config_type == 'scheduled':
+        # Verificar hora programada
+        if not _verificar_hora_programada():
+            return
+        # Ejecutar una sola vez
+        _ejecutar_proceso_creator()
+    elif time_config_type == 'cycle':
+        # Ejecutar en ciclo
+        _ejecutar_creator_en_ciclo()
 
-    # Obtener emails de la base de datos
-    email_ids = get_all_creator_email_ids()
+
+def _ejecutar_proceso_creator():
+    """
+    Ejecuta el proceso de creación de cuentas una sola vez
+    """
+    from app.database.database import get_creator_coordinates, get_all_available_creator_emails, get_next_creator_emails, get_creator_setting, update_creator_email_progress, get_creator_email_count
+    import time
+    
+    # Obtener configuración para determinar cuántas cuentas crear
+    settings = get_creator_setting()
+    time_config_type = settings.get('time_config_type', 'scheduled')
+    
+    # Obtener emails según el tipo de configuración
+    if time_config_type == 'cycle':
+        accounts_per_cycle = settings.get('accounts_per_cycle', 1)
+        email_ids = get_next_creator_emails(accounts_per_cycle)
+    else:
+        email_ids = get_all_available_creator_emails()
+    
     if not email_ids:
-        print("❌ No se encontraron emails en la base de datos")
+        print("❌ No hay emails disponibles para procesar")
         return
     
     print(f"🔄 Procesando {len(email_ids)} emails")
@@ -849,27 +860,74 @@ def execute_creator():
     for i, email_id in enumerate(email_ids, 1):
         # Ejecutar modo avión
         _ejecutar_modo_avion()
-        print(f"📧 Email {i}/{len(email_ids)}")
+        print(f"📧 Procesando email {i}/{len(email_ids)}")
         
         # Procesar email individual
         exito = procesar_email_individual(email_id, coordinates, filepath, i, len(email_ids))
         
         if exito:
             emails_exitosos += 1
-            print(f"✅ Completado")
-
+            print(f"✅ Email {i} completado")
         else:
-            print(f"❌ Falló")
+            print(f"❌ Email {i} falló")
+        
+        # Actualizar progreso después de cada email
+        update_creator_email_progress(email_id, emails_exitosos)
         
         # Pausa entre emails (excepto en el último)
         if i < len(email_ids):
             time.sleep(1)
     
     # Finalizar proceso
-    print(f"🎉 Proceso completado: {emails_exitosos}/{len(email_ids)} exitosos")
+    print(f"🎉 Completado: {emails_exitosos}/{len(email_ids)} exitosos")
     _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)
-    
-    # Enviar reporte por correo electrónico
     _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos)
+
+
+def _ejecutar_creator_en_ciclo():
+    """
+    Ejecuta el proceso de creación de cuentas en ciclo continuo
+    """
+    from app.database.database import get_creator_setting, get_creator_email_count
+    import time
+    import datetime
     
-    print(f"###########################################################")
+    settings = get_creator_setting()
+    cycle_minutes = settings.get('cycle_time_minutes', 60)
+    accounts_per_cycle = settings.get('accounts_per_cycle', 1)
+    
+    print(f"🔄 Ciclo cada {cycle_minutes}min - {accounts_per_cycle} cuentas por ciclo")
+    print("💡 Ctrl+C para detener")
+    
+    ciclo_numero = 1
+    
+    try:
+        while True:
+            print(f"\n🔄 CICLO #{ciclo_numero}")
+            
+            # Verificar si hay emails disponibles
+            total_emails = get_creator_email_count()
+            if total_emails == 0:
+                print("❌ No hay emails en la base de datos")
+                break
+            
+            # Ejecutar el proceso de creación
+            _ejecutar_proceso_creator()
+            
+            # Verificar si quedan emails después del ciclo
+            emails_restantes = get_creator_email_count()
+            if emails_restantes == 0:
+                print("🎉 ¡Todos los emails procesados!")
+                break
+            
+            print(f"⏰ Esperando {cycle_minutes}min...")
+            
+            # Esperar el tiempo del ciclo
+            time.sleep(cycle_minutes * 60)
+            
+            ciclo_numero += 1
+            
+    except KeyboardInterrupt:
+        print(f"\n🛑 Ciclo detenido - {ciclo_numero - 1} ciclos completados")
+    except Exception as e:
+        print(f"\n❌ Error: {e}")

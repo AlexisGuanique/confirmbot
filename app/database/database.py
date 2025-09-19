@@ -156,7 +156,10 @@ def create_database():
                 notification_email TEXT,
                 google_sheets_enabled INTEGER DEFAULT 0,
                 google_sheets_name TEXT,
-                google_credentials_file TEXT
+                google_credentials_file TEXT,
+                cycle_time_minutes INTEGER DEFAULT 60,
+                time_config_type TEXT DEFAULT 'scheduled',
+                accounts_per_cycle INTEGER DEFAULT 1
             )
             '''
         )
@@ -203,6 +206,27 @@ def create_database():
         except sqlite3.OperationalError:
             # La columna ya existe, no hacer nada
             pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN cycle_time_minutes INTEGER DEFAULT 60")
+            print("✅ Columna cycle_time_minutes agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN time_config_type TEXT DEFAULT 'scheduled'")
+            print("✅ Columna time_config_type agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN accounts_per_cycle INTEGER DEFAULT 1")
+            print("✅ Columna accounts_per_cycle agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
 
         # 🔹 Tabla para emails del creator
         cursor.execute(
@@ -211,6 +235,18 @@ def create_database():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
+
+        # 🔹 Tabla para rastrear el progreso de emails del creator
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS creator_email_progress (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                last_used_email_id INTEGER DEFAULT 0,
+                total_emails_used INTEGER DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             '''
         )
@@ -697,7 +733,7 @@ def get_creator_coordinates(*field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None):
+def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=60, time_config_type='scheduled', accounts_per_cycle=1):
     """
     Guarda o actualiza la configuración del creator
     
@@ -707,6 +743,9 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         scheduled_time (str): Hora programada en formato HH:MM (opcional)
         timezone (str): Zona horaria (opcional)
         notification_email (str): Email para recibir notificaciones (opcional)
+        cycle_time_minutes (int): Tiempo en minutos para el ciclo (default: 60)
+        time_config_type (str): Tipo de configuración ('scheduled' o 'cycle')
+        accounts_per_cycle (int): Cantidad de cuentas a crear por ciclo (default: 1)
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -717,13 +756,13 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         
         # Insertar o actualizar (UPSERT)
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email)
-            VALUES (1, ?, ?, ?, ?, ?)
-        ''', (user_agent, accounts_to_create, scheduled_time, timezone, notification_email))
+            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}")
+        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}")
         return True
         
     except Exception as e:
@@ -736,12 +775,12 @@ def get_creator_setting():
     Obtiene la configuración del creator
     
     Returns:
-        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone y notification_email, o None si no existe
+        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type y accounts_per_cycle, o None si no existe
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email FROM creator_setting WHERE id = 1")
+        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle FROM creator_setting WHERE id = 1")
         row = cursor.fetchone()
         conn.close()
         
@@ -751,7 +790,10 @@ def get_creator_setting():
                 'accounts_to_create': row[1],
                 'scheduled_time': row[2],
                 'timezone': row[3],
-                'notification_email': row[4]
+                'notification_email': row[4],
+                'cycle_time_minutes': row[5] if row[5] is not None else 60,
+                'time_config_type': row[6] if row[6] is not None else 'scheduled',
+                'accounts_per_cycle': row[7] if row[7] is not None else 1
             }
         return None
         
@@ -1028,3 +1070,188 @@ def load_emails_from_file(file_path):
             'duplicate_emails': 0,
             'invalid_emails': 0
         }
+
+
+#! FUNCIONES DE PROGRESO DE EMAILS DEL CREATOR
+def get_creator_email_progress():
+    """
+    Obtiene el progreso actual de emails del creator
+    
+    Returns:
+        dict: Diccionario con last_used_email_id, total_emails_used y last_updated, o None si no existe
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT last_used_email_id, total_emails_used, last_updated FROM creator_email_progress WHERE id = 1")
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'last_used_email_id': row[0],
+                'total_emails_used': row[1],
+                'last_updated': row[2]
+            }
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error al obtener progreso de emails: {e}")
+        return None
+
+
+def update_creator_email_progress(last_used_email_id, total_emails_used):
+    """
+    Actualiza el progreso de emails del creator
+    
+    Args:
+        last_used_email_id (int): ID del último email usado
+        total_emails_used (int): Total de emails usados
+    
+    Returns:
+        bool: True si se actualizó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Insertar o actualizar (UPSERT)
+        cursor.execute('''
+            INSERT OR REPLACE INTO creator_email_progress (id, last_used_email_id, total_emails_used, last_updated)
+            VALUES (1, ?, ?, CURRENT_TIMESTAMP)
+        ''', (last_used_email_id, total_emails_used))
+        
+        conn.commit()
+        conn.close()
+        # Progreso actualizado silenciosamente
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al actualizar progreso de emails: {e}")
+        return False
+
+
+def get_creator_emails_with_offset(limit, offset=0):
+    """
+    Obtiene emails del creator con offset para avanzar por la lista
+    
+    Args:
+        limit (int): Cantidad de emails a obtener
+        offset (int): Desplazamiento desde el inicio (default: 0)
+    
+    Returns:
+        list: Lista de IDs de emails, o lista vacía si no hay emails
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM creator_email ORDER BY created_at ASC LIMIT ? OFFSET ?", (limit, offset))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        ids = [row[0] for row in rows]
+        print(f"📧 Obtenidos {len(ids)} emails con offset {offset}")
+        return ids
+        
+    except Exception as e:
+        print(f"❌ Error al obtener emails con offset: {e}")
+        return []
+
+
+def get_next_creator_emails(limit):
+    """
+    Obtiene los siguientes N emails del creator basándose en el progreso actual
+    
+    Args:
+        limit (int): Cantidad de emails a obtener
+    
+    Returns:
+        list: Lista de IDs de emails, o lista vacía si no hay emails
+    """
+    try:
+        # Obtener progreso actual
+        progress = get_creator_email_progress()
+        if not progress:
+            # Si no hay progreso, empezar desde el principio
+            offset = 0
+        else:
+            # Usar el último email usado como offset
+            offset = progress['last_used_email_id']
+        
+        # Obtener emails con offset
+        email_ids = get_creator_emails_with_offset(limit, offset)
+        
+        # NO reiniciar automáticamente - si no hay más emails, retornar lista vacía
+        if not email_ids:
+            print("📧 No hay más emails disponibles para procesar")
+        
+        return email_ids
+        
+    except Exception as e:
+        print(f"❌ Error al obtener siguientes emails: {e}")
+        return []
+
+
+def get_all_available_creator_emails():
+    """
+    Obtiene todos los emails disponibles del creator basándose en el progreso actual
+    
+    Returns:
+        list: Lista de IDs de emails, o lista vacía si no hay emails
+    """
+    try:
+        # Obtener progreso actual
+        progress = get_creator_email_progress()
+        if not progress:
+            # Si no hay progreso, empezar desde el principio
+            offset = 0
+        else:
+            # Usar el último email usado como offset
+            offset = progress['last_used_email_id']
+        
+        # Obtener todos los emails restantes con offset
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM creator_email ORDER BY created_at ASC LIMIT -1 OFFSET ?", (offset,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        email_ids = [row[0] for row in rows]
+        
+        if not email_ids:
+            print("📧 No hay más emails disponibles para procesar")
+        else:
+            print(f"📧 Obtenidos {len(email_ids)} emails disponibles para procesar")
+        
+        return email_ids
+        
+    except Exception as e:
+        print(f"❌ Error al obtener emails disponibles: {e}")
+        return []
+
+
+def reset_creator_email_progress():
+    """
+    Reinicia el progreso de emails del creator
+    
+    Returns:
+        bool: True si se reinició correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Reiniciar progreso
+        cursor.execute('''
+            INSERT OR REPLACE INTO creator_email_progress (id, last_used_email_id, total_emails_used, last_updated)
+            VALUES (1, 0, 0, CURRENT_TIMESTAMP)
+        ''')
+        
+        conn.commit()
+        conn.close()
+        print("✅ Progreso de emails reiniciado")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al reiniciar progreso de emails: {e}")
+        return False

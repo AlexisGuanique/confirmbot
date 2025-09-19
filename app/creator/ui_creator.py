@@ -105,185 +105,30 @@ def create_new_window(parent_root):
     if current_settings and current_settings.get('notification_email'):
         notification_email_entry.insert(0, current_settings['notification_email'])
     
-    # ================= CONFIGURACIÓN DE HORA PROGRAMADA =================
+    # ================= CONFIGURACIÓN DE TIEMPO =================
     
-    # Lista de países con sus zonas horarias
-    countries = [
-        "Argentina (GMT-3)",
-        "Brasil (GMT-3)",
-        "Chile (GMT-3)",
-        "Uruguay (GMT-3)",
-        "Paraguay (GMT-3)",
-        "Estados Unidos - Este (GMT-5)",
-        "Estados Unidos - Central (GMT-6)",
-        "Estados Unidos - Montaña (GMT-7)",
-        "Estados Unidos - Pacífico (GMT-8)",
-        "México (GMT-6)",
-        "Colombia (GMT-5)",
-        "Perú (GMT-5)",
-        "Venezuela (GMT-4)",
-        "Ecuador (GMT-5)",
-        "Bolivia (GMT-4)",
-        "España (GMT+1)",
-        "Francia (GMT+1)",
-        "Alemania (GMT+1)",
-        "Italia (GMT+1)",
-        "Reino Unido (GMT+0)",
-        "Portugal (GMT+0)",
-        "Rusia - Moscú (GMT+3)",
-        "China (GMT+8)",
-        "Japón (GMT+9)",
-        "India (GMT+5:30)",
-        "Australia - Sydney (GMT+10)",
-        "Nueva Zelanda (GMT+12)",
-        "Canadá - Este (GMT-5)",
-        "Canadá - Central (GMT-6)",
-        "Canadá - Montaña (GMT-7)",
-        "Canadá - Pacífico (GMT-8)"
-    ]
+    def open_time_config_window():
+        """Abre la ventana de configuración de tiempo"""
+        create_time_config_window(new_window)
     
-    # Detectar país automáticamente
-    def get_user_country():
-        """Detecta automáticamente el país del usuario basado en la zona horaria"""
-        try:
-            # Obtener la zona horaria local del sistema
-            local_tz = datetime.datetime.now().astimezone().tzinfo
-            
-            # Convertir a formato legible
-            if hasattr(local_tz, 'zone'):
-                # Para zonas horarias con nombre (ej: 'America/Argentina/Buenos_Aires')
-                zone_name = local_tz.zone
-                try:
-                    tz = pytz.timezone(zone_name)
-                    utc_offset = tz.utcoffset(datetime.datetime.now())
-                    offset_hours = int(utc_offset.total_seconds() / 3600)
-                    
-                    # Mapear offset a países conocidos
-                    if offset_hours == -3:
-                        # Verificar si es específicamente Argentina
-                        if 'Argentina' in zone_name or 'Buenos_Aires' in zone_name:
-                            return "Argentina (GMT-3)"
-                        else:
-                            return "Brasil (GMT-3)"  # Fallback para GMT-3
-                    elif offset_hours == -5:
-                        return "Estados Unidos - Este (GMT-5)"
-                    elif offset_hours == -6:
-                        return "Estados Unidos - Central (GMT-6)"
-                    elif offset_hours == -7:
-                        return "Estados Unidos - Montaña (GMT-7)"
-                    elif offset_hours == -8:
-                        return "Estados Unidos - Pacífico (GMT-8)"
-                    elif offset_hours == 0:
-                        return "Reino Unido (GMT+0)"
-                    elif offset_hours == 1:
-                        return "España (GMT+1)"
-                    elif offset_hours == 3:
-                        return "Rusia - Moscú (GMT+3)"
-                    elif offset_hours == 8:
-                        return "China (GMT+8)"
-                    elif offset_hours == 9:
-                        return "Japón (GMT+9)"
-                    else:
-                        # Buscar en nuestra lista de países por offset
-                        for country in countries:
-                            if f"GMT{offset_hours:+d}" in country:
-                                return country
-                        
-                        # Si no se encuentra, usar Argentina como default
-                        return "Argentina (GMT-3)"
-                    
-                except:
-                    # Fallback si no se puede determinar
-                    return "Argentina (GMT-3)"
-            else:
-                # Fallback para sistemas sin información de zona horaria
-                return "Argentina (GMT-3)"
-                
-        except Exception as e:
-            print(f"Error detectando país: {e}")
-            return "Argentina (GMT-3)"
-    
-    # Función para eliminar hora programada
-    def clear_schedule():
-        time_entry.delete(0, 'end')
-        country_dropdown.set(detected_country)  # Restaurar país detectado
-        if clear_scheduled_time():
-            messagebox.showinfo("Éxito", "✅ Hora programada eliminada correctamente")
-        else:
-            messagebox.showerror("Error", "❌ No se pudo eliminar la hora programada")
-    
-    # Input específico para hora con formato HH:MM
-    time_entry = ctk.CTkEntry(
+    # Botón para abrir configuración de tiempo
+    time_config_button = ctk.CTkButton(
         inputs_frame,
-        placeholder_text="HH:MM",
-        font=("Arial", 11),
-        height=35,
-        width=80
-    )
-    time_entry.pack(side="left", padx=(0, 10), pady=(5, 15))
-    
-    # Función para validar formato de hora
-    def validate_time_format(event=None):
-        """Valida que el formato de hora sea correcto (HH:MM)"""
-        value = time_entry.get()
-        if value:
-            # Permitir solo números y dos puntos
-            if not all(c.isdigit() or c == ':' for c in value):
-                time_entry.delete(len(value)-1, 'end')
-                return
-            
-            # Limitar a 5 caracteres máximo (HH:MM)
-            if len(value) > 5:
-                time_entry.delete(5, 'end')
-                return
-            
-            # Auto-insertar dos puntos después de 2 dígitos
-            if len(value) == 2 and ':' not in value:
-                time_entry.insert(2, ':')
-    
-    # Bind para validar formato mientras se escribe
-    time_entry.bind('<KeyRelease>', validate_time_format)
-    
-    # Selector de país (más pequeño)
-    country_dropdown = ctk.CTkComboBox(
-        inputs_frame,
-        values=countries,
-        font=("Arial", 11),
-        height=35,
-        width=200
-    )
-    country_dropdown.pack(side="left", padx=(0, 10), pady=(5, 15))
-    
-    # Detectar y establecer país automáticamente
-    detected_country = get_user_country()
-    country_dropdown.set(detected_country)
-    
-    # Insertar valores actuales si existen
-    if current_settings:
-        if current_settings.get('scheduled_time'):
-            time_entry.insert(0, current_settings.get('scheduled_time'))
-        if current_settings.get('timezone'):
-            country_dropdown.set(current_settings.get('timezone'))
-    
-    # Botón para eliminar hora programada (más pequeño)
-    clear_schedule_button = ctk.CTkButton(
-        inputs_frame,
-        text="🗑️ Eliminar Hora",
-        command=clear_schedule,
-        fg_color="#dc3545",
+        text="⏰ Configurar Tiempo",
+        command=open_time_config_window,
+        fg_color="#007bff",
         text_color="white",
-        font=("Arial", 10),
+        font=("Arial", 11),
         height=35,
-        width=120
+        width=150
     )
-    clear_schedule_button.pack(side="left", padx=(0, 10), pady=(5, 15))
+    time_config_button.pack(side="left", padx=(0, 10), pady=(5, 15))
+    
     
     # Función para guardar configuración completa
     def save_creator_settings():
         user_agent = user_agent_entry.get().strip()
         notification_email = notification_email_entry.get().strip()
-        scheduled_time = time_entry.get().strip()
-        timezone = country_dropdown.get().strip()
         
         if not user_agent:
             messagebox.showwarning("Advertencia", "Por favor ingresa un User Agent válido.")
@@ -297,23 +142,24 @@ def create_new_window(parent_root):
                 messagebox.showwarning("Advertencia", "Por favor ingresa un email válido para las notificaciones.")
                 return
         
-        # Validar hora si se proporciona
-        if scheduled_time:
-            import re
-            if not re.match(r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$', scheduled_time):
-                messagebox.showwarning("Advertencia", "Por favor ingresa una hora válida en formato HH:MM (ej: 14:30).")
-                return
-            
-            if not timezone:
-                messagebox.showwarning("Advertencia", "Si especificas una hora, debes seleccionar una zona horaria.")
-                return
+        # Obtener configuración actual para preservar configuración de tiempo
+        current_settings = get_creator_setting()
         
-        if save_creator_setting(user_agent, 1, scheduled_time if scheduled_time else None, timezone if timezone else None, notification_email if notification_email else None):
+        # Guardar configuración (preservar configuración de tiempo existente)
+        if save_creator_setting(
+            user_agent=user_agent, 
+            accounts_to_create=1, 
+            scheduled_time=current_settings.get('scheduled_time') if current_settings else None,
+            timezone=current_settings.get('timezone') if current_settings else None,
+            notification_email=notification_email if notification_email else None,
+            cycle_time_minutes=current_settings.get('cycle_time_minutes') if current_settings else 60,
+            time_config_type=current_settings.get('time_config_type') if current_settings else 'scheduled',
+            accounts_per_cycle=current_settings.get('accounts_per_cycle') if current_settings else 1
+        ):
             success_msg = f"✅ Configuración guardada correctamente.\n\nUser Agent: {user_agent}"
             if notification_email:
                 success_msg += f"\nEmail de notificación: {notification_email}"
-            if scheduled_time and timezone:
-                success_msg += f"\nHora programada: {scheduled_time}\nZona horaria: {timezone}"
+            success_msg += f"\n\n💡 Para configurar el tiempo de ejecución, usa el botón '⏰ Configurar Tiempo'"
             messagebox.showinfo("Éxito", success_msg)
         else:
             messagebox.showerror("Error", "❌ No se pudo guardar la configuración.")
@@ -398,7 +244,7 @@ def create_new_window(parent_root):
     
     # Función para eliminar todos los emails
     def delete_all_emails():
-        from app.database.database import delete_all_creator_emails
+        from app.database.database import delete_all_creator_emails, reset_creator_email_progress
         
         result = messagebox.askyesno(
             "Confirmar Eliminación",
@@ -407,7 +253,9 @@ def create_new_window(parent_root):
         
         if result:
             if delete_all_creator_emails():
-                messagebox.showinfo("Éxito", "✅ Todos los emails han sido eliminados.")
+                # Reiniciar el progreso de emails
+                reset_creator_email_progress()
+                messagebox.showinfo("Éxito", "✅ Todos los emails han sido eliminados y el progreso reiniciado.")
                 # Actualizar el contador
                 emails_info_label.configure(text=f"📊 Emails actuales en la base de datos: {get_creator_email_count()}")
             else:
@@ -442,6 +290,34 @@ def create_new_window(parent_root):
         width=250
     )
     delete_emails_button.pack(side="left", padx=(10, 0))
+    
+    # Función para reiniciar progreso
+    def reset_email_progress():
+        from app.database.database import reset_creator_email_progress
+        
+        result = messagebox.askyesno(
+            "Confirmar Reinicio",
+            "¿Estás seguro de que quieres reiniciar el progreso de emails?\n\nEsto hará que el sistema vuelva a empezar desde el primer email en el siguiente ciclo."
+        )
+        
+        if result:
+            if reset_creator_email_progress():
+                messagebox.showinfo("Éxito", "✅ Progreso de emails reiniciado correctamente.")
+            else:
+                messagebox.showerror("Error", "❌ No se pudo reiniciar el progreso.")
+    
+    # Botón para reiniciar progreso
+    reset_progress_button = ctk.CTkButton(
+        buttons_frame,
+        text="🔄 Reiniciar Progreso",
+        command=reset_email_progress,
+        fg_color="#ffc107",
+        text_color="black",
+        font=("Arial", 12, "bold"),
+        height=35,
+        width=200
+    )
+    reset_progress_button.pack(side="left", padx=(10, 0))
     
     # Crear frame principal para la tabla de coordenadas
     main_frame = ctk.CTkFrame(main_scroll_frame, fg_color="transparent")
@@ -790,3 +666,465 @@ def create_new_window(parent_root):
             row_frame.grid_columnconfigure(j, weight=1)
     
     return new_window
+
+
+def create_time_config_window(parent_root):
+    """
+    Crea una nueva ventana para configurar el tiempo (hora programada o ciclo)
+    """
+    import customtkinter as ctk
+    from tkinter import messagebox
+    import datetime
+    import pytz
+    from app.database.database import get_creator_setting, save_creator_setting, clear_scheduled_time
+    
+    # Crear la nueva ventana
+    time_window = ctk.CTkToplevel(parent_root)
+    time_window.title("Configuración de Tiempo")
+    time_window.geometry("600x500")
+    time_window.configure(fg_color="#FFFFFF")
+    
+    # Centrar la ventana y hacerla modal
+    time_window.transient(parent_root)
+    time_window.grab_set()
+    
+    # Crear frame principal con scroll
+    main_scroll_frame = ctk.CTkScrollableFrame(time_window, fg_color="transparent")
+    main_scroll_frame.pack(fill="both", expand=True, padx=20, pady=20)
+    
+    # Crear frame principal dentro del scroll
+    main_frame = ctk.CTkFrame(main_scroll_frame, fg_color="transparent")
+    main_frame.pack(fill="both", expand=True)
+    
+    # Título de la ventana
+    title_label = ctk.CTkLabel(
+        main_frame,
+        text="⏰ Configuración de Tiempo",
+        font=("Arial", 18, "bold"),
+        text_color="black"
+    )
+    title_label.pack(pady=(0, 30))
+    
+    # Obtener configuración actual
+    current_settings = get_creator_setting()
+    if not current_settings:
+        current_settings = {
+            'time_config_type': 'scheduled',
+            'scheduled_time': '',
+            'timezone': 'Argentina (GMT-3)',
+            'cycle_time_minutes': 60,
+            'accounts_per_cycle': 1
+        }
+    
+    # Debug: mostrar configuración cargada
+    print(f"🔍 Configuración cargada en ventana de tiempo:")
+    print(f"   - Tipo: {current_settings.get('time_config_type')}")
+    print(f"   - Hora programada: {current_settings.get('scheduled_time')}")
+    print(f"   - Zona horaria: {current_settings.get('timezone')}")
+    print(f"   - Ciclo minutos: {current_settings.get('cycle_time_minutes')}")
+    print(f"   - Cuentas por ciclo: {current_settings.get('accounts_per_cycle')}")
+    
+    # ================= SELECCIÓN DE TIPO DE CONFIGURACIÓN =================
+    
+    config_type_frame = ctk.CTkFrame(main_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    config_type_frame.pack(fill="x", pady=(0, 20))
+    
+    config_type_label = ctk.CTkLabel(
+        config_type_frame,
+        text="📋 Tipo de Configuración",
+        font=("Arial", 14, "bold"),
+        text_color="black"
+    )
+    config_type_label.pack(pady=(15, 10))
+    
+    # Radio buttons para seleccionar tipo
+    config_type_var = ctk.StringVar(value=current_settings.get('time_config_type', 'scheduled'))
+    
+    scheduled_radio = ctk.CTkRadioButton(
+        config_type_frame,
+        text="🕐 Hora Programada (ejecutar a una hora específica)",
+        variable=config_type_var,
+        value="scheduled",
+        font=("Arial", 12),
+        text_color="black"
+    )
+    scheduled_radio.pack(pady=5, padx=20, anchor="w")
+    
+    cycle_radio = ctk.CTkRadioButton(
+        config_type_frame,
+        text="🔄 Ciclo de Tiempo (ejecutar cada X minutos)",
+        variable=config_type_var,
+        value="cycle",
+        font=("Arial", 12),
+        text_color="black"
+    )
+    cycle_radio.pack(pady=5, padx=20, anchor="w")
+    
+    # ================= CONFIGURACIÓN DE HORA PROGRAMADA =================
+    
+    scheduled_frame = ctk.CTkFrame(main_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    scheduled_frame.pack(fill="x", pady=(0, 20))
+    
+    scheduled_label = ctk.CTkLabel(
+        scheduled_frame,
+        text="🕐 Hora Programada",
+        font=("Arial", 14, "bold"),
+        text_color="black"
+    )
+    scheduled_label.pack(pady=(15, 10))
+    
+    # Frame para inputs de hora programada
+    scheduled_inputs_frame = ctk.CTkFrame(scheduled_frame, fg_color="transparent")
+    scheduled_inputs_frame.pack(pady=(0, 15))
+    
+    # Lista de países con sus zonas horarias
+    countries = [
+        "Argentina (GMT-3)",
+        "Brasil (GMT-3)",
+        "Chile (GMT-3)",
+        "Uruguay (GMT-3)",
+        "Paraguay (GMT-3)",
+        "Estados Unidos - Este (GMT-5)",
+        "Estados Unidos - Central (GMT-6)",
+        "Estados Unidos - Montaña (GMT-7)",
+        "Estados Unidos - Pacífico (GMT-8)",
+        "México (GMT-6)",
+        "Colombia (GMT-5)",
+        "Perú (GMT-5)",
+        "Venezuela (GMT-4)",
+        "Ecuador (GMT-5)",
+        "Bolivia (GMT-4)",
+        "España (GMT+1)",
+        "Francia (GMT+1)",
+        "Alemania (GMT+1)",
+        "Italia (GMT+1)",
+        "Reino Unido (GMT+0)",
+        "Portugal (GMT+0)",
+        "Rusia - Moscú (GMT+3)",
+        "China (GMT+8)",
+        "Japón (GMT+9)",
+        "India (GMT+5:30)",
+        "Australia - Sydney (GMT+10)",
+        "Nueva Zelanda (GMT+12)",
+        "Canadá - Este (GMT-5)",
+        "Canadá - Central (GMT-6)",
+        "Canadá - Montaña (GMT-7)",
+        "Canadá - Pacífico (GMT-8)"
+    ]
+    
+    # Detectar país automáticamente
+    def get_user_country():
+        """Detecta automáticamente el país del usuario basado en la zona horaria"""
+        try:
+            local_tz = datetime.datetime.now().astimezone().tzinfo
+            
+            if hasattr(local_tz, 'zone'):
+                zone_name = local_tz.zone
+                try:
+                    tz = pytz.timezone(zone_name)
+                    utc_offset = tz.utcoffset(datetime.datetime.now())
+                    offset_hours = int(utc_offset.total_seconds() / 3600)
+                    
+                    if offset_hours == -3:
+                        if 'Argentina' in zone_name or 'Buenos_Aires' in zone_name:
+                            return "Argentina (GMT-3)"
+                        else:
+                            return "Brasil (GMT-3)"
+                    elif offset_hours == -5:
+                        return "Estados Unidos - Este (GMT-5)"
+                    elif offset_hours == -6:
+                        return "Estados Unidos - Central (GMT-6)"
+                    elif offset_hours == -7:
+                        return "Estados Unidos - Montaña (GMT-7)"
+                    elif offset_hours == -8:
+                        return "Estados Unidos - Pacífico (GMT-8)"
+                    elif offset_hours == 0:
+                        return "Reino Unido (GMT+0)"
+                    elif offset_hours == 1:
+                        return "España (GMT+1)"
+                    elif offset_hours == 3:
+                        return "Rusia - Moscú (GMT+3)"
+                    elif offset_hours == 8:
+                        return "China (GMT+8)"
+                    elif offset_hours == 9:
+                        return "Japón (GMT+9)"
+                    else:
+                        for country in countries:
+                            if f"GMT{offset_hours:+d}" in country:
+                                return country
+                        return "Argentina (GMT-3)"
+                    
+                except:
+                    return "Argentina (GMT-3)"
+            else:
+                return "Argentina (GMT-3)"
+                
+        except Exception as e:
+            print(f"Error detectando país: {e}")
+            return "Argentina (GMT-3)"
+    
+    # Input para hora
+    time_entry = ctk.CTkEntry(
+        scheduled_inputs_frame,
+        placeholder_text="HH:MM",
+        font=("Arial", 11),
+        height=35,
+        width=80
+    )
+    time_entry.pack(side="left", padx=(0, 10), pady=(5, 15))
+    
+    # Función para validar formato de hora
+    def validate_time_format(event=None):
+        """Valida que el formato de hora sea correcto (HH:MM)"""
+        value = time_entry.get()
+        if value:
+            if not all(c.isdigit() or c == ':' for c in value):
+                time_entry.delete(len(value)-1, 'end')
+                return
+            
+            if len(value) > 5:
+                time_entry.delete(5, 'end')
+                return
+            
+            if len(value) == 2 and ':' not in value:
+                time_entry.insert(2, ':')
+    
+    time_entry.bind('<KeyRelease>', validate_time_format)
+    
+    # Selector de país
+    country_dropdown = ctk.CTkComboBox(
+        scheduled_inputs_frame,
+        values=countries,
+        font=("Arial", 11),
+        height=35,
+        width=200
+    )
+    country_dropdown.pack(side="left", padx=(0, 10), pady=(5, 15))
+    
+    # Detectar y establecer país automáticamente
+    detected_country = get_user_country()
+    country_dropdown.set(detected_country)
+    
+    # Insertar valores actuales si existen
+    if current_settings.get('scheduled_time'):
+        time_entry.insert(0, current_settings.get('scheduled_time'))
+    if current_settings.get('timezone'):
+        country_dropdown.set(current_settings.get('timezone'))
+    
+    # ================= CONFIGURACIÓN DE CICLO DE TIEMPO =================
+    
+    cycle_frame = ctk.CTkFrame(main_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    cycle_frame.pack(fill="x", pady=(0, 20))
+    
+    cycle_label = ctk.CTkLabel(
+        cycle_frame,
+        text="🔄 Ciclo de Tiempo",
+        font=("Arial", 14, "bold"),
+        text_color="black"
+    )
+    cycle_label.pack(pady=(15, 10))
+    
+    # Explicación del comportamiento del ciclo
+    cycle_explanation = ctk.CTkLabel(
+        cycle_frame,
+        text="💡 El bot procesará emails secuencialmente sin reiniciar.\nCada ciclo procesará exactamente la cantidad configurada.",
+        font=("Arial", 10),
+        text_color="gray"
+    )
+    cycle_explanation.pack(pady=(0, 10), padx=20, anchor="w")
+    
+    # Frame para inputs de ciclo
+    cycle_inputs_frame = ctk.CTkFrame(cycle_frame, fg_color="transparent")
+    cycle_inputs_frame.pack(pady=(0, 15))
+    
+    # Input para minutos del ciclo
+    cycle_minutes_entry = ctk.CTkEntry(
+        cycle_inputs_frame,
+        placeholder_text="Minutos",
+        font=("Arial", 11),
+        height=35,
+        width=100
+    )
+    cycle_minutes_entry.pack(side="left", padx=(0, 10), pady=(5, 15))
+    
+    # Insertar valor actual si existe
+    if current_settings.get('cycle_time_minutes'):
+        cycle_minutes_entry.insert(0, str(current_settings.get('cycle_time_minutes')))
+    
+    # Label explicativo para minutos
+    cycle_explanation = ctk.CTkLabel(
+        cycle_inputs_frame,
+        text="minutos entre cada ejecución",
+        font=("Arial", 11),
+        text_color="black"
+    )
+    cycle_explanation.pack(side="left", padx=(0, 10), pady=(5, 15))
+    
+    # Input para cuentas por ciclo
+    accounts_per_cycle_entry = ctk.CTkEntry(
+        cycle_inputs_frame,
+        placeholder_text="Cuentas",
+        font=("Arial", 11),
+        height=35,
+        width=80
+    )
+    accounts_per_cycle_entry.pack(side="left", padx=(0, 10), pady=(5, 15))
+    
+    # Insertar valor actual si existe
+    if current_settings.get('accounts_per_cycle'):
+        accounts_per_cycle_entry.insert(0, str(current_settings.get('accounts_per_cycle')))
+    
+    # Label explicativo para cuentas
+    accounts_explanation = ctk.CTkLabel(
+        cycle_inputs_frame,
+        text="cuentas por ciclo",
+        font=("Arial", 11),
+        text_color="black"
+    )
+    accounts_explanation.pack(side="left", padx=(0, 10), pady=(5, 15))
+    
+    # ================= BOTONES DE ACCIÓN =================
+    
+    buttons_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+    buttons_frame.pack(fill="x", pady=(20, 0))
+    
+    # Función para guardar configuración
+    def save_time_config():
+        config_type = config_type_var.get()
+        scheduled_time = time_entry.get().strip()
+        timezone = country_dropdown.get().strip()
+        cycle_minutes = cycle_minutes_entry.get().strip()
+        accounts_per_cycle = accounts_per_cycle_entry.get().strip()
+        
+        # Validaciones
+        if config_type == 'scheduled' and scheduled_time:
+            # Validar formato de hora
+            try:
+                datetime.datetime.strptime(scheduled_time, '%H:%M')
+            except ValueError:
+                messagebox.showerror("Error", "❌ Formato de hora inválido. Use HH:MM")
+                return
+        
+        if config_type == 'cycle':
+            if not cycle_minutes:
+                messagebox.showerror("Error", "❌ Debe ingresar el tiempo del ciclo en minutos")
+                return
+            try:
+                minutes = int(cycle_minutes)
+                if minutes < 1 or minutes > 1440:  # Entre 1 minuto y 24 horas
+                    messagebox.showerror("Error", "❌ El tiempo del ciclo debe estar entre 1 y 1440 minutos")
+                    return
+            except ValueError:
+                messagebox.showerror("Error", "❌ Ingrese un número válido de minutos")
+                return
+            
+            # Validar cuentas por ciclo
+            if not accounts_per_cycle:
+                messagebox.showerror("Error", "❌ Debe ingresar la cantidad de cuentas por ciclo")
+                return
+            try:
+                accounts = int(accounts_per_cycle)
+                if accounts < 1 or accounts > 100:  # Entre 1 y 100 cuentas
+                    messagebox.showerror("Error", "❌ La cantidad de cuentas por ciclo debe estar entre 1 y 100")
+                    return
+            except ValueError:
+                messagebox.showerror("Error", "❌ Ingrese un número válido de cuentas")
+                return
+        
+        # Guardar configuración (preservar ambos tipos de configuración)
+        success = save_creator_setting(
+            user_agent=current_settings.get('user_agent', ''),
+            accounts_to_create=current_settings.get('accounts_to_create', 1),
+            scheduled_time=scheduled_time if config_type == 'scheduled' else current_settings.get('scheduled_time'),
+            timezone=timezone if config_type == 'scheduled' else current_settings.get('timezone'),
+            notification_email=current_settings.get('notification_email', ''),
+            cycle_time_minutes=int(cycle_minutes) if config_type == 'cycle' and cycle_minutes else current_settings.get('cycle_time_minutes', 60),
+            time_config_type=config_type,
+            accounts_per_cycle=int(accounts_per_cycle) if config_type == 'cycle' and accounts_per_cycle else current_settings.get('accounts_per_cycle', 1)
+        )
+        
+        if success:
+            messagebox.showinfo("Éxito", f"✅ Configuración de tiempo guardada correctamente\n\nTipo: {'Hora Programada' if config_type == 'scheduled' else 'Ciclo de Tiempo'}")
+            time_window.destroy()
+        else:
+            messagebox.showerror("Error", "❌ No se pudo guardar la configuración")
+    
+    # Función para limpiar configuración
+    def clear_time_config():
+        # Limpiar solo los campos del tipo de configuración actual
+        config_type = config_type_var.get()
+        
+        if config_type == 'scheduled':
+            # Limpiar solo configuración de hora programada
+            time_entry.delete(0, 'end')
+            country_dropdown.set(detected_country)
+            # Guardar configuración con hora programada vacía
+            success = save_creator_setting(
+                user_agent=current_settings.get('user_agent', ''),
+                accounts_to_create=current_settings.get('accounts_to_create', 1),
+                scheduled_time=None,
+                timezone=None,
+                notification_email=current_settings.get('notification_email', ''),
+                cycle_time_minutes=current_settings.get('cycle_time_minutes', 60),
+                time_config_type='scheduled',
+                accounts_per_cycle=current_settings.get('accounts_per_cycle', 1)
+            )
+        else:
+            # Limpiar solo configuración de ciclo
+            cycle_minutes_entry.delete(0, 'end')
+            accounts_per_cycle_entry.delete(0, 'end')
+            # Guardar configuración con ciclo vacío
+            success = save_creator_setting(
+                user_agent=current_settings.get('user_agent', ''),
+                accounts_to_create=current_settings.get('accounts_to_create', 1),
+                scheduled_time=current_settings.get('scheduled_time'),
+                timezone=current_settings.get('timezone'),
+                notification_email=current_settings.get('notification_email', ''),
+                cycle_time_minutes=60,
+                time_config_type='cycle',
+                accounts_per_cycle=1
+            )
+        
+        if success:
+            messagebox.showinfo("Éxito", f"✅ Configuración de {'hora programada' if config_type == 'scheduled' else 'ciclo'} eliminada correctamente")
+        else:
+            messagebox.showerror("Error", "❌ No se pudo eliminar la configuración")
+    
+    # Botón Guardar
+    save_button = ctk.CTkButton(
+        buttons_frame,
+        text="💾 Guardar",
+        command=save_time_config,
+        fg_color="#28a745",
+        text_color="white",
+        font=("Arial", 12, "bold"),
+        height=40,
+        width=120
+    )
+    save_button.pack(side="left", padx=(0, 10))
+    
+    # Botón Limpiar
+    clear_button = ctk.CTkButton(
+        buttons_frame,
+        text="🗑️ Limpiar",
+        command=clear_time_config,
+        fg_color="#dc3545",
+        text_color="white",
+        font=("Arial", 12, "bold"),
+        height=40,
+        width=120
+    )
+    clear_button.pack(side="left", padx=(0, 10))
+    
+    # Botón Cancelar
+    cancel_button = ctk.CTkButton(
+        buttons_frame,
+        text="❌ Cancelar",
+        command=time_window.destroy,
+        fg_color="#6c757d",
+        text_color="white",
+        font=("Arial", 12, "bold"),
+        height=40,
+        width=120
+    )
+    cancel_button.pack(side="right")
