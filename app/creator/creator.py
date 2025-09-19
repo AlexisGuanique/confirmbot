@@ -829,6 +829,9 @@ def _ejecutar_proceso_creator():
     
     if not email_ids:
         print("❌ No hay emails disponibles para procesar")
+        # Reiniciar progreso cuando no hay emails
+        from app.database.database import reset_creator_email_progress
+        reset_creator_email_progress()
         return False  # Retornar False para indicar que no hay más emails
     
     print(f"🔄 Procesando {len(email_ids)} emails")

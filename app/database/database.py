@@ -1177,6 +1177,12 @@ def get_next_creator_emails(limit):
         else:
             # Usar el último email usado como offset
             offset = progress['last_used_email_id']
+            
+            # Verificar si los emails han cambiado (recargados)
+            if detect_emails_changed():
+                print("🔄 Emails recargados detectados - reiniciando progreso")
+                reset_creator_email_progress()
+                offset = 0
         
         # Obtener emails con offset
         email_ids = get_creator_emails_with_offset(limit, offset)
@@ -1208,6 +1214,12 @@ def get_all_available_creator_emails():
         else:
             # Usar el último email usado como offset
             offset = progress['last_used_email_id']
+            
+            # Verificar si los emails han cambiado (recargados)
+            if detect_emails_changed():
+                print("🔄 Emails recargados detectados - reiniciando progreso")
+                reset_creator_email_progress()
+                offset = 0
         
         # Obtener todos los emails restantes con offset
         conn = sqlite3.connect(DB_PATH)
@@ -1228,6 +1240,33 @@ def get_all_available_creator_emails():
     except Exception as e:
         print(f"❌ Error al obtener emails disponibles: {e}")
         return []
+
+
+def detect_emails_changed():
+    """
+    Detecta si los emails han cambiado comparando el total actual con el último procesado
+    
+    Returns:
+        bool: True si los emails han cambiado, False si no
+    """
+    try:
+        # Obtener progreso actual
+        progress = get_creator_email_progress()
+        if not progress:
+            return False  # No hay progreso previo
+        
+        # Obtener total actual de emails
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM creator_email")
+        total_emails = cursor.fetchone()[0]
+        conn.close()
+        
+        # Si el último ID procesado es mayor o igual al total actual, los emails cambiaron
+        return progress['last_used_email_id'] >= total_emails
+        
+    except Exception as e:
+        return False
 
 
 def reset_creator_email_progress():
