@@ -41,11 +41,55 @@ def create_database():
             CREATE TABLE IF NOT EXISTS bot_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 iterations INTEGER NOT NULL,
-                pause_minutes INTEGER NOT NULL DEFAULT 20,
-                emails_per_batch INTEGER NOT NULL DEFAULT 5
+                pause_minutes INTEGER NOT NULL DEFAULT 20
             )
             '''
         )
+        
+        # 🔄 SISTEMA DE MIGRACIONES PARA BOT_SETTINGS
+        print("🔄 Verificando migraciones de bot_settings...")
+        
+        # Obtener columnas existentes
+        cursor.execute("PRAGMA table_info(bot_settings)")
+        existing_columns = [column[1] for column in cursor.fetchall()]
+        
+        # Migración 1: Agregar pause_minutes si no existe
+        if 'pause_minutes' not in existing_columns:
+            print("🔄 Aplicando migración: agregando columna pause_minutes...")
+            try:
+                cursor.execute("ALTER TABLE bot_settings ADD COLUMN pause_minutes INTEGER NOT NULL DEFAULT 20")
+                print("✅ Migración pause_minutes aplicada exitosamente")
+            except Exception as e:
+                print(f"⚠️ Error en migración pause_minutes: {e}")
+        
+        # Migración 2: Agregar enable_adb si no existe
+        if 'enable_adb' not in existing_columns:
+            print("🔄 Aplicando migración: agregando columna enable_adb...")
+            try:
+                cursor.execute("ALTER TABLE bot_settings ADD COLUMN enable_adb INTEGER NOT NULL DEFAULT 1")
+                print("✅ Migración enable_adb aplicada exitosamente")
+            except Exception as e:
+                print(f"⚠️ Error en migración enable_adb: {e}")
+        
+        # Migración 3: Agregar enable_proxy si no existe
+        if 'enable_proxy' not in existing_columns:
+            print("🔄 Aplicando migración: agregando columna enable_proxy...")
+            try:
+                cursor.execute("ALTER TABLE bot_settings ADD COLUMN enable_proxy INTEGER NOT NULL DEFAULT 1")
+                print("✅ Migración enable_proxy aplicada exitosamente")
+            except Exception as e:
+                print(f"⚠️ Error en migración enable_proxy: {e}")
+        
+        # Migración 4: Agregar emails_per_batch si no existe
+        if 'emails_per_batch' not in existing_columns:
+            print("🔄 Aplicando migración: agregando columna emails_per_batch...")
+            try:
+                cursor.execute("ALTER TABLE bot_settings ADD COLUMN emails_per_batch INTEGER NOT NULL DEFAULT 5")
+                print("✅ Migración emails_per_batch aplicada exitosamente")
+            except Exception as e:
+                print(f"⚠️ Error en migración emails_per_batch: {e}")
+        
+        print("✅ Verificación de migraciones de bot_settings completada")
 
         cursor.execute(
             '''
@@ -77,26 +121,6 @@ def create_database():
         if "fourth_click" not in existing_cols:
             cursor.execute("ALTER TABLE actions ADD COLUMN fourth_click TEXT NOT NULL DEFAULT ''")
 
-        # 🔄 Migración para agregar pause_minutes a bot_settings si no existe
-        cursor.execute("PRAGMA table_info(bot_settings)")
-        bot_settings_cols = [row[1] for row in cursor.fetchall()]
-        if "pause_minutes" not in bot_settings_cols:
-            cursor.execute("ALTER TABLE bot_settings ADD COLUMN pause_minutes INTEGER NOT NULL DEFAULT 20")
-            print("✅ Columna pause_minutes agregada a bot_settings")
-        
-        # 🔄 Migración para agregar enable_adb a bot_settings si no existe
-        cursor.execute("PRAGMA table_info(bot_settings)")
-        bot_settings_cols = [row[1] for row in cursor.fetchall()]
-        if "enable_adb" not in bot_settings_cols:
-            cursor.execute("ALTER TABLE bot_settings ADD COLUMN enable_adb INTEGER NOT NULL DEFAULT 1")
-            print("✅ Columna enable_adb agregada a bot_settings")
-        
-        # 🔄 Migración para agregar enable_proxy a bot_settings si no existe
-        cursor.execute("PRAGMA table_info(bot_settings)")
-        bot_settings_cols = [row[1] for row in cursor.fetchall()]
-        if "enable_proxy" not in bot_settings_cols:
-            cursor.execute("ALTER TABLE bot_settings ADD COLUMN enable_proxy INTEGER NOT NULL DEFAULT 1")
-            print("✅ Columna enable_proxy agregada a bot_settings")
 
         # 🔹 Tabla para almacenar la clave de NopeCHA
         cursor.execute(
