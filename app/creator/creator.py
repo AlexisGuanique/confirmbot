@@ -796,17 +796,33 @@ def execute_creator():
         print("❌ No se encontró configuración del creator")
         return
     
-    time_config_type = settings.get('time_config_type', 'scheduled')
+    time_config_type = settings.get('time_config_type', 'manual')
+    scheduled_time = settings.get('scheduled_time')
+    cycle_time_minutes = settings.get('cycle_time_minutes', 60)
     
-    if time_config_type == 'scheduled':
-        # Verificar hora programada
+    # Determinar el modo de ejecución
+    has_scheduled = scheduled_time and scheduled_time.strip()
+    has_cycle = cycle_time_minutes and cycle_time_minutes > 0
+    
+    if has_scheduled and has_cycle:
+        # Ambos configurados: usar ciclo (más flexible)
+        print("🔄 Modo: Ciclo + Hora programada - Ejecutando en ciclo")
+        _ejecutar_creator_en_ciclo()
+    elif has_cycle:
+        # Solo ciclo configurado
+        print("🔄 Modo: Solo ciclo - Ejecutando en ciclo")
+        _ejecutar_creator_en_ciclo()
+    elif has_scheduled:
+        # Solo hora programada configurada
+        print("🕐 Modo: Solo hora programada - Verificando hora...")
         if not _verificar_hora_programada():
             return
-        # Ejecutar una sola vez
+        print("✅ Hora programada verificada - Ejecutando una vez")
         _ejecutar_proceso_creator()
-    elif time_config_type == 'cycle':
-        # Ejecutar en ciclo
-        _ejecutar_creator_en_ciclo()
+    else:
+        # Ninguno configurado: modo manual (ejecutar una vez)
+        print("👤 Modo: Manual - Ejecutando una vez")
+        _ejecutar_proceso_creator()
 
 
 def _ejecutar_proceso_creator():
@@ -818,13 +834,14 @@ def _ejecutar_proceso_creator():
     
     # Obtener configuración para determinar cuántas cuentas crear
     settings = get_creator_setting()
-    time_config_type = settings.get('time_config_type', 'scheduled')
+    time_config_type = settings.get('time_config_type', 'manual')
     
     # Obtener emails según el tipo de configuración
     if time_config_type == 'cycle':
         accounts_per_cycle = settings.get('accounts_per_cycle', 1)
         email_ids = get_next_creator_emails(accounts_per_cycle)
     else:
+        # Para modo manual, scheduled, o cualquier otro: procesar todos los emails disponibles
         email_ids = get_all_available_creator_emails()
     
     if not email_ids:

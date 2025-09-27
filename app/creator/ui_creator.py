@@ -1024,8 +1024,8 @@ def create_time_config_window(parent_root):
                 return
             try:
                 accounts = int(accounts_per_cycle)
-                if accounts < 1 or accounts > 100:  # Entre 1 y 100 cuentas
-                    messagebox.showerror("Error", "❌ La cantidad de cuentas por ciclo debe estar entre 1 y 100")
+                if accounts < 1:  # Mínimo 1 cuenta
+                    messagebox.showerror("Error", "❌ La cantidad de cuentas por ciclo debe ser al menos 1")
                     return
             except ValueError:
                 messagebox.showerror("Error", "❌ Ingrese un número válido de cuentas")
