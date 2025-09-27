@@ -41,7 +41,8 @@ def create_database():
             CREATE TABLE IF NOT EXISTS bot_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 iterations INTEGER NOT NULL,
-                pause_minutes INTEGER NOT NULL DEFAULT 20
+                pause_minutes INTEGER NOT NULL DEFAULT 20,
+                emails_per_batch INTEGER NOT NULL DEFAULT 5
             )
             '''
         )
@@ -370,7 +371,7 @@ def clear_database():
 
 
 
-def save_bot_settings(iterations, pause_minutes=20, enable_adb=True, enable_proxy=True):
+def save_bot_settings(iterations, pause_minutes=20, enable_adb=True, enable_proxy=True, emails_per_batch=5):
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -382,14 +383,14 @@ def save_bot_settings(iterations, pause_minutes=20, enable_adb=True, enable_prox
         if existing:
             cursor.execute('''
                 UPDATE bot_settings
-                SET iterations = ?, pause_minutes = ?, enable_adb = ?, enable_proxy = ?
+                SET iterations = ?, pause_minutes = ?, enable_adb = ?, enable_proxy = ?, emails_per_batch = ?
                 WHERE id = ?
-            ''', (iterations, pause_minutes, int(enable_adb), int(enable_proxy), existing[0]))
+            ''', (iterations, pause_minutes, int(enable_adb), int(enable_proxy), emails_per_batch, existing[0]))
         else:
             cursor.execute('''
-                INSERT INTO bot_settings (iterations, pause_minutes, enable_adb, enable_proxy)
-                VALUES (?, ?, ?, ?)
-            ''', (iterations, pause_minutes, int(enable_adb), int(enable_proxy)))
+                INSERT INTO bot_settings (iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (iterations, pause_minutes, int(enable_adb), int(enable_proxy), emails_per_batch))
 
         conn.commit()
         conn.close()
@@ -404,7 +405,7 @@ def get_bot_settings():
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT iterations, pause_minutes, enable_adb, enable_proxy FROM bot_settings LIMIT 1")
+        cursor.execute("SELECT iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch FROM bot_settings LIMIT 1")
         row = cursor.fetchone()
         conn.close()
         if row:
@@ -412,7 +413,8 @@ def get_bot_settings():
                 "iterations": row[0], 
                 "pause_minutes": row[1],
                 "enable_adb": bool(row[2]),
-                "enable_proxy": bool(row[3])
+                "enable_proxy": bool(row[3]),
+                "emails_per_batch": row[4]
             }
         else:
             return None

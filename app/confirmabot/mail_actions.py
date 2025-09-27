@@ -11,7 +11,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException
 import sys
 from tkinter import messagebox
-from app.confirmabot.utils.proxy_tool import ProxyController
+from app.confirmabot.utils.proxy_tool_safe import SafeProxyController as ProxyController
 
 fake = Faker()
 
@@ -28,7 +28,7 @@ def generate_secure_password(length=10):
     return ''.join(random.choices(chars, k=length))
 
 
-def mail_actions(driver, domain, enable_proxy=True):
+def mail_actions(driver, domain, enable_proxy=True, force_disable_proxy=False):
     try:
         # 👉 Abrir Google para mantener la ventana visible y luego ejecutar los clics
         #driver.get("https://www.google.com/")
@@ -172,34 +172,32 @@ def mail_actions(driver, domain, enable_proxy=True):
         except TimeoutException:
             print("⚠️ Timeout esperando que desaparezca overlay de captcha. Podría interferir posteriormente.")
 
-        # 🌐 REACTIVAR PROXY antes de llenar los inputs (si está habilitado)
-        if enable_proxy:
+        # 🌐 REACTIVAR PROXY antes de llenar los inputs (si está habilitado y no forzado a deshabilitar)
+        if enable_proxy and not force_disable_proxy:
             print("🌐 Reactivando proxy antes de llenar formulario...")
-            proxy_controller = ProxyController()
             try:
+                proxy_controller = ProxyController()
                 # Solo reactivar el proxy sin cambiar la configuración existente
-                proxy_controller.enable_proxy_only()
-                proxy_controller.refresh_internet_settings()
-                
-                # Verificar que el proxy esté realmente activo
-                print("🔍 Verificando que el proxy esté reactivado...")
-                enabled, server, port = proxy_controller.get_proxy_status()
-                if enabled and server:
-                    print(f"✅ Proxy confirmado reactivado: {server}")
-                else:
-                    print("⚠️ Proxy no se reactivó correctamente, reintentando...")
-                    proxy_controller.enable_proxy_only()
+                success = proxy_controller.enable_proxy_only()
+                if success:
                     proxy_controller.refresh_internet_settings()
-                    time.sleep(3)  # Esperar más tiempo en el segundo intento
+                    print("✅ Proxy activado (versión segura)")
                     
-            finally:
+                    # Esperar tiempo mínimo para que el proxy se reactive
+                    print("⏳ Esperando que el proxy se reactive...")
+                    time.sleep(1)  # Reducido a 1 segundo
+                    print("✅ Proxy listo, continuando con el formulario...")
+                else:
+                    print("⚠️ No se pudo activar proxy, continuando sin proxy...")
                 proxy_controller.close()
-            
-            # Esperar tiempo suficiente para que el proxy se reactive completamente
-            print("⏳ Esperando que el proxy se reactive completamente...")
-            time.sleep(8)  # Esperar que el proxy se reactive antes de llenar el formulario
+                
+            except Exception as e:
+                print(f"⚠️ Error con proxy: {e}, continuando sin proxy...")
         else:
-            print("⏭️ Proxy deshabilitado por configuración")
+            if force_disable_proxy:
+                print("⏭️ Proxy deshabilitado forzadamente (para evitar cuelgues)")
+            else:
+                print("⏭️ Proxy deshabilitado por configuración")
 
         # 👉 Generar datos
         username = generate_custom_username()
@@ -231,9 +229,7 @@ def mail_actions(driver, domain, enable_proxy=True):
         input_password_confirm.clear()
         input_password_confirm.send_keys(password)
 
-        print(f"📧 Email generado: {generated_email}")
-        print(f"👤 Username: {username}")
-        print(f"🔒 Password: {password}")
+        print(f"✅ Formulario completado - Email: {generated_email}, Username: {username}")
 
         submit_button_xpath = '//input[@type="submit" and @value="Continue signup"]'
         submit_button = wait.until(EC.presence_of_element_located((By.XPATH, submit_button_xpath)))
@@ -247,10 +243,9 @@ def mail_actions(driver, domain, enable_proxy=True):
             try:
                 wait.until(EC.element_to_be_clickable((By.XPATH, submit_button_xpath)))
                 submit_button.click()
-                print("✅ Clic nativo sobre botón de continuar.")
+                print("✅ Formulario enviado correctamente")
                 break
             except ElementClickInterceptedException:
-                print(f"⏳ Intento {attempt + 1}: botón aún interceptado, esperando 2 s...")
                 time.sleep(2)
         else:
             raise Exception("No se pudo hacer clic en el botón de continuar tras múltiples intentos.")
@@ -264,7 +259,7 @@ def mail_actions(driver, domain, enable_proxy=True):
                     EC.presence_of_element_located((By.XPATH, '//a[@href="/dashboard"]'))
                 )
             )
-            print("✅ Registro completado o botón desapareció, navegación correcta.")
+            print("✅ Registro completado exitosamente")
             
             # 🌐 DESACTIVAR PROXY después del éxito (si estaba habilitado)
             if enable_proxy:

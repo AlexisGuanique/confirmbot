@@ -1,6 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from app.database.database import get_email_by_id, get_email_count, get_bot_settings
+from app.database.database import get_email_by_id, get_email_count, get_bot_settings, get_all_emails, get_creator_setting
 import sys
 import os
 import tempfile
@@ -8,11 +8,13 @@ import uuid
 import shutil
 
 import os, uuid, tempfile, time, shutil, subprocess
+from datetime import datetime
 from selenium.webdriver.chrome.service import Service
 
 import subprocess
 
 from app.confirmabot.hostinger_login import login_to_hostinger
+from app.confirmabot.hostinger_actions import send_email_with_file
 from app.confirmabot.mail_actions import mail_actions
 import time  # ⏱️ Asegúrate de tener esta importación al inicio del archivo
 
@@ -134,6 +136,94 @@ def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromed
             raise e2
 
 
+def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, corte_numero=None):
+    """
+    Envía el archivo .txt con los emails confirmados por correo
+    """
+    try:
+        # Obtener credenciales de correo
+        emails_data = get_all_emails()
+        if not emails_data:
+            print("❌ No hay credenciales de correo disponibles")
+            return False
+        
+        # Buscar email con credenciales de Hostinger
+        email_address = None
+        email_password = None
+        for email_data in emails_data:
+            if email_data.get('email_hostinger') and email_data.get('password_hostinger'):
+                email_address = email_data['email_hostinger']
+                email_password = email_data['password_hostinger']
+                break
+        
+        if not email_address or not email_password:
+            print("❌ No se encontraron credenciales de Hostinger")
+            return False
+        
+        # Verificar archivo
+        if not os.path.exists(filepath):
+            print(f"❌ Archivo no encontrado: {filepath}")
+            return False
+        
+        # Obtener email de destino
+        settings = get_creator_setting()
+        email_destino = settings.get('notification_email') if settings else None
+        
+        if not email_destino:
+            print("❌ No hay email de notificación configurado")
+            return False
+        
+        # Contar emails en el archivo
+        emails_en_archivo = 0
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                emails_en_archivo = len([line for line in f if line.strip()])
+        except:
+            emails_en_archivo = emails_exitosos
+        
+        # Preparar correo
+        fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
+        asunto = f"Reporte ConfirmaBot - Corte {corte_numero or 'N/A'} - {fecha_hora}"
+        
+        cuerpo = f"""Hola,
+
+El proceso de verificación de emails ha completado un nuevo corte.
+
+📊 RESUMEN DEL CORTE:
+- Total de emails a procesar: {total_emails}
+- Cantidad de emails confirmados: {emails_exitosos}
+- Emails en el archivo: {emails_en_archivo}
+- Corte de emails número: {corte_numero or 'N/A'}
+- Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
+
+📎 Adjunto encontrarás el archivo con los emails confirmados de este corte.
+
+Saludos,
+ConfirmaBot
+        """
+        # Enviar correo
+        print(f"📧 Enviando reporte a {email_destino}...")
+        exito = send_email_with_file(
+            email_address=email_address,
+            password=email_password,
+            to_email=email_destino,
+            subject=asunto,
+            body=cuerpo,
+            attachment_path=filepath
+        )
+        
+        if exito:
+            print(f"✅ Reporte enviado exitosamente: {emails_exitosos}/{total_emails} emails confirmados")
+        else:
+            print("❌ Error al enviar el reporte")
+        
+        return exito
+            
+    except Exception as e:
+        print(f"❌ Error enviando archivo por correo: {e}")
+        return False
+
+
 def run_checker():
     global stop_checker
     print("🟢 Ejecutando checker para todos los registros...")
@@ -189,6 +279,7 @@ def run_checker():
                 failed_iterations = 0
                 timeout_errors = 0
                 other_errors = 0
+                emails_sent_count = 0  # Contador de emails ya enviados por correo
 
                 for i in range(iteraciones):
                     if stop_checker:
@@ -263,6 +354,42 @@ def run_checker():
                             print(f"📝 Email verificado guardado: {final_email.strip()}")
                             at_least_one_verified = True
                             successful_iterations += 1
+                            
+                            # 📧 Enviar archivo por correo periódicamente basado en la configuración
+                            config = get_bot_settings()
+                            emails_per_batch = config.get("emails_per_batch", 5) if config else 5
+                            
+                            # Enviar cada vez que se alcance un múltiplo del número configurado
+                            if successful_iterations % emails_per_batch == 0:
+                                print(f"🎉 ¡Alcanzado {successful_iterations} emails confirmados! Enviando reporte por correo...")
+                                
+                                # Crear archivo temporal solo con los emails del lote actual
+                                batch_file_path = file_path.replace('.txt', f'_batch_{successful_iterations}.txt')
+                                emails_in_batch = emails_per_batch
+                                
+                                # Leer todos los emails del archivo principal
+                                with open(file_path, "r", encoding="utf-8") as main_file:
+                                    all_emails = main_file.readlines()
+                                
+                                # Obtener solo los emails del lote actual (los últimos emails_per_batch)
+                                batch_emails = all_emails[-emails_in_batch:]
+                                
+                                # Escribir solo los emails del lote actual al archivo temporal
+                                with open(batch_file_path, "w", encoding="utf-8") as batch_file:
+                                    batch_file.writelines(batch_emails)
+                                
+                                # Enviar el archivo del lote actual
+                                total_emails_procesados = successful_iterations + failed_iterations
+                                corte_numero = successful_iterations // emails_per_batch
+                                _enviar_archivo_por_correo(batch_file_path, total_emails_procesados, emails_in_batch, corte_numero)
+                                
+                                # Limpiar archivo temporal
+                                try:
+                                    os.remove(batch_file_path)
+                                except:
+                                    pass
+                                
+                                emails_sent_count = successful_iterations
                         else:
                             f.write(f"{final_email.strip()} <-- no verificado\n")
                             f.flush()

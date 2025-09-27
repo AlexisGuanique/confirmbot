@@ -56,46 +56,7 @@ def setup_ui(logged_in_user, on_login_success):
     options_frame.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=100)
 
 
-   #! 👉 Input: Cantidad de iteraciones
-    iterations_label = ctk.CTkLabel(
-        hostinger_frame,
-        text="Cantidad de emails creados por dominio:",
-        text_color="black",
-        font=("Arial", 12, "bold")
-    )
-    iterations_label.pack(pady=(10, 2), anchor="w")
-
-    iterations_entry = ctk.CTkEntry(
-        hostinger_frame,
-        width=200,
-        placeholder_text="Ej: 5"
-    )
-    iterations_entry.pack(pady=(0, 10))
-
-    # 🔽 Cargar valor guardado (si existe)
-    bot_settings = get_bot_settings()
-    if bot_settings:
-        iterations_entry.insert(0, str(bot_settings["iterations"]))
-
-    # 👉 Input: Tiempo de pausa entre cada 10 iteraciones
-    pause_label = ctk.CTkLabel(
-        hostinger_frame,
-        text="Tiempo de pausa (minutos) cada 10 iteraciones:",
-        text_color="black",
-        font=("Arial", 12, "bold")
-    )
-    pause_label.pack(pady=(10, 2), anchor="w")
-
-    pause_entry = ctk.CTkEntry(
-        hostinger_frame,
-        width=200,
-        placeholder_text="Ej: 20"
-    )
-    pause_entry.pack(pady=(0, 10))
-
-    # 🔽 Cargar valor guardado (si existe)
-    if bot_settings:
-        pause_entry.insert(0, str(bot_settings.get("pause_minutes", 20)))
+    # Los inputs de configuración del bot se movieron a una ventana separada
 
 
 
@@ -112,91 +73,6 @@ def setup_ui(logged_in_user, on_login_success):
     )
     creator_button.pack(pady=(20, 10), anchor="w")
 
-    #! 👉 Botón para abrir ventana nueva
-    def open_new_window():
-        create_new_window(root)
-
-    new_window_button = ctk.CTkButton(
-        options_frame,
-        text="Configuración del creator",
-        command=open_new_window,
-        fg_color="#28a745",
-        text_color="white",
-        font=("Arial", 12)
-    )
-    new_window_button.pack(pady=(0, 0), anchor="w")
-
-    # 👉 Botón para guardar configuración completa
-    def save_bot_config():
-        iterations = iterations_entry.get()
-        pause_minutes = pause_entry.get()
-        enable_adb = adb_checkbox.get() == 1
-        enable_proxy = proxy_checkbox.get() == 1
-
-        if not iterations.isdigit():
-            messagebox.showerror("Error", "Ingresa un número válido de iteraciones.")
-            return
-
-        if not pause_minutes.isdigit():
-            messagebox.showerror("Error", "Ingresa un número válido de minutos para la pausa.")
-            return
-
-        success = save_bot_settings(int(iterations), int(pause_minutes), enable_adb, enable_proxy)
-        if success:
-            messagebox.showinfo("Guardado", "✅ Configuración del bot guardada correctamente.")
-        else:
-            messagebox.showerror("Error", "No se pudo guardar la configuración.")
-
-    save_config_button = ctk.CTkButton(
-        hostinger_frame,
-        text="Guardar Configuración",
-        command=save_bot_config,
-        fg_color="#0066cc",
-        text_color="white"
-    )
-    save_config_button.pack(pady=(0, 15))
-
-    # 👉 Input: NopeCHA API Key
-    #nopecha_label = ctk.CTkLabel(
-    #    hostinger_frame,
-    #    text="NopeCHA API Key:",
-    #    text_color="black",
-    #    font=("Arial", 12, "bold")
-    #)
-    #nopecha_label.pack(pady=(10, 2), anchor="w")
-
-    #nopecha_entry = ctk.CTkEntry(
-    #    hostinger_frame,
-    #    width=200,
-    #    placeholder_text="sub_xxxxxxxxxxxxxxxxxxxxxxxxx"
-    #)
-    #nopecha_entry.pack(pady=(0, 5))
-
-    # Cargar clave guardada si existe
-    #stored_key = get_nopecha_key()
-    #if stored_key:
-    #    nopecha_entry.insert(0, stored_key)
-
-    #def save_nopecha_key_ui():
-    #    pass
-    #    key = nopecha_entry.get().strip()
-    #    if not key:
-    #        messagebox.showerror("Error", "La clave NopeCHA no puede estar vacía.")
-    #        return
-
-    #    if save_nopecha_key(key):
-    #        messagebox.showinfo("Guardado", "✅ NopeCHA key guardada correctamente.")
-    #    else:
-    #        messagebox.showerror("Error", "No se pudo guardar la NopeCHA key.")
-
-    #save_nopecha_button = ctk.CTkButton(
-    #    hostinger_frame,
-    #    text="Guardar NopeCHA Key",
-    #    command=save_nopecha_key_ui,
-    #    fg_color="#0066cc",
-    #    text_color="white"
-    #)
-    #save_nopecha_button.pack(pady=(0, 15))
 
     # 👉 Mostrar cantidad de dominios y hacer clic para verlos
     def toggle_domain_view(event=None):
@@ -365,6 +241,167 @@ def setup_ui(logged_in_user, on_login_success):
     )
     stop_button.pack(pady=(5, 10))
 
+        #! 👉 Botón para abrir ventana nueva
+    def open_new_window():
+        create_new_window(root)
+
+    new_window_button = ctk.CTkButton(
+        options_frame,
+        text="Configuración del creator",
+        command=open_new_window,
+        fg_color="#28a745",
+        text_color="white",
+        font=("Arial", 12)
+    )
+    new_window_button.pack(pady=(0, 10), anchor="w")
+
+    # 👉 Función para abrir ventana de configuración del bot
+    def open_config_window():
+        """Abre la ventana de configuración del bot"""
+        config_window = ctk.CTkToplevel(root)
+        config_window.title("Configuración del Bot")
+        config_window.geometry("400x400")
+        config_window.resizable(False, False)
+        config_window.configure(fg_color="white")
+        
+        # Centrar la ventana
+        config_window.transient(root)
+        config_window.grab_set()
+        
+        # Frame principal con scroll
+        main_frame = ctk.CTkScrollableFrame(config_window, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Título
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text="Configuración del Bot",
+            font=("Arial", 18, "bold"),
+            text_color="black"
+        )
+        title_label.pack(pady=(0, 20))
+        
+        # Input: Cantidad de iteraciones
+        iterations_label = ctk.CTkLabel(
+            main_frame,
+            text="Cantidad de emails creados por dominio:",
+            text_color="black",
+            font=("Arial", 12, "bold")
+        )
+        iterations_label.pack(pady=(10, 2), anchor="w")
+        
+        iterations_entry = ctk.CTkEntry(
+            main_frame,
+            width=300,
+            placeholder_text="Ej: 5"
+        )
+        iterations_entry.pack(pady=(0, 10))
+        
+        # Input: Tiempo de pausa
+        pause_label = ctk.CTkLabel(
+            main_frame,
+            text="Tiempo de pausa (minutos) cada 10 iteraciones:",
+            text_color="black",
+            font=("Arial", 12, "bold")
+        )
+        pause_label.pack(pady=(10, 2), anchor="w")
+        
+        pause_entry = ctk.CTkEntry(
+            main_frame,
+            width=300,
+            placeholder_text="Ej: 20"
+        )
+        pause_entry.pack(pady=(0, 10))
+        
+        # Input: Emails por corte
+        emails_batch_label = ctk.CTkLabel(
+            main_frame,
+            text="Emails por corte (para envío de reportes):",
+            text_color="black",
+            font=("Arial", 12, "bold")
+        )
+        emails_batch_label.pack(pady=(10, 2), anchor="w")
+        
+        emails_batch_entry = ctk.CTkEntry(
+            main_frame,
+            width=300,
+            placeholder_text="Ej: 5"
+        )
+        emails_batch_entry.pack(pady=(0, 20))
+        
+        # Cargar valores guardados
+        bot_settings = get_bot_settings()
+        if bot_settings:
+            iterations_entry.insert(0, str(bot_settings["iterations"]))
+            pause_entry.insert(0, str(bot_settings.get("pause_minutes", 20)))
+            emails_batch_entry.insert(0, str(bot_settings.get("emails_per_batch", 5)))
+        
+        def save_config():
+            """Guarda la configuración del bot"""
+            try:
+                iterations = int(iterations_entry.get())
+                pause_minutes = int(pause_entry.get())
+                emails_per_batch = int(emails_batch_entry.get())
+                
+                if iterations <= 0 or pause_minutes < 0 or emails_per_batch <= 0:
+                    messagebox.showerror("Error", "Los valores deben ser números positivos.")
+                    return
+                
+                # Obtener valores actuales de los checkboxes para no sobrescribirlos
+                current_settings = get_bot_settings()
+                enable_adb = current_settings.get("enable_adb", True) if current_settings else True
+                enable_proxy = current_settings.get("enable_proxy", True) if current_settings else True
+                
+                # Guardar configuración manteniendo los valores de los checkboxes
+                save_bot_settings(iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch)
+                
+                messagebox.showinfo("Éxito", "Configuración guardada correctamente.")
+                config_window.destroy()
+                
+            except ValueError:
+                messagebox.showerror("Error", "Por favor ingresa números válidos.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar: {e}")
+        
+        # Botones
+        buttons_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        buttons_frame.pack(fill="x", pady=(10, 0))
+        
+        save_button = ctk.CTkButton(
+            buttons_frame,
+            text="Guardar",
+            command=save_config,
+            fg_color="#007ACC",
+            hover_color="#005A9E",
+            width=120,
+            height=40
+        )
+        save_button.pack(side="left", padx=(0, 10))
+        
+        cancel_button = ctk.CTkButton(
+            buttons_frame,
+            text="Cancelar",
+            command=config_window.destroy,
+            fg_color="#6C757D",
+            hover_color="#5A6268",
+            width=120,
+            height=40
+        )
+        cancel_button.pack(side="left")
+
+
+    # 👉 Botón para abrir configuración del bot
+    config_bot_button = ctk.CTkButton(
+        hostinger_frame,
+        text="Configuración del Bot",
+        command=open_config_window,
+        fg_color="#FF6B35",
+        text_color="white",
+        font=("Arial", 12)
+    )
+    config_bot_button.pack(pady=(0, 15))
+
+
     # 👉 Checkboxes para opciones del bot (lado izquierdo - al final)
     options_title = ctk.CTkLabel(
         hostinger_frame,
@@ -399,17 +436,24 @@ def setup_ui(logged_in_user, on_login_success):
     # 🔽 Función para guardar automáticamente cuando cambien los checkboxes
     def auto_save_checkboxes():
         try:
-            iterations = iterations_entry.get() or "5"  # Valor por defecto si está vacío
-            pause_minutes = pause_entry.get() or "20"  # Valor por defecto si está vacío
-            
-            # Convertir a enteros con valores por defecto
-            iterations_val = int(iterations) if iterations.isdigit() else 5
-            pause_minutes_val = int(pause_minutes) if pause_minutes.isdigit() else 20
+            # Obtener configuración actual para mantener TODOS los campos existentes
+            current_settings = get_bot_settings()
+            if not current_settings:
+                # Si no hay configuración, usar valores por defecto
+                iterations_val = 5
+                pause_minutes_val = 20
+                emails_per_batch_val = 5
+            else:
+                # Mantener todos los valores existentes
+                iterations_val = current_settings.get("iterations", 5)
+                pause_minutes_val = current_settings.get("pause_minutes", 20)
+                emails_per_batch_val = current_settings.get("emails_per_batch", 5)
             
             enable_adb = adb_checkbox.get() == 1
             enable_proxy = proxy_checkbox.get() == 1
             
-            success = save_bot_settings(iterations_val, pause_minutes_val, enable_adb, enable_proxy)
+            # Guardar TODOS los campos, incluyendo emails_per_batch
+            success = save_bot_settings(iterations_val, pause_minutes_val, enable_adb, enable_proxy, emails_per_batch_val)
             if success:
                 print("✅ Configuración de checkboxes guardada automáticamente")
             else:
@@ -418,6 +462,7 @@ def setup_ui(logged_in_user, on_login_success):
             print(f"❌ Error en auto-guardado: {e}")
 
     # 🔽 Cargar valores guardados de los checkboxes
+    bot_settings = get_bot_settings()
     if bot_settings:
         adb_checkbox.select() if bot_settings.get("enable_adb", True) else adb_checkbox.deselect()
         proxy_checkbox.select() if bot_settings.get("enable_proxy", True) else proxy_checkbox.deselect()
@@ -430,99 +475,7 @@ def setup_ui(logged_in_user, on_login_success):
     adb_checkbox.configure(command=auto_save_checkboxes)
     proxy_checkbox.configure(command=auto_save_checkboxes)
 
-    # ================= Capturar Coordenadas =================
-    #def add_coordinates_interactively():
-    #    etiquetas = [
-    #        "first_click",
-    #        "second_click",
-    #        "third_click",
-    #        "fourth_click"
-    #    ]
-
-    #    coordenadas = []
-
-        # Abrir Chrome utilizando la misma configuración del bot
-    #    driver = openProfileWithExtraExtension()
-    #    driver.maximize_window()
-    #    driver.get("https://www.google.com/")
-
-    #    def capturar_y_mostrar(index, popup):
-    #        popup.lift()
-    #        popup.focus_force()
-    #        popup.attributes("-topmost", True)
-
-    #        label = ctk.CTkLabel(
-    #            popup,
-    #            text=f"Presiona la tecla 'c' para capturar la coordenada de:\n{etiquetas[index]}",
-    #            font=("Arial", 14),
-    #            text_color="black"
-    #        )
-    #        label.pack(pady=15)
-
-    #        coord_label = ctk.CTkLabel(
-    #            popup,
-    #            text="",
-    #            font=("Arial", 14, "bold"),
-    #            text_color="black"
-    #        )
-    #        coord_label.pack(pady=10)
-
-    #        def capturar():
-    #            coord_raw = get_mouse_coordinate_on_keypress("c")  # formato "123x456"
-    #            # Convertir a "123 x 456"
-    #            if "x" in coord_raw:
-    #                x, y = coord_raw.split("x")
-    #                coord = f"{x} x {y}"
-    #            else:
-    #                coord = coord_raw
-    #            coordenadas.append(coord)
-    #            popup.after(0, lambda: coord_label.configure(text=f"{etiquetas[index]}: {coord}"))
-
-    #        threading.Thread(target=capturar, daemon=True).start()
-
-    #        def siguiente():
-    #            popup.destroy()
-    #            if index + 1 < len(etiquetas):
-    #                mostrar_popup(index + 1)
-    #            else:
-    #                # Guardar coordenadas en la base de datos
-    #                if save_click_coordinates(coordenadas):
-    #                    messagebox.showinfo("Guardado", "✅ Coordenadas guardadas correctamente.")
-    #                else:
-    #                    messagebox.showerror("Error", "No se pudieron guardar las coordenadas.")
-
-    #            try:
-    #                driver.quit()
-    #            except Exception as e:
-    #                print(f"❌ Error al cerrar Chrome: {e}")
-
-    #        next_button = ctk.CTkButton(
-    #            popup,
-    #            text="Próxima coordenada" if index + 1 < len(etiquetas) else "Finalizar",
-    #            command=siguiente,
-    #            fg_color="#5C2D91",
-    #            text_color="white",
-    #            hover_color="#472173"
-    #        )
-    #        next_button.pack(pady=15)
-
-    #    def mostrar_popup(index):
-    #        popup = ctk.CTkToplevel()
-    #        popup.geometry("420x220")
-    #        popup.title("Captura de Coordenada")
-    #        popup.configure(fg_color="#f0f0f0")
-    #        capturar_y_mostrar(index, popup)
-
-    #    mostrar_popup(0)
-
-    #capture_coords_button = ctk.CTkButton(
-    #    hostinger_frame,
-    #    text="Capturar Coordenadas",
-    #    command=add_coordinates_interactively,
-    #    fg_color="#9C27B0",
-    #    text_color="white"
-    #)
-    #capture_coords_button.pack(pady=(5, 10))
+   
 
     # 👉 Función de logout
     def handle_logout():

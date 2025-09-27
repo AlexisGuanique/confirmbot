@@ -84,7 +84,7 @@ def observador_unificado(coordinates, email, password, filepath):
     print("👁️ Observando número, captcha rojo o éxito...")
     
     start_time = time.time()
-    timeout_seconds = 120  # 2 minutos
+    timeout_seconds = 180  # 3 minutos
     
     # Contadores para evitar bucles infinitos
     numero_count = 0
@@ -204,7 +204,7 @@ def observador_unificado(coordinates, email, password, filepath):
                 cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
                 if cookie_editor_coords:
                     click_coordinates(cookie_editor_coords)
-                    time.sleep(1)
+                    time.sleep(2)
                     
                     # Clic en save_cookie_clipboard_click
                     save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
