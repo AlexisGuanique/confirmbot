@@ -759,7 +759,7 @@ def get_creator_coordinates(*field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=60, time_config_type='scheduled', accounts_per_cycle=1):
+def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None):
     """
     Guarda o actualiza la configuración del creator
     
@@ -817,9 +817,9 @@ def get_creator_setting():
                 'scheduled_time': row[2],
                 'timezone': row[3],
                 'notification_email': row[4],
-                'cycle_time_minutes': row[5] if row[5] is not None else 60,
-                'time_config_type': row[6] if row[6] is not None else 'scheduled',
-                'accounts_per_cycle': row[7] if row[7] is not None else 1
+                'cycle_time_minutes': row[5],  # Mantener el valor real, incluso si es None
+                'time_config_type': row[6] if row[6] is not None else 'manual',  # Cambiar default a 'manual'
+                'accounts_per_cycle': row[7]  # Mantener el valor real, incluso si es None
             }
         return None
         

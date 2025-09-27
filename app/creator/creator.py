@@ -646,8 +646,9 @@ def _verificar_hora_programada():
         print("⚡ No hay configuración de tiempo, ejecutando inmediatamente")
         return True  # No hay configuración, continuar inmediatamente
     
-    # Solo verificar hora programada si el tipo de configuración es 'scheduled'
-    if settings.get('time_config_type') != 'scheduled':
+    # Solo verificar hora programada si el tipo de configuración es 'scheduled' o 'both'
+    time_config_type = settings.get('time_config_type')
+    if time_config_type not in ['scheduled', 'both']:
         print("⚡ Configuración de ciclo de tiempo, ejecutando inmediatamente")
         return True  # No es configuración programada, continuar inmediatamente
     
@@ -805,23 +806,26 @@ def execute_creator():
     has_cycle = cycle_time_minutes and cycle_time_minutes > 0
     
     if has_scheduled and has_cycle:
-        # Ambos configurados: usar ciclo (más flexible)
-        print("🔄 Modo: Ciclo + Hora programada - Ejecutando en ciclo")
+        # Ambos configurados: verificar hora y ejecutar en ciclo
+        print("🔄 Modo: Ciclo + Hora programada - Verificando hora...")
+        if not _verificar_hora_programada():
+            return
+        print("✅ Hora programada verificada - Ejecutando en ciclo")
         _ejecutar_creator_en_ciclo()
     elif has_cycle:
         # Solo ciclo configurado
         print("🔄 Modo: Solo ciclo - Ejecutando en ciclo")
         _ejecutar_creator_en_ciclo()
     elif has_scheduled:
-        # Solo hora programada configurada
+        # Solo hora programada configurada - PROCESAR TODAS LAS CUENTAS
         print("🕐 Modo: Solo hora programada - Verificando hora...")
         if not _verificar_hora_programada():
             return
-        print("✅ Hora programada verificada - Ejecutando una vez")
+        print("✅ Hora programada verificada - Procesando TODAS las cuentas disponibles")
         _ejecutar_proceso_creator()
     else:
-        # Ninguno configurado: modo manual (ejecutar una vez)
-        print("👤 Modo: Manual - Ejecutando una vez")
+        # Ninguno configurado: modo manual (ejecutar una vez) - PROCESAR TODAS LAS CUENTAS
+        print("👤 Modo: Manual - Procesando TODAS las cuentas disponibles")
         _ejecutar_proceso_creator()
 
 
@@ -837,12 +841,15 @@ def _ejecutar_proceso_creator():
     time_config_type = settings.get('time_config_type', 'manual')
     
     # Obtener emails según el tipo de configuración
-    if time_config_type == 'cycle':
+    if time_config_type in ['cycle', 'both']:
+        # Modo ciclo o both: procesar solo las cuentas especificadas por ciclo
         accounts_per_cycle = settings.get('accounts_per_cycle', 1)
         email_ids = get_next_creator_emails(accounts_per_cycle)
+        print(f"🔄 Modo ciclo: procesando {accounts_per_cycle} cuentas por ciclo")
     else:
-        # Para modo manual, scheduled, o cualquier otro: procesar todos los emails disponibles
+        # Para modo manual, scheduled, o cualquier otro: procesar TODAS las cuentas disponibles
         email_ids = get_all_available_creator_emails()
+        print(f"🔄 Modo programado/manual: procesando TODAS las cuentas disponibles ({len(email_ids)} cuentas)")
     
     if not email_ids:
         print("❌ No hay emails disponibles para procesar")
@@ -851,7 +858,7 @@ def _ejecutar_proceso_creator():
         reset_creator_email_progress()
         return False  # Retornar False para indicar que no hay más emails
     
-    print(f"🔄 Procesando {len(email_ids)} emails")
+    print(f"📧 Total de emails a procesar: {len(email_ids)}")
     
     # Obtener coordenadas
     coordinates = get_creator_coordinates()

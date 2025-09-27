@@ -724,41 +724,56 @@ def create_time_config_window(parent_root):
     print(f"   - Ciclo minutos: {current_settings.get('cycle_time_minutes')}")
     print(f"   - Cuentas por ciclo: {current_settings.get('accounts_per_cycle')}")
     
-    # ================= SELECCIÓN DE TIPO DE CONFIGURACIÓN =================
+    # ================= SELECCIÓN DE MODO DE TRABAJO =================
     
-    config_type_frame = ctk.CTkFrame(main_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
-    config_type_frame.pack(fill="x", pady=(0, 20))
+    mode_frame = ctk.CTkFrame(main_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    mode_frame.pack(fill="x", pady=(0, 20))
     
-    config_type_label = ctk.CTkLabel(
-        config_type_frame,
-        text="📋 Tipo de Configuración",
+    mode_label = ctk.CTkLabel(
+        mode_frame,
+        text="📋 Selecciona el modo de trabajo",
         font=("Arial", 14, "bold"),
         text_color="black"
     )
-    config_type_label.pack(pady=(15, 10))
+    mode_label.pack(pady=(15, 10))
     
-    # Radio buttons para seleccionar tipo
-    config_type_var = ctk.StringVar(value=current_settings.get('time_config_type', 'scheduled'))
-    
-    scheduled_radio = ctk.CTkRadioButton(
-        config_type_frame,
-        text="🕐 Hora Programada (ejecutar a una hora específica)",
-        variable=config_type_var,
-        value="scheduled",
+    # Checkboxes para seleccionar modos (puedes seleccionar uno, ambos, o ninguno)
+    scheduled_checkbox = ctk.CTkCheckBox(
+        mode_frame,
+        text="🕐 Hora Programada",
         font=("Arial", 12),
-        text_color="black"
+        text_color="black",
+        checkbox_width=20,
+        checkbox_height=20
     )
-    scheduled_radio.pack(pady=5, padx=20, anchor="w")
+    scheduled_checkbox.pack(pady=5, padx=20, anchor="w")
     
-    cycle_radio = ctk.CTkRadioButton(
-        config_type_frame,
-        text="🔄 Ciclo de Tiempo (ejecutar cada X minutos)",
-        variable=config_type_var,
-        value="cycle",
+    cycle_checkbox = ctk.CTkCheckBox(
+        mode_frame,
+        text="🔄 Ciclo de Tiempo",
         font=("Arial", 12),
-        text_color="black"
+        text_color="black",
+        checkbox_width=20,
+        checkbox_height=20
     )
-    cycle_radio.pack(pady=5, padx=20, anchor="w")
+    cycle_checkbox.pack(pady=5, padx=20, anchor="w")
+    
+    # Establecer estado inicial de los checkboxes basado en la configuración actual
+    time_config_type = current_settings.get('time_config_type', 'manual')
+    
+    # Determinar qué checkboxes marcar basado en el tipo de configuración
+    if time_config_type == 'both':
+        scheduled_checkbox.select()
+        cycle_checkbox.select()
+    elif time_config_type == 'scheduled':
+        scheduled_checkbox.select()
+        cycle_checkbox.deselect()
+    elif time_config_type == 'cycle':
+        scheduled_checkbox.deselect()
+        cycle_checkbox.select()
+    else:  # manual
+        scheduled_checkbox.deselect()
+        cycle_checkbox.deselect()
     
     # ================= CONFIGURACIÓN DE HORA PROGRAMADA =================
     
@@ -990,24 +1005,31 @@ def create_time_config_window(parent_root):
     
     # Función para guardar configuración
     def save_time_config():
-        config_type = config_type_var.get()
-        scheduled_time = time_entry.get().strip()
-        timezone = country_dropdown.get().strip()
-        cycle_minutes = cycle_minutes_entry.get().strip()
-        accounts_per_cycle = accounts_per_cycle_entry.get().strip()
+        # Obtener valores de los checkboxes
+        scheduled_enabled = scheduled_checkbox.get() == 1
+        cycle_enabled = cycle_checkbox.get() == 1
         
-        # Validaciones
-        if config_type == 'scheduled' and scheduled_time:
-            # Validar formato de hora
+        # Obtener valores de los campos
+        scheduled_time = time_entry.get().strip() if scheduled_enabled else ""
+        timezone = country_dropdown.get().strip() if scheduled_enabled else ""
+        cycle_minutes = cycle_minutes_entry.get().strip() if cycle_enabled else ""
+        accounts_per_cycle = accounts_per_cycle_entry.get().strip() if cycle_enabled else ""
+        
+        # Validar hora programada si está habilitada
+        if scheduled_enabled:
+            if not scheduled_time:
+                messagebox.showerror("Error", "❌ Debe ingresar una hora cuando está habilitada la hora programada")
+                return
             try:
                 datetime.datetime.strptime(scheduled_time, '%H:%M')
             except ValueError:
                 messagebox.showerror("Error", "❌ Formato de hora inválido. Use HH:MM")
                 return
         
-        if config_type == 'cycle':
+        # Validar ciclo si está habilitado
+        if cycle_enabled:
             if not cycle_minutes:
-                messagebox.showerror("Error", "❌ Debe ingresar el tiempo del ciclo en minutos")
+                messagebox.showerror("Error", "❌ Debe ingresar el tiempo del ciclo cuando está habilitado")
                 return
             try:
                 minutes = int(cycle_minutes)
@@ -1018,9 +1040,8 @@ def create_time_config_window(parent_root):
                 messagebox.showerror("Error", "❌ Ingrese un número válido de minutos")
                 return
             
-            # Validar cuentas por ciclo
             if not accounts_per_cycle:
-                messagebox.showerror("Error", "❌ Debe ingresar la cantidad de cuentas por ciclo")
+                messagebox.showerror("Error", "❌ Debe ingresar la cantidad de cuentas por ciclo cuando está habilitado")
                 return
             try:
                 accounts = int(accounts_per_cycle)
@@ -1031,62 +1052,67 @@ def create_time_config_window(parent_root):
                 messagebox.showerror("Error", "❌ Ingrese un número válido de cuentas")
                 return
         
-        # Guardar configuración (preservar ambos tipos de configuración)
+        # Determinar el tipo de configuración basado en los checkboxes
+        if scheduled_enabled and cycle_enabled:
+            config_type = 'both'
+        elif scheduled_enabled:
+            config_type = 'scheduled'
+        elif cycle_enabled:
+            config_type = 'cycle'
+        else:
+            config_type = 'manual'
+        
+        # Guardar configuración
         success = save_creator_setting(
             user_agent=current_settings.get('user_agent', ''),
             accounts_to_create=current_settings.get('accounts_to_create', 1),
-            scheduled_time=scheduled_time if config_type == 'scheduled' else current_settings.get('scheduled_time'),
-            timezone=timezone if config_type == 'scheduled' else current_settings.get('timezone'),
+            scheduled_time=scheduled_time if scheduled_enabled else None,
+            timezone=timezone if scheduled_enabled else None,
             notification_email=current_settings.get('notification_email', ''),
-            cycle_time_minutes=int(cycle_minutes) if config_type == 'cycle' and cycle_minutes else current_settings.get('cycle_time_minutes', 60),
+            cycle_time_minutes=int(cycle_minutes) if cycle_enabled and cycle_minutes else None,
             time_config_type=config_type,
-            accounts_per_cycle=int(accounts_per_cycle) if config_type == 'cycle' and accounts_per_cycle else current_settings.get('accounts_per_cycle', 1)
+            accounts_per_cycle=int(accounts_per_cycle) if cycle_enabled and accounts_per_cycle else None
         )
         
         if success:
-            messagebox.showinfo("Éxito", f"✅ Configuración de tiempo guardada correctamente\n\nTipo: {'Hora Programada' if config_type == 'scheduled' else 'Ciclo de Tiempo'}")
+            mode_text = {
+                'both': 'Hora Programada + Ciclo',
+                'scheduled': 'Solo Hora Programada',
+                'cycle': 'Solo Ciclo',
+                'manual': 'Modo Manual'
+            }.get(config_type, 'Desconocido')
+            
+            messagebox.showinfo("Éxito", f"✅ Configuración guardada correctamente\n\nModo: {mode_text}")
             time_window.destroy()
         else:
             messagebox.showerror("Error", "❌ No se pudo guardar la configuración")
     
     # Función para limpiar configuración
     def clear_time_config():
-        # Limpiar solo los campos del tipo de configuración actual
-        config_type = config_type_var.get()
+        # Desmarcar checkboxes
+        scheduled_checkbox.deselect()
+        cycle_checkbox.deselect()
         
-        if config_type == 'scheduled':
-            # Limpiar solo configuración de hora programada
-            time_entry.delete(0, 'end')
-            country_dropdown.set(detected_country)
-            # Guardar configuración con hora programada vacía
-            success = save_creator_setting(
-                user_agent=current_settings.get('user_agent', ''),
-                accounts_to_create=current_settings.get('accounts_to_create', 1),
-                scheduled_time=None,
-                timezone=None,
-                notification_email=current_settings.get('notification_email', ''),
-                cycle_time_minutes=current_settings.get('cycle_time_minutes', 60),
-                time_config_type='scheduled',
-                accounts_per_cycle=current_settings.get('accounts_per_cycle', 1)
-            )
-        else:
-            # Limpiar solo configuración de ciclo
-            cycle_minutes_entry.delete(0, 'end')
-            accounts_per_cycle_entry.delete(0, 'end')
-            # Guardar configuración con ciclo vacío
-            success = save_creator_setting(
-                user_agent=current_settings.get('user_agent', ''),
-                accounts_to_create=current_settings.get('accounts_to_create', 1),
-                scheduled_time=current_settings.get('scheduled_time'),
-                timezone=current_settings.get('timezone'),
-                notification_email=current_settings.get('notification_email', ''),
-                cycle_time_minutes=60,
-                time_config_type='cycle',
-                accounts_per_cycle=1
-            )
+        # Limpiar todos los campos
+        time_entry.delete(0, 'end')
+        country_dropdown.set(detected_country)
+        cycle_minutes_entry.delete(0, 'end')
+        accounts_per_cycle_entry.delete(0, 'end')
+        
+        # Guardar configuración limpia (modo manual)
+        success = save_creator_setting(
+            user_agent=current_settings.get('user_agent', ''),
+            accounts_to_create=current_settings.get('accounts_to_create', 1),
+            scheduled_time=None,
+            timezone=None,
+            notification_email=current_settings.get('notification_email', ''),
+            cycle_time_minutes=None,
+            time_config_type='manual',
+            accounts_per_cycle=None
+        )
         
         if success:
-            messagebox.showinfo("Éxito", f"✅ Configuración de {'hora programada' if config_type == 'scheduled' else 'ciclo'} eliminada correctamente")
+            messagebox.showinfo("Éxito", "✅ Toda la configuración de tiempo eliminada correctamente")
         else:
             messagebox.showerror("Error", "❌ No se pudo eliminar la configuración")
     
