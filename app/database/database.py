@@ -1432,11 +1432,19 @@ def fetch_emails_from_server(count: int) -> list:
         
         if not response:
             print("❌ No se pudo conectar al servidor")
-            return []
+            _mostrar_error_servidor("Error de conexión", "No se pudo conectar al servidor. Verifica tu conexión a internet.")
+            return "SERVER_ERROR"
         
         if response.status_code != 200:
             print(f"❌ Error del servidor: {response.status_code}")
-            return []
+            try:
+                error_data = response.json()
+                error_message = error_data.get('message', f'Error del servidor: {response.status_code}')
+            except:
+                error_message = f'Error del servidor: {response.status_code}'
+            
+            _mostrar_error_servidor(f"Error {response.status_code}", error_message)
+            return "SERVER_ERROR"
         
         data = response.json()
         
@@ -1457,7 +1465,35 @@ def fetch_emails_from_server(count: int) -> list:
         
     except Exception as e:
         print(f"❌ Error al obtener emails del servidor: {e}")
-        return []
+        _mostrar_error_servidor("Error inesperado", f"Error inesperado al obtener emails: {e}")
+        return "SERVER_ERROR"
+
+
+def _mostrar_error_servidor(titulo, mensaje):
+    """
+    Muestra un messagebox de error del servidor y detiene la ejecución
+    """
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        
+        root = tk.Tk()
+        root.withdraw()  # Ocultar ventana principal
+        
+        mensaje_completo = f"{mensaje}\n\nEl bot se detendrá.\n\nContacta con el desarrollador si el problema persiste."
+        
+        messagebox.showerror(titulo, mensaje_completo)
+        root.destroy()
+        
+        # Detener la ejecución
+        import sys
+        sys.exit(1)
+        
+    except Exception as e:
+        print(f"❌ Error al mostrar messagebox: {e}")
+        print(f"❌ {titulo}: {mensaje}")
+        import sys
+        sys.exit(1)
 
 
 def save_emails_from_server(emails_data: list) -> bool:
@@ -1515,6 +1551,10 @@ def fetch_and_save_emails_for_cycle(count: int) -> bool:
             print("📭 No hay más emails disponibles en el servidor")
             return "NO_EMAILS_AVAILABLE"  # Retornar señal especial
         
+        if emails_data == "SERVER_ERROR":
+            print("❌ Error del servidor - deteniendo ejecución")
+            return False
+        
         if not emails_data:
             print("❌ No se pudieron obtener emails del servidor")
             return False
@@ -1551,6 +1591,10 @@ def fetch_and_append_emails_for_cycle(count: int) -> bool:
         if emails_data == "NO_EMAILS_AVAILABLE":
             print("📭 No hay más emails disponibles en el servidor")
             return "NO_EMAILS_AVAILABLE"  # Retornar señal especial
+        
+        if emails_data == "SERVER_ERROR":
+            print("❌ Error del servidor - deteniendo ejecución")
+            return False
         
         if not emails_data:
             print("❌ No se pudieron obtener emails del servidor")
