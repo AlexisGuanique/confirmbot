@@ -1,6 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from app.database.database import get_email_by_id, get_email_count, get_bot_settings, get_all_emails, get_creator_setting
+from app.database.database import get_email_by_id, get_email_count, get_bot_settings, get_all_emails, get_creator_setting, get_user_data
 import sys
 import os
 import tempfile
@@ -136,9 +136,150 @@ def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromed
             raise e2
 
 
+def _enviar_emails_a_base_datos(emails_verificados, total_emails, emails_exitosos, corte_numero=None):
+    """
+    Envía los emails verificados a la base de datos remota mediante API
+    """
+    try:
+        from app.utils.http_utils import post
+        
+        # Obtener datos del usuario desde la base de datos
+        user_data = get_user_data()
+        if not user_data:
+            return False
+        
+        access_token = user_data.get('access_token')
+        user_id = user_data.get('id')
+        
+        if not access_token or not user_id:
+            return False
+        
+        # Preparar datos para la API
+        url = f"http://35.209.237.44/api/emails/save/{user_id}"
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        data = {
+            "access_token": access_token,
+            "emails": emails_verificados
+        }
+        
+        # Realizar petición POST
+        response = post(url, body=data, headers=headers)
+        
+        if response and response.status_code in [200, 201]:
+            print(f"✅ Emails enviados a la base de datos: {len(emails_verificados)}")
+            return True
+        else:
+            print(f"❌ Error al enviar emails a la base de datos")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error al enviar emails a la base de datos: {e}")
+        return False
+
+
+def _obtener_total_emails_base_datos():
+    """
+    Obtiene el total de emails en la base de datos remota.
+    Como la operación es asíncrona, espera un poco antes de consultar.
+    
+    Returns:
+        int: Total de emails en la base de datos o 0 si hay error
+    """
+    try:
+        from app.utils.http_utils import post
+        import time
+        
+        # Obtener datos del usuario desde la base de datos
+        user_data = get_user_data()
+        if not user_data:
+            return 0
+        
+        access_token = user_data.get('access_token')
+        user_id = user_data.get('id')
+        
+        if not access_token or not user_id:
+            return 0
+        
+        # Preparar datos para la API
+        url = f"http://35.209.237.44/api/emails/count/{user_id}"
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        data = {
+            "access_token": access_token
+        }
+        
+        # Intentar obtener el conteo varias veces con delays crecientes
+        for attempt in range(3):
+            # Esperar tiempo creciente: 3, 5, 7 segundos
+            wait_time = 3 + (attempt * 2)
+            time.sleep(wait_time)
+            
+            # Realizar petición POST
+            response = post(url, body=data, headers=headers)
+            
+            if response and response.status_code in [200, 201]:
+                try:
+                    response_data = response.json()
+                    total_emails = response_data.get('email_count', 0)  # Cambiado de 'total' a 'email_count'
+                    # Si obtenemos un número mayor a 0, lo consideramos válido
+                    if total_emails > 0:
+                        return total_emails
+                except Exception as e:
+                    pass
+            
+            # Si es el último intento, devolver lo que tengamos (aunque sea 0)
+            if attempt == 2:
+                try:
+                    response_data = response.json()
+                    return response_data.get('email_count', 0)  # Cambiado de 'total' a 'email_count'
+                except:
+                    return 0
+        
+        return 0
+            
+    except Exception as e:
+        return 0
+
+
+def _enviar_correo_sin_adjunto(email_address: str, password: str, to_email: str, 
+                               subject: str, body: str) -> bool:
+    """
+    Envía un correo electrónico sin archivo adjunto.
+    
+    Args:
+        email_address: Dirección de correo del remitente
+        password: Contraseña de la cuenta
+        to_email: Dirección de correo del destinatario
+        subject: Asunto del correo
+        body: Cuerpo del correo
+        
+    Returns:
+        bool: True si el envío fue exitoso, False en caso contrario
+    """
+    try:
+        from app.confirmabot.hostinger_actions import HostingerEmailClient
+        
+        email_client = HostingerEmailClient(email_address, password)
+        
+        if email_client.connect_smtp():
+            success = email_client.send_email(to_email, subject, body)
+            email_client.disconnect_smtp()
+            return success
+        else:
+            return False
+            
+    except Exception as e:
+        return False
+
+
 def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, corte_numero=None):
     """
-    Envía el archivo .txt con los emails confirmados por correo
+    Envía un informe por correo sin archivo adjunto, incluyendo el total de emails en la base de datos remota
     """
     try:
         # Obtener credenciales de correo
@@ -160,11 +301,6 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, corte_nu
             print("❌ No se encontraron credenciales de Hostinger")
             return False
         
-        # Verificar archivo
-        if not os.path.exists(filepath):
-            print(f"❌ Archivo no encontrado: {filepath}")
-            return False
-        
         # Obtener email de destino
         settings = get_creator_setting()
         email_destino = settings.get('notification_email') if settings else None
@@ -173,7 +309,13 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, corte_nu
             print("❌ No hay email de notificación configurado")
             return False
         
-        # Contar emails en el archivo
+        # Obtener total de emails de la base de datos remota (opcional, puede fallar)
+        try:
+            total_emails_base_datos = _obtener_total_emails_base_datos()
+        except Exception as e:
+            total_emails_base_datos = "N/A"
+        
+        # Contar emails en el archivo local
         emails_en_archivo = 0
         try:
             with open(filepath, "r", encoding="utf-8") as f:
@@ -187,33 +329,27 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, corte_nu
         
         cuerpo = f"""Hola,
 
-El proceso de verificación de emails ha completado un nuevo corte.
+            El proceso de verificación de emails ha completado un nuevo corte.
 
-📊 RESUMEN DEL CORTE:
-- Total de emails a procesar: {total_emails}
-- Cantidad de emails confirmados: {emails_exitosos}
-- Emails en el archivo: {emails_en_archivo}
-- Corte de emails número: {corte_numero or 'N/A'}
-- Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
+            📊 RESUMEN:
+            - Emails guardados en este corte: {emails_exitosos}
+            - Total de emails en base de datos: {total_emails_base_datos}
 
-📎 Adjunto encontrarás el archivo con los emails confirmados de este corte.
-
-Saludos,
-ConfirmaBot
+            Saludos,
+            ConfirmaBot
         """
-        # Enviar correo
-        print(f"📧 Enviando reporte a {email_destino}...")
-        exito = send_email_with_file(
+        
+        # Enviar correo sin archivo adjunto
+        exito = _enviar_correo_sin_adjunto(
             email_address=email_address,
             password=email_password,
             to_email=email_destino,
             subject=asunto,
-            body=cuerpo,
-            attachment_path=filepath
+            body=cuerpo
         )
         
         if exito:
-            print(f"✅ Reporte enviado exitosamente: {emails_exitosos}/{total_emails} emails confirmados")
+            print(f"✅ Reporte enviado por correo")
         else:
             print("❌ Error al enviar el reporte")
         
@@ -355,39 +491,38 @@ def run_checker():
                             at_least_one_verified = True
                             successful_iterations += 1
                             
-                            # 📧 Enviar archivo por correo periódicamente basado en la configuración
+                            # 📧 Enviar emails a base de datos periódicamente basado en la configuración
                             config = get_bot_settings()
                             emails_per_batch = config.get("emails_per_batch", 5) if config else 5
                             
                             # Enviar cada vez que se alcance un múltiplo del número configurado
                             if successful_iterations % emails_per_batch == 0:
-                                print(f"🎉 ¡Alcanzado {successful_iterations} emails confirmados! Enviando reporte por correo...")
-                                
-                                # Crear archivo temporal solo con los emails del lote actual
-                                batch_file_path = file_path.replace('.txt', f'_batch_{successful_iterations}.txt')
-                                emails_in_batch = emails_per_batch
+                                print(f"🎉 ¡Alcanzado {successful_iterations} emails confirmados! Enviando a base de datos...")
                                 
                                 # Leer todos los emails del archivo principal
                                 with open(file_path, "r", encoding="utf-8") as main_file:
                                     all_emails = main_file.readlines()
                                 
-                                # Obtener solo los emails del lote actual (los últimos emails_per_batch)
-                                batch_emails = all_emails[-emails_in_batch:]
+                                # Obtener solo los emails verificados del lote actual (los últimos emails_per_batch)
+                                emails_verificados = []
+                                for email_line in all_emails[-emails_per_batch:]:
+                                    email = email_line.strip()
+                                    # Solo incluir emails que NO contengan "no verificado"
+                                    if email and "no verificado" not in email:
+                                        emails_verificados.append(email)
                                 
-                                # Escribir solo los emails del lote actual al archivo temporal
-                                with open(batch_file_path, "w", encoding="utf-8") as batch_file:
-                                    batch_file.writelines(batch_emails)
-                                
-                                # Enviar el archivo del lote actual
-                                total_emails_procesados = successful_iterations + failed_iterations
-                                corte_numero = successful_iterations // emails_per_batch
-                                _enviar_archivo_por_correo(batch_file_path, total_emails_procesados, emails_in_batch, corte_numero)
-                                
-                                # Limpiar archivo temporal
-                                try:
-                                    os.remove(batch_file_path)
-                                except:
-                                    pass
+                                # Enviar los emails verificados a la base de datos
+                                if emails_verificados:
+                                    total_emails_procesados = successful_iterations + failed_iterations
+                                    corte_numero = successful_iterations // emails_per_batch
+                                    
+                                    print(f"🎉 Corte #{corte_numero} realizado - Enviando {len(emails_verificados)} emails a la base de datos...")
+                                    
+                                    # Enviar a base de datos remota
+                                    db_success = _enviar_emails_a_base_datos(emails_verificados, total_emails_procesados, len(emails_verificados), corte_numero)
+                                    
+                                    # Enviar reporte por correo (independiente del éxito de la BD)
+                                    email_success = _enviar_archivo_por_correo(file_path, total_emails_procesados, len(emails_verificados), corte_numero)
                                 
                                 emails_sent_count = successful_iterations
                         else:
@@ -444,6 +579,49 @@ def run_checker():
                     elapsed = time.time() - start_time
                     print(f"⏱️ Tiempo de ejecución de la iteración: {elapsed:.2f} segundos")
 
+            # Enviar emails restantes si los hay (no enviados en cortes anteriores)
+            emails_restantes = []
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    all_emails = f.readlines()
+                
+                # Obtener emails verificados que no se enviaron en cortes
+                emails_verificados_totales = []
+                for email_line in all_emails:
+                    email = email_line.strip()
+                    if email and "no verificado" not in email:
+                        emails_verificados_totales.append(email)
+                
+                # Calcular cuántos emails se enviaron en cortes anteriores
+                emails_enviados_en_cortes = emails_sent_count
+                
+                # Obtener emails restantes (los que no se enviaron en cortes)
+                if len(emails_verificados_totales) > emails_enviados_en_cortes:
+                    emails_restantes = emails_verificados_totales[emails_enviados_en_cortes:]
+                    
+                    if emails_restantes:
+                        print(f"📤 Enviando {len(emails_restantes)} emails restantes al finalizar...")
+                        
+                        # Enviar emails restantes a la base de datos
+                        total_emails_procesados = successful_iterations + failed_iterations
+                        corte_numero = "FINAL"
+                        db_success = _enviar_emails_a_base_datos(emails_restantes, total_emails_procesados, len(emails_restantes), corte_numero)
+                        
+                        # Enviar reporte final por correo
+                        email_success = _enviar_archivo_por_correo(file_path, total_emails_procesados, len(emails_restantes), corte_numero)
+                        
+                        if db_success and email_success:
+                            print(f"✅ Reporte final enviado: {len(emails_restantes)} emails restantes")
+                        elif db_success:
+                            print(f"⚠️ Reporte final: BD OK, Email falló")
+                        elif email_success:
+                            print(f"⚠️ Reporte final: Email OK, BD falló")
+                        else:
+                            print(f"❌ Reporte final: Ambos fallaron")
+                            
+            except Exception as e:
+                print(f"⚠️ Error al procesar emails restantes: {e}")
+
             # Resumen de estadísticas para este ID
             print(f"\n📊 Resumen para ID {id}:")
             print(f"  ✅ Iteraciones exitosas: {successful_iterations}")
@@ -453,6 +631,8 @@ def run_checker():
             if other_errors > 0:
                 print(f"  ⚠️ Otros errores: {other_errors}")
             print(f"  📈 Tasa de éxito: {(successful_iterations/iteraciones)*100:.1f}%")
+            if emails_restantes:
+                print(f"  📤 Emails restantes enviados: {len(emails_restantes)}")
             print("-" * 50)
 
         return at_least_one_verified

@@ -1320,3 +1320,35 @@ def reset_creator_email_progress():
     except Exception as e:
         print(f"❌ Error al reiniciar progreso de emails: {e}")
         return False
+
+
+def get_user_data():
+    """
+    Obtiene los datos del usuario desde la base de datos.
+    
+    Returns:
+        dict or None: Datos del usuario (id, name, lastname, access_token) o None si hay error
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id, name, lastname, access_token FROM user LIMIT 1')
+        user_data = cursor.fetchone()
+        
+        conn.close()
+        
+        if user_data:
+            return {
+                'id': user_data[0],
+                'name': user_data[1],
+                'lastname': user_data[2],
+                'access_token': user_data[3]
+            }
+        else:
+            print("❌ No se encontraron datos de usuario en la base de datos")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error al obtener datos del usuario: {e}")
+        return None
