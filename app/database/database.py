@@ -1268,6 +1268,45 @@ def get_all_available_creator_emails():
         return []
 
 
+def get_all_available_creator_emails_for_objective():
+    """
+    Obtiene todos los emails disponibles del creator para el proceso de objetivo
+    NO reinicia el progreso automáticamente para evitar interrupciones
+    
+    Returns:
+        list: Lista de IDs de emails, o lista vacía si no hay emails
+    """
+    try:
+        # Obtener progreso actual
+        progress = get_creator_email_progress()
+        if not progress:
+            # Si no hay progreso, empezar desde el principio
+            offset = 0
+        else:
+            # Usar el último email usado como offset
+            offset = progress['last_used_email_id']
+        
+        # Obtener todos los emails restantes con offset
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM creator_email ORDER BY created_at ASC LIMIT -1 OFFSET ?", (offset,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        email_ids = [row[0] for row in rows]
+        
+        if not email_ids:
+            print("📧 No hay más emails disponibles para procesar")
+        else:
+            print(f"📧 Obtenidos {len(email_ids)} emails disponibles para procesar")
+        
+        return email_ids
+        
+    except Exception as e:
+        print(f"❌ Error al obtener emails disponibles: {e}")
+        return []
+
+
 def detect_emails_changed():
     """
     Detecta si los emails han cambiado comparando el total actual con el último procesado
@@ -1352,3 +1391,212 @@ def get_user_data():
     except Exception as e:
         print(f"❌ Error al obtener datos del usuario: {e}")
         return None
+
+
+#! FUNCIONES PARA OBTENER EMAILS DEL SERVIDOR
+def fetch_emails_from_server(count: int) -> list:
+    """
+    Obtiene emails del servidor externo
+    
+    Args:
+        count (int): Cantidad de emails a solicitar
+    
+    Returns:
+        list: Lista de emails obtenidos del servidor, o lista vacía si hay error
+    """
+    from app.utils.http_utils import post
+    
+    try:
+        # Obtener datos del usuario desde la base de datos
+        user_data = get_user_data()
+        if not user_data:
+            print("❌ No se encontraron datos de usuario en la base de datos")
+            return []
+        
+        user_id = user_data['id']
+        access_token = user_data['access_token']
+        
+        # Construir URL con el ID del usuario
+        url = f"http://35.209.237.44/api/emails/next/{user_id}"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        body = {
+            "access_token": access_token,
+            "count": count
+        }
+        
+        print(f"🌐 Solicitando {count} emails del servidor para usuario ID {user_id}...")
+        response = post(url, body=body, headers=headers, timeout=30)
+        
+        if not response:
+            print("❌ No se pudo conectar al servidor")
+            return []
+        
+        if response.status_code != 200:
+            print(f"❌ Error del servidor: {response.status_code}")
+            return []
+        
+        data = response.json()
+        
+        if 'emails' not in data:
+            print("❌ Respuesta del servidor no contiene emails")
+            return []
+        
+        emails = data['emails']
+        
+        # Verificar si no hay emails disponibles
+        if len(emails) == 0:
+            print("📭 No hay más emails disponibles en el servidor")
+            return "NO_EMAILS_AVAILABLE"  # Retornar señal especial
+        
+        print(f"✅ Obtenidos {len(emails)} emails del servidor")
+        
+        return emails
+        
+    except Exception as e:
+        print(f"❌ Error al obtener emails del servidor: {e}")
+        return []
+
+
+def save_emails_from_server(emails_data: list) -> bool:
+    """
+    Guarda los emails obtenidos del servidor en la base de datos local
+    
+    Args:
+        emails_data (list): Lista de emails del servidor con formato:
+            [{"id": 1, "email": "test@example.com", "created_at": "2025-01-01T00:00:00", "user_id": 1}, ...]
+    
+    Returns:
+        bool: True si se guardaron correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Limpiar emails existentes antes de agregar los nuevos
+        cursor.execute("DELETE FROM creator_email")
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='creator_email'")
+        
+        # Insertar nuevos emails
+        for email_data in emails_data:
+            cursor.execute('''
+                INSERT INTO creator_email (email, created_at)
+                VALUES (?, ?)
+            ''', (email_data['email'], email_data['created_at']))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Guardados {len(emails_data)} emails en la base de datos local")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al guardar emails del servidor: {e}")
+        return False
+
+
+def fetch_and_save_emails_for_cycle(count: int) -> bool:
+    """
+    Obtiene emails del servidor y los guarda en la base de datos local para el ciclo actual
+    
+    Args:
+        count (int): Cantidad de emails a solicitar
+    
+    Returns:
+        bool: True si se obtuvieron y guardaron correctamente, False en caso contrario
+    """
+    try:
+        # Obtener emails del servidor
+        emails_data = fetch_emails_from_server(count)
+        
+        if emails_data == "NO_EMAILS_AVAILABLE":
+            print("📭 No hay más emails disponibles en el servidor")
+            return "NO_EMAILS_AVAILABLE"  # Retornar señal especial
+        
+        if not emails_data:
+            print("❌ No se pudieron obtener emails del servidor")
+            return False
+        
+        # Guardar emails en la base de datos local
+        success = save_emails_from_server(emails_data)
+        
+        if success:
+            # Reiniciar el progreso para empezar con los nuevos emails
+            reset_creator_email_progress()
+            print(f"🔄 Listo para procesar {len(emails_data)} emails en el ciclo actual")
+        
+        return success
+        
+    except Exception as e:
+        print(f"❌ Error en fetch_and_save_emails_for_cycle: {e}")
+        return False
+
+
+def fetch_and_append_emails_for_cycle(count: int) -> bool:
+    """
+    Obtiene emails del servidor y los agrega a la base de datos local sin limpiar los existentes
+    
+    Args:
+        count (int): Cantidad de emails a solicitar
+    
+    Returns:
+        bool: True si se obtuvieron y guardaron correctamente, False en caso contrario
+    """
+    try:
+        # Obtener emails del servidor
+        emails_data = fetch_emails_from_server(count)
+        
+        if emails_data == "NO_EMAILS_AVAILABLE":
+            print("📭 No hay más emails disponibles en el servidor")
+            return "NO_EMAILS_AVAILABLE"  # Retornar señal especial
+        
+        if not emails_data:
+            print("❌ No se pudieron obtener emails del servidor")
+            return False
+        
+        # Agregar emails a la base de datos local sin limpiar los existentes
+        success = append_emails_from_server(emails_data)
+        
+        if success:
+            print(f"🔄 Agregados {len(emails_data)} emails adicionales a la base de datos local")
+        
+        return success
+        
+    except Exception as e:
+        print(f"❌ Error en fetch_and_append_emails_for_cycle: {e}")
+        return False
+
+
+def append_emails_from_server(emails_data: list) -> bool:
+    """
+    Agrega los emails obtenidos del servidor a la base de datos local sin limpiar los existentes
+    
+    Args:
+        emails_data (list): Lista de emails del servidor con formato:
+            [{"id": 1, "email": "test@example.com", "created_at": "2025-01-01T00:00:00", "user_id": 1}, ...]
+    
+    Returns:
+        bool: True si se guardaron correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Insertar nuevos emails sin limpiar los existentes
+        for email_data in emails_data:
+            cursor.execute('''
+                INSERT INTO creator_email (email, created_at)
+                VALUES (?, ?)
+            ''', (email_data['email'], email_data['created_at']))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Agregados {len(emails_data)} emails a la base de datos local")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al agregar emails del servidor: {e}")
+        return False

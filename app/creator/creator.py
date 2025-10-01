@@ -84,7 +84,7 @@ def observador_unificado(coordinates, email, password, filepath):
     print("👁️ Observando número, captcha rojo o éxito...")
     
     start_time = time.time()
-    timeout_seconds = 180  # 3 minutos
+    timeout_seconds = 60  # 3 minutos
     
     # Contadores para evitar bucles infinitos
     numero_count = 0
@@ -97,7 +97,7 @@ def observador_unificado(coordinates, email, password, filepath):
         # Verificar si ha pasado el timeout
         elapsed_time = time.time() - start_time
         if elapsed_time > timeout_seconds:
-            print("⏰ Timeout de 120 segundos - no se encontraron imágenes, cerrando ventana")
+            print("⏰ Timeout de 60 segundos - no se encontraron imágenes, cerrando ventana")
             # Desactivar proxy antes de cerrar por timeout
             _desactivar_proxy()
             close_window_coords = coordinates.get("close_window")
@@ -478,6 +478,7 @@ def _ejecutar_modo_avion():
             # Ejecutar el comando para activar el modo avión
             subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"], 
                             capture_output=True, text=True, timeout=10)
+            print("########################################################")
             print("✈️ Modo avión activado")
             time.sleep(3)
 
@@ -784,48 +785,40 @@ def execute_creator():
     """
     Función principal del creator que ejecuta todas las acciones
     """
-    from app.database.database import get_creator_coordinates, get_all_creator_email_ids, get_creator_setting
+    from app.database.database import get_creator_setting
     import time
     
-    # Variable global para almacenar el password usado
     global _password_usado
     _password_usado = ""
     
-    # Obtener configuración para determinar el tipo de ejecución
     settings = get_creator_setting()
     if not settings:
-        print("❌ No se encontró configuración del creator")
+        print("❌ Sin configuración")
         return
     
     time_config_type = settings.get('time_config_type', 'manual')
     scheduled_time = settings.get('scheduled_time')
     cycle_time_minutes = settings.get('cycle_time_minutes', 60)
     
-    # Determinar el modo de ejecución
     has_scheduled = scheduled_time and scheduled_time.strip()
     has_cycle = cycle_time_minutes and cycle_time_minutes > 0
     
+    # Determinar modo de ejecución
     if has_scheduled and has_cycle:
-        # Ambos configurados: verificar hora y ejecutar en ciclo
-        print("🔄 Modo: Ciclo + Hora programada - Verificando hora...")
+        print("🔄 Ciclo + Hora programada")
         if not _verificar_hora_programada():
             return
-        print("✅ Hora programada verificada - Ejecutando en ciclo")
         _ejecutar_creator_en_ciclo()
     elif has_cycle:
-        # Solo ciclo configurado
-        print("🔄 Modo: Solo ciclo - Ejecutando en ciclo")
+        print("🔄 Solo ciclo")
         _ejecutar_creator_en_ciclo()
     elif has_scheduled:
-        # Solo hora programada configurada - PROCESAR TODAS LAS CUENTAS
-        print("🕐 Modo: Solo hora programada - Verificando hora...")
+        print("🕐 Solo hora programada")
         if not _verificar_hora_programada():
             return
-        print("✅ Hora programada verificada - Procesando TODAS las cuentas disponibles")
         _ejecutar_proceso_creator()
     else:
-        # Ninguno configurado: modo manual (ejecutar una vez) - PROCESAR TODAS LAS CUENTAS
-        print("👤 Modo: Manual - Procesando TODAS las cuentas disponibles")
+        print("👤 Modo manual")
         _ejecutar_proceso_creator()
 
 
@@ -833,119 +826,236 @@ def _ejecutar_proceso_creator():
     """
     Ejecuta el proceso de creación de cuentas una sola vez
     """
-    from app.database.database import get_creator_coordinates, get_all_available_creator_emails, get_next_creator_emails, get_creator_setting, update_creator_email_progress, get_creator_email_count
+    from app.database.database import (
+        get_creator_coordinates, get_all_available_creator_emails, get_next_creator_emails, 
+        get_creator_setting, update_creator_email_progress, fetch_and_save_emails_for_cycle,
+        reset_creator_email_progress
+    )
     import time
     
-    # Obtener configuración para determinar cuántas cuentas crear
     settings = get_creator_setting()
     time_config_type = settings.get('time_config_type', 'manual')
     
-    # Obtener emails según el tipo de configuración
+    # Obtener emails según configuración
     if time_config_type in ['cycle', 'both']:
-        # Modo ciclo o both: procesar solo las cuentas especificadas por ciclo
         accounts_per_cycle = settings.get('accounts_per_cycle', 1)
         email_ids = get_next_creator_emails(accounts_per_cycle)
-        print(f"🔄 Modo ciclo: procesando {accounts_per_cycle} cuentas por ciclo")
+        print(f"🔄 Procesando {accounts_per_cycle} cuentas")
     else:
-        # Para modo manual, scheduled, o cualquier otro: procesar TODAS las cuentas disponibles
+        print("🌐 Obteniendo emails del servidor...")
+        resultado = fetch_and_save_emails_for_cycle(100)
+        
+        if resultado == "NO_EMAILS_AVAILABLE":
+            print("📭 No hay más emails disponibles en el servidor")
+            # Mostrar messagebox y detener el bot
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showwarning(
+                "Sin Emails Disponibles", 
+                "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
+            )
+            root.destroy()
+            return False
+        elif not resultado:
+            print("❌ Error al obtener emails")
+            return False
+            
         email_ids = get_all_available_creator_emails()
-        print(f"🔄 Modo programado/manual: procesando TODAS las cuentas disponibles ({len(email_ids)} cuentas)")
+        print(f"🔄 Procesando {len(email_ids)} cuentas")
     
     if not email_ids:
-        print("❌ No hay emails disponibles para procesar")
-        # Reiniciar progreso cuando no hay emails
-        from app.database.database import reset_creator_email_progress
+        print("❌ Sin emails disponibles")
         reset_creator_email_progress()
-        return False  # Retornar False para indicar que no hay más emails
+        return False
     
-    print(f"📧 Total de emails a procesar: {len(email_ids)}")
-    
-    # Obtener coordenadas
     coordinates = get_creator_coordinates()
     if not coordinates:
-        print("❌ No se encontraron coordenadas configuradas")
+        print("❌ Sin coordenadas")
         return
     
-    # Inicializar archivo de salida
     filepath = _inicializar_archivo_salida(len(email_ids))
     if not filepath:
         return
     
-    # BUCLE PRINCIPAL - Procesar cada email
+    # Procesar emails
     emails_exitosos = 0
-    
     for i, email_id in enumerate(email_ids, 1):
-        # Ejecutar modo avión
         _ejecutar_modo_avion()
-        print(f"📧 Procesando email {i}/{len(email_ids)}")
+        print(f"📧 {i}/{len(email_ids)}")
         
-        # Procesar email individual
         exito = procesar_email_individual(email_id, coordinates, filepath, i, len(email_ids))
         
         if exito:
             emails_exitosos += 1
-            print(f"✅ Email {i} completado")
+            print(f"✅ Completado")
         else:
-            print(f"❌ Email {i} falló")
+            print(f"❌ Falló")
         
-        # Actualizar progreso después de cada email
         update_creator_email_progress(email_id, emails_exitosos)
-        
-        # Pausa entre emails (excepto en el último)
         if i < len(email_ids):
             time.sleep(1)
     
-    # Finalizar proceso
-    print(f"🎉 Completado: {emails_exitosos}/{len(email_ids)} exitosos")
+    print(f"🎉 Completado: {emails_exitosos}/{len(email_ids)}")
     _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)
     _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos)
     
-    return True  # Retornar True para indicar que se procesaron emails
+    return True
+
+
+def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int) -> int:
+    """
+    Ejecuta el proceso de creación de cuentas con un objetivo específico
+    """
+    from app.database.database import (
+        get_creator_coordinates, get_all_available_creator_emails_for_objective,
+        update_creator_email_progress, fetch_and_append_emails_for_cycle
+    )
+    import time
+    import tkinter as tk
+    from tkinter import messagebox
+    
+    print(f"🎯 Objetivo: {objetivo_cuentas} cuentas")
+    
+    coordinates = get_creator_coordinates()
+    if not coordinates:
+        print("❌ Sin coordenadas")
+        return 0
+    
+    filepath = _inicializar_archivo_salida(objetivo_cuentas)
+    if not filepath:
+        return 0
+    
+    cuentas_creadas = 0
+    intento = 1
+    
+    while cuentas_creadas < objetivo_cuentas and intento <= 10:
+        print(f"📧 Intento {intento} - {cuentas_creadas}/{objetivo_cuentas}")
+        
+        # Obtener emails disponibles
+        email_ids = get_all_available_creator_emails_for_objective()
+        
+        # Si no hay emails, solicitar más
+        if not email_ids:
+            faltantes = objetivo_cuentas - cuentas_creadas
+            print(f"📭 Solicitando {faltantes} emails...")
+            resultado = fetch_and_append_emails_for_cycle(faltantes)
+            
+            if resultado == "NO_EMAILS_AVAILABLE":
+                print("📭 No hay más emails disponibles en el servidor")
+                # Mostrar messagebox y detener el bot
+                root = tk.Tk()
+                root.withdraw()  # Ocultar ventana principal
+                messagebox.showwarning(
+                    "Sin Emails Disponibles", 
+                    "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
+                )
+                root.destroy()
+                break
+            elif not resultado:
+                print("❌ Error al obtener emails")
+                break
+                
+            email_ids = get_all_available_creator_emails_for_objective()
+            if not email_ids:
+                break
+        
+        # Procesar emails
+        for i, email_id in enumerate(email_ids, 1):
+            if cuentas_creadas >= objetivo_cuentas:
+                break
+                
+            _ejecutar_modo_avion()
+            print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
+            
+            exito = procesar_email_individual(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
+            
+            if exito:
+                cuentas_creadas += 1
+                print(f"✅ Cuenta {cuentas_creadas}")
+            else:
+                print(f"❌ Falló")
+            
+            update_creator_email_progress(email_id, cuentas_creadas)
+            if i < len(email_ids):
+                time.sleep(1)
+        
+        intento += 1
+    
+    print(f"🎉 Completado: {cuentas_creadas}/{objetivo_cuentas}")
+    _actualizar_encabezado_con_exitos(filepath, objetivo_cuentas, cuentas_creadas)
+    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas)
+    
+    return cuentas_creadas
 
 
 def _ejecutar_creator_en_ciclo():
     """
     Ejecuta el proceso de creación de cuentas en ciclo continuo
     """
-    from app.database.database import get_creator_setting, get_creator_email_count
+    from app.database.database import (
+        get_creator_setting, fetch_and_save_emails_for_cycle, 
+        delete_all_creator_emails, reset_creator_email_progress
+    )
     import time
-    import datetime
     
     settings = get_creator_setting()
     cycle_minutes = settings.get('cycle_time_minutes', 60)
     accounts_per_cycle = settings.get('accounts_per_cycle', 1)
     
-    print(f"🔄 Ciclo cada {cycle_minutes}min - {accounts_per_cycle} cuentas por ciclo")
+    print(f"🔄 Ciclo: {cycle_minutes}min - Objetivo: {accounts_per_cycle} cuentas")
     print("💡 Ctrl+C para detener")
     
-    ciclo_numero = 1
+    ciclo = 1
     
     try:
         while True:
-            print(f"\n🔄 CICLO #{ciclo_numero}")
+            print(f"\n🔄 CICLO #{ciclo}")
             
-            # Verificar si hay emails disponibles
-            total_emails = get_creator_email_count()
-            if total_emails == 0:
-                print("❌ No hay emails en la base de datos")
+            # Limpiar emails del ciclo anterior
+            if ciclo > 1:
+                print("🧹 Limpiando emails...")
+                delete_all_creator_emails()
+                reset_creator_email_progress()
+            
+            # Obtener emails del servidor
+            print(f"🌐 Obteniendo {accounts_per_cycle} emails...")
+            resultado = fetch_and_save_emails_for_cycle(accounts_per_cycle)
+            
+            if resultado == "NO_EMAILS_AVAILABLE":
+                print("📭 No hay más emails disponibles en el servidor")
+                # Mostrar messagebox y detener el bot
+                import tkinter as tk
+                from tkinter import messagebox
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showwarning(
+                    "Sin Emails Disponibles", 
+                    "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
+                )
+                root.destroy()
                 break
+            elif not resultado:
+                print(f"❌ Error - Esperando {cycle_minutes}min...")
+                time.sleep(cycle_minutes * 60)
+                ciclo += 1
+                continue
             
-            # Ejecutar el proceso de creación
-            resultado = _ejecutar_proceso_creator()
+            # Ejecutar proceso de creación
+            cuentas_creadas = _ejecutar_proceso_creator_con_objetivo(accounts_per_cycle)
             
-            # Si no hay más emails disponibles, detener el ciclo
-            if resultado == False:
-                print("🎉 ¡Todos los emails procesados!")
-                break
+            # Mostrar resultado
+            if cuentas_creadas >= accounts_per_cycle:
+                print(f"🎉 Objetivo completado: {cuentas_creadas}/{accounts_per_cycle}")
+            else:
+                print(f"⚠️ Objetivo parcial: {cuentas_creadas}/{accounts_per_cycle}")
             
             print(f"⏰ Esperando {cycle_minutes}min...")
-            
-            # Esperar el tiempo del ciclo
             time.sleep(cycle_minutes * 60)
-            
-            ciclo_numero += 1
+            ciclo += 1
             
     except KeyboardInterrupt:
-        print(f"\n🛑 Ciclo detenido - {ciclo_numero - 1} ciclos completados")
+        print(f"\n🛑 Detenido - {ciclo - 1} ciclos completados")
     except Exception as e:
         print(f"\n❌ Error: {e}")

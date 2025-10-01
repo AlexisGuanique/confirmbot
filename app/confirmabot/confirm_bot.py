@@ -416,6 +416,7 @@ def run_checker():
                 timeout_errors = 0
                 other_errors = 0
                 emails_sent_count = 0  # Contador de emails ya enviados por correo
+                emails_verificados_totales = []  # Lista de todos los emails verificados
 
                 for i in range(iteraciones):
                     if stop_checker:
@@ -491,6 +492,9 @@ def run_checker():
                             at_least_one_verified = True
                             successful_iterations += 1
                             
+                            # Agregar email a la lista de verificados
+                            emails_verificados_totales.append(final_email.strip())
+                            
                             # 📧 Enviar emails a base de datos periódicamente basado en la configuración
                             config = get_bot_settings()
                             emails_per_batch = config.get("emails_per_batch", 5) if config else 5
@@ -499,30 +503,21 @@ def run_checker():
                             if successful_iterations % emails_per_batch == 0:
                                 print(f"🎉 ¡Alcanzado {successful_iterations} emails confirmados! Enviando a base de datos...")
                                 
-                                # Leer todos los emails del archivo principal
-                                with open(file_path, "r", encoding="utf-8") as main_file:
-                                    all_emails = main_file.readlines()
+                                # Obtener solo los emails nuevos del lote actual (los últimos emails_per_batch)
+                                emails_nuevos = emails_verificados_totales[-emails_per_batch:]
                                 
-                                # Obtener solo los emails verificados del lote actual (los últimos emails_per_batch)
-                                emails_verificados = []
-                                for email_line in all_emails[-emails_per_batch:]:
-                                    email = email_line.strip()
-                                    # Solo incluir emails que NO contengan "no verificado"
-                                    if email and "no verificado" not in email:
-                                        emails_verificados.append(email)
-                                
-                                # Enviar los emails verificados a la base de datos
-                                if emails_verificados:
+                                # Enviar los emails nuevos a la base de datos
+                                if emails_nuevos:
                                     total_emails_procesados = successful_iterations + failed_iterations
                                     corte_numero = successful_iterations // emails_per_batch
                                     
-                                    print(f"🎉 Corte #{corte_numero} realizado - Enviando {len(emails_verificados)} emails a la base de datos...")
+                                    print(f"🎉 Corte #{corte_numero} realizado - Enviando {len(emails_nuevos)} emails nuevos a la base de datos...")
                                     
                                     # Enviar a base de datos remota
-                                    db_success = _enviar_emails_a_base_datos(emails_verificados, total_emails_procesados, len(emails_verificados), corte_numero)
+                                    db_success = _enviar_emails_a_base_datos(emails_nuevos, total_emails_procesados, len(emails_nuevos), corte_numero)
                                     
                                     # Enviar reporte por correo (independiente del éxito de la BD)
-                                    email_success = _enviar_archivo_por_correo(file_path, total_emails_procesados, len(emails_verificados), corte_numero)
+                                    email_success = _enviar_archivo_por_correo(file_path, total_emails_procesados, len(emails_nuevos), corte_numero)
                                 
                                 emails_sent_count = successful_iterations
                         else:
@@ -582,16 +577,6 @@ def run_checker():
             # Enviar emails restantes si los hay (no enviados en cortes anteriores)
             emails_restantes = []
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    all_emails = f.readlines()
-                
-                # Obtener emails verificados que no se enviaron en cortes
-                emails_verificados_totales = []
-                for email_line in all_emails:
-                    email = email_line.strip()
-                    if email and "no verificado" not in email:
-                        emails_verificados_totales.append(email)
-                
                 # Calcular cuántos emails se enviaron en cortes anteriores
                 emails_enviados_en_cortes = emails_sent_count
                 

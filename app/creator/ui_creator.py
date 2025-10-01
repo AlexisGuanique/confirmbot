@@ -7,10 +7,32 @@ def create_new_window(parent_root):
     import threading
     import datetime
     import pytz
-    from app.database.database import get_creator_coordinates, save_creator_coordinates, save_creator_setting, get_creator_setting, load_emails_from_file, get_creator_email_count, clear_scheduled_time
+    from app.database.database import get_creator_coordinates, save_creator_coordinates, save_creator_setting, get_creator_setting, load_emails_from_file, get_creator_email_count, clear_scheduled_time, get_user_data
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
     from app.creator.image_config import view_image, load_image, get_image_path
+    from app.utils.http_utils import post
     from tkinter import filedialog
+    
+    # Función para obtener el conteo de emails globales del servidor
+    def get_global_email_count():
+        """Obtiene el conteo de emails globales del servidor"""
+        try:
+            user_data = get_user_data()
+            if not user_data:
+                return None
+                
+            url = f"http://35.209.237.44/api/emails/count/{user_data['id']}"
+            headers = {"Content-Type": "application/json"}
+            body = {"access_token": user_data['access_token']}
+            
+            response = post(url, body=body, headers=headers)
+            if response and response.status_code == 200:
+                data = response.json()
+                return data.get('email_count', 0)
+            return None
+        except Exception as e:
+            print(f"❌ Error al obtener conteo global: {e}")
+            return None
     
     # Crear la nueva ventana
     new_window = ctk.CTkToplevel(parent_root)
@@ -192,55 +214,30 @@ def create_new_window(parent_root):
     emails_frame = ctk.CTkFrame(main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
     emails_frame.pack(fill="x", padx=20, pady=(0, 20))
     
-    # Obtener cantidad actual de emails
+    # Obtener cantidad actual de emails locales
     current_email_count = get_creator_email_count()
     
-    # Label con información de emails
+    # Obtener cantidad de emails globales del servidor
+    global_email_count = get_global_email_count()
+    
+    # Label con información de emails locales
     emails_info_label = ctk.CTkLabel(
         emails_frame,
-        text=f"📊 Emails actuales en la base de datos: {current_email_count}",
+        text=f"📊 Emails locales en la base de datos: {current_email_count}",
         font=("Arial", 12, "bold"),
         text_color="black"
     )
-    emails_info_label.pack(pady=(15, 10), padx=20, anchor="w")
+    emails_info_label.pack(pady=(15, 5), padx=20, anchor="w")
     
-    # Función para cargar emails desde archivo
-    def load_emails_from_file_ui():
-        file_path = filedialog.askopenfilename(
-            title="Seleccionar archivo de emails",
-            filetypes=[
-                ("Archivos de texto", "*.txt"),
-                ("Todos los archivos", "*.*")
-            ]
-        )
-        
-        if not file_path:
-            return
-        
-        # Mostrar mensaje de procesamiento
-        messagebox.showinfo("Procesando", "📧 Procesando archivo de emails...")
-        
-        # Cargar emails usando la función de la base de datos
-        result = load_emails_from_file(file_path)
-        
-        # Mostrar resultado
-        if result['success']:
-            message = f"""✅ Carga completada exitosamente!
-
-            📊 Estadísticas:
-            • Total de líneas: {result['total_lines']}
-            • Emails válidos: {result['valid_emails']}
-            • Emails guardados: {result['saved_emails']}
-            • Emails duplicados: {result['duplicate_emails']}
-            • Emails inválidos: {result['invalid_emails']}
-
-            📧 Total de emails en la base de datos: {get_creator_email_count()}"""
-            messagebox.showinfo("Éxito", message)
-            
-            # Actualizar el contador
-            emails_info_label.configure(text=f"📊 Emails actuales en la base de datos: {get_creator_email_count()}")
-        else:
-            messagebox.showerror("Error", f"❌ {result['message']}")
+    # Label con información de emails globales
+    global_emails_info_label = ctk.CTkLabel(
+        emails_frame,
+        text=f"🌐 Emails globales en el servidor: {global_email_count if global_email_count is not None else 'Error al obtener'}" + 
+             (" 🔄" if global_email_count is None else ""),
+        font=("Arial", 12, "bold"),
+        text_color="black"
+    )
+    global_emails_info_label.pack(pady=(5, 10), padx=20, anchor="w")
     
     # Función para eliminar todos los emails
     def delete_all_emails():
@@ -257,67 +254,26 @@ def create_new_window(parent_root):
                 reset_creator_email_progress()
                 messagebox.showinfo("Éxito", "✅ Todos los emails han sido eliminados y el progreso reiniciado.")
                 # Actualizar el contador
-                emails_info_label.configure(text=f"📊 Emails actuales en la base de datos: {get_creator_email_count()}")
+                emails_info_label.configure(text=f"📊 Emails locales en la base de datos: {get_creator_email_count()}")
             else:
                 messagebox.showerror("Error", "❌ No se pudieron eliminar los emails.")
     
-    # Frame para los botones
-    buttons_frame = ctk.CTkFrame(emails_frame, fg_color="transparent")
-    buttons_frame.pack(fill="x", padx=20, pady=(0, 15))
-    
-    # Botón para cargar emails
-    load_emails_button = ctk.CTkButton(
-        buttons_frame,
-        text="📁 Cargar Emails desde Archivo",
-        command=load_emails_from_file_ui,
-        fg_color="#007ACC",
-        text_color="white",
-        font=("Arial", 12, "bold"),
-        height=35,
-        width=250
-    )
-    load_emails_button.pack(side="left", padx=(0, 10))
+    # Frame para el botón
+    button_frame = ctk.CTkFrame(emails_frame, fg_color="transparent")
+    button_frame.pack(fill="x", padx=20, pady=(0, 15))
     
     # Botón para eliminar todos los emails
     delete_emails_button = ctk.CTkButton(
-        buttons_frame,
+        button_frame,
         text="🗑️ Eliminar Todos los Emails",
         command=delete_all_emails,
         fg_color="#dc3545",
         text_color="white",
         font=("Arial", 12, "bold"),
         height=35,
-        width=250
+        width=300
     )
-    delete_emails_button.pack(side="left", padx=(10, 0))
-    
-    # Función para reiniciar progreso
-    def reset_email_progress():
-        from app.database.database import reset_creator_email_progress
-        
-        result = messagebox.askyesno(
-            "Confirmar Reinicio",
-            "¿Estás seguro de que quieres reiniciar el progreso de emails?\n\nEsto hará que el sistema vuelva a empezar desde el primer email en el siguiente ciclo."
-        )
-        
-        if result:
-            if reset_creator_email_progress():
-                messagebox.showinfo("Éxito", "✅ Progreso de emails reiniciado correctamente.")
-            else:
-                messagebox.showerror("Error", "❌ No se pudo reiniciar el progreso.")
-    
-    # Botón para reiniciar progreso
-    reset_progress_button = ctk.CTkButton(
-        buttons_frame,
-        text="🔄 Reiniciar Progreso",
-        command=reset_email_progress,
-        fg_color="#ffc107",
-        text_color="black",
-        font=("Arial", 12, "bold"),
-        height=35,
-        width=200
-    )
-    reset_progress_button.pack(side="left", padx=(10, 0))
+    delete_emails_button.pack(pady=10)
     
     # Crear frame principal para la tabla de coordenadas
     main_frame = ctk.CTkFrame(main_scroll_frame, fg_color="transparent")

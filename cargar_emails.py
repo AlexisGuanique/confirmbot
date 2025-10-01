@@ -20,10 +20,10 @@ from database.database import get_user_data
 # =============================================================================
 
 # ID del usuario en la base de datos remota
-USER_ID = 1  # Cambia este valor por tu ID de usuario
+USER_ID = 3  # Cambia este valor por tu ID de usuario
 
 # Token de acceso para la API
-ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiZXhwIjoxNzYxOTA2MDQ1fQ.-j24n7D2J2_iJQUL3tpDe5VeazF-1mTnpFJylwQq41M"  # Cambia este valor por tu token
+ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiZXhwIjoxNzYxOTM3MDkzfQ.bJIMvIOd-774KfZPLfb6HI6nzuxpt86pjaoKmUuJ_f0"  # Cambia este valor por tu token
 
 # =============================================================================
 
