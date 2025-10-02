@@ -16,9 +16,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 
-# Configuración de logging sin archivo
+# Configuración de logging sin archivo - Solo errores
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler()
@@ -59,8 +59,6 @@ class HostingerEmailClient:
             bool: True si la conexión fue exitosa, False en caso contrario
         """
         try:
-            logger.info(f"Conectando a {self.imap_host}:{self.imap_port}")
-            
             # Crear contexto SSL
             context = ssl.create_default_context()
             
@@ -71,7 +69,6 @@ class HostingerEmailClient:
             self.imap_server.login(self.email_address, self.password)
             
             self.connected = True
-            logger.info("Conexión exitosa al servidor de correo")
             return True
             
         except imaplib.IMAP4.error as e:
@@ -94,7 +91,6 @@ class HostingerEmailClient:
                 
                 self.imap_server.logout()
                 self.connected = False
-                logger.info("Desconectado del servidor de correo")
             except Exception as e:
                 logger.error(f"Error al desconectar: {e}")
     
@@ -895,9 +891,6 @@ def wait_for_confirmation_email(email_address: str, password: str, timeout_secon
             logger.error("No se pudo conectar al servidor de correo")
             return False, None
         
-        logger.info("Conexión exitosa al servidor de correo")
-        logger.info(f"⏳ Esperando nuevos emails de 33mail.com (timeout: {timeout_seconds}s)...")
-        
         start_time = time.time()
         last_email_count = 0
         
@@ -1029,8 +1022,6 @@ def go_directly_to_confirmar(email_address: str, password: str):
         if not email_client.connect():
             logger.error("No se pudo conectar al servidor de correo")
             return
-        
-        print("Conexion exitosa!")
         print("Buscando carpeta 'Confirmar'...")
         
         # Ir directamente a la carpeta Confirmar

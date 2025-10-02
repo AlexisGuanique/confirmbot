@@ -711,9 +711,11 @@ def _verificar_hora_programada():
 def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
     try:
         from app.confirmabot.hostinger_actions import send_email_with_file
-        from app.database.database import get_creator_setting, get_all_emails
+        from app.database.database import get_creator_setting, get_all_emails, get_user_data
+        from app.utils.http_utils import post
         import os
         from datetime import datetime
+        import json
         
         # Obtener credenciales de correo
         emails_data = get_all_emails()
@@ -743,33 +745,47 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
         if not email_destino:
             return True  # No hay email configurado, continuar
         
+        # Guardar cuentas en base de datos del servidor primero
+        cuentas_guardadas = _guardar_cuentas_en_servidor(filepath)
+        
+        # Obtener conteo total de cuentas en el servidor
+        total_cuentas_servidor = _obtener_conteo_cuentas_servidor()
+        
         # Preparar correo
         fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
         asunto = f"Reporte LinkedIn Creator - {fecha_hora}"
+        
+        # Calcular emails utilizados (total procesados - cuentas creadas)
+        emails_utilizados = total_emails - emails_exitosos
         
         cuerpo = f"""Hola,
 
             El proceso de creación de cuentas LinkedIn ha finalizado.
 
-            📊 RESUMEN:
+            📊 RESUMEN DEL PROCESO:
             - Total de emails procesados: {total_emails}
             - Cuentas creadas exitosamente: {emails_exitosos}
             - Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
 
-            📎 Adjunto encontrarás el archivo con todas de las cuentas creadas.
+            💾 INFORMACIÓN DE BASE DE DATOS:
+            - Cuentas enviadas a la base de datos: {emails_exitosos}
+            - Total de cuentas en tu base de datos: {total_cuentas_servidor}
+
+            📈 ESTADÍSTICAS:
+            - Eficiencia: {emails_exitosos} cuentas creadas con {total_emails} emails
+            - Promedio: {(total_emails/emails_exitosos):.1f} emails por cuenta creada
 
             Saludos,
             ConfirmaBot
         """
         
-        # Enviar correo
-        exito = send_email_with_file(
+        # Enviar correo sin archivo adjunto
+        exito = _enviar_correo_sin_adjunto(
             email_address=email_address,
             password=email_password,
             to_email=email_destino,
             subject=asunto,
-            body=cuerpo,
-            attachment_path=filepath
+            body=cuerpo
         )
         
         if exito:
@@ -779,6 +795,195 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
             
     except Exception as e:
         return False
+
+
+def _enviar_correo_sin_adjunto(email_address: str, password: str, to_email: str, 
+                               subject: str, body: str) -> bool:
+    """
+    Envía un correo sin archivo adjunto usando las credenciales de Hostinger
+    """
+    try:
+        from app.confirmabot.hostinger_actions import HostingerEmailClient
+        
+        # Crear cliente de correo
+        email_client = HostingerEmailClient(email_address, password)
+        
+        # Conectar al servidor
+        if not email_client.connect():
+            print("❌ Error al conectar con el servidor de correo")
+            return False
+        
+        # Enviar correo
+        success = email_client.send_email(to_email, subject, body)
+        
+        # Desconectar
+        email_client.disconnect()
+        
+        return success
+        
+    except Exception as e:
+        print(f"❌ Error al enviar correo: {e}")
+        return False
+
+
+def _obtener_conteo_cuentas_servidor():
+    """
+    Obtiene el conteo total de cuentas en la base de datos del servidor
+    """
+    try:
+        from app.database.database import get_user_data
+        from app.utils.http_utils import post
+        import json
+        
+        # Obtener datos del usuario logueado
+        user_data = get_user_data()
+        if not user_data:
+            print("❌ No se encontraron datos del usuario logueado")
+            return 0
+        
+        user_id = user_data.get('id')
+        access_token = user_data.get('access_token')
+        
+        if not user_id or not access_token:
+            print("❌ Faltan datos del usuario (ID o access_token)")
+            return 0
+        
+        # Preparar datos para el servidor
+        payload = {
+            "access_token": access_token
+        }
+        
+        # URL del servidor
+        url = f"http://35.209.237.44/api/accounts/count/{user_id}"
+        
+        # Headers
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        # Enviar petición al servidor
+        response = post(url, body=payload, headers=headers)
+        
+        if response:
+            try:
+                response_data = response.json()
+                account_count = response_data.get('account_count', 0)
+                print(f"📊 Total de cuentas en servidor: {account_count}")
+                return account_count
+            except json.JSONDecodeError:
+                print("❌ Error al procesar respuesta del servidor")
+                return 0
+        else:
+            print("❌ Error al conectar con el servidor")
+            return 0
+            
+    except Exception as e:
+        print(f"❌ Error al obtener conteo de cuentas: {e}")
+        return 0
+
+
+def _guardar_cuentas_en_servidor(filepath):
+    """
+    Guarda las cuentas creadas en la base de datos del servidor
+    """
+    try:
+        from app.database.database import get_user_data
+        from app.utils.http_utils import post
+        import json
+        
+        # Obtener datos del usuario logueado
+        user_data = get_user_data()
+        if not user_data:
+            print("❌ No se encontraron datos del usuario logueado")
+            return False
+        
+        user_id = user_data.get('id')
+        access_token = user_data.get('access_token')
+        
+        if not user_id or not access_token:
+            print("❌ Faltan datos del usuario (ID o access_token)")
+            return False
+        
+        # Leer y parsear el archivo de cuentas
+        accounts = _leer_cuentas_del_archivo(filepath)
+        if not accounts:
+            print("❌ No se encontraron cuentas en el archivo")
+            return False
+        
+        # Preparar datos para el servidor
+        payload = {
+            "access_token": access_token,
+            "accounts": accounts
+        }
+        
+        # URL del servidor
+        url = f"http://35.209.237.44/api/accounts/save/{user_id}"
+        
+        # Headers
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        # Enviar petición al servidor
+        response = post(url, body=payload, headers=headers)
+        
+        if response:
+            try:
+                response_data = response.json()
+                saved_count = response_data.get('saved_count', 0)
+                duplicate_count = response_data.get('duplicate_count', 0)
+                total_processed = response_data.get('total_processed', 0)
+                
+                print(f"💾 Cuentas guardadas en servidor: {saved_count} nuevas, {duplicate_count} duplicadas")
+                return True
+            except json.JSONDecodeError:
+                print("❌ Error al procesar respuesta del servidor")
+                return False
+        else:
+            print("❌ Error al conectar con el servidor")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error al guardar cuentas en servidor: {e}")
+        return False
+
+
+def _leer_cuentas_del_archivo(filepath):
+    """
+    Lee las cuentas del archivo y las convierte al formato requerido por el servidor
+    """
+    try:
+        accounts = []
+        
+        with open(filepath, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Buscar las líneas que contienen datos de cuentas (saltar encabezados)
+        for line in lines:
+            line = line.strip()
+            # Si la línea contiene tabs y no es un encabezado
+            if '\t' in line and not line.startswith('CUENTAS') and not line.startswith('=') and not line.startswith('Total') and not line.startswith('Formato'):
+                parts = line.split('\t')
+                if len(parts) >= 4:  # user_agent, email, password, cookie
+                    user_agent = parts[0].strip()
+                    email = parts[1].strip()
+                    password = parts[2].strip()
+                    cookie = parts[3].strip()
+                    
+                    # Agregar cuenta al array
+                    account = {
+                        "user_agent": user_agent,
+                        "email": email,
+                        "password": password,
+                        "cookie": cookie
+                    }
+                    accounts.append(account)
+        
+        return accounts
+        
+    except Exception as e:
+        print(f"❌ Error al leer archivo de cuentas: {e}")
+        return []
 
 
 def execute_creator():
