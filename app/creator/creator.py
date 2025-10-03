@@ -84,7 +84,7 @@ def observador_unificado(coordinates, email, password, filepath):
     print("👁️ Observando número, captcha rojo o éxito...")
     
     start_time = time.time()
-    timeout_seconds = 60  # 3 minutos
+    timeout_seconds = 120  # 2 minutos
     
     # Contadores para evitar bucles infinitos
     numero_count = 0
@@ -97,7 +97,7 @@ def observador_unificado(coordinates, email, password, filepath):
         # Verificar si ha pasado el timeout
         elapsed_time = time.time() - start_time
         if elapsed_time > timeout_seconds:
-            print("⏰ Timeout de 60 segundos - no se encontraron imágenes, cerrando ventana")
+            print("⏰ Timeout de 120 segundos - no se encontraron imágenes, cerrando ventana")
             # Desactivar proxy antes de cerrar por timeout
             _desactivar_proxy()
             close_window_coords = coordinates.get("close_window")
@@ -277,6 +277,248 @@ def observador_unificado(coordinates, email, password, filepath):
         time.sleep(0.5)
 
 
+def observador_unificado_con_detalle(coordinates, email, password, filepath):
+    """
+    Versión mejorada del observador que devuelve información detallada sobre el resultado
+    Retorna: (exito: bool, motivo_fallo: str, detalles: dict)
+    """
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image, get_clipboard_content
+    from app.database.database import get_creator_setting
+    import time
+    import os
+    import json
+    from datetime import datetime
+    
+    def format_cookie_to_single_line(cookie_content):
+        """
+        Convierte el contenido de cookies del portapapeles a formato de una sola línea
+        """
+        try:
+            # Buscar el inicio del JSON (primer '[')
+            json_start = cookie_content.find('[')
+            if json_start == -1:
+                print("⚠️ No se encontró un array JSON válido en las cookies")
+                return cookie_content
+            
+            # Extraer solo la parte JSON
+            json_content = cookie_content[json_start:]
+            
+            # Parsear el JSON
+            data = json.loads(json_content)
+            
+            # Convertir a JSON compacto (una sola línea)
+            json_single_line = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+            
+            # Si hay contenido antes del JSON, mantenerlo
+            if json_start > 0:
+                prefix = cookie_content[:json_start]
+                return prefix + json_single_line
+            else:
+                return json_single_line
+                
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Error al parsear cookies JSON: {e}")
+            return cookie_content
+        except Exception as e:
+            print(f"⚠️ Error inesperado al formatear cookies: {e}")
+            return cookie_content
+    
+    print("👁️ Observando número, captcha rojo o éxito...")
+    
+    start_time = time.time()
+    timeout_seconds = 60 # 1 minutos
+    
+    # Contadores para evitar bucles infinitos
+    numero_count = 0
+    captcha_count = 0
+    ciclos_sin_imagen = 0
+    # Contador global para cualquier obstáculo (número o captcha)
+    obstaculo_count = 0
+    
+    while True:
+        # Verificar si ha pasado el timeout
+        elapsed_time = time.time() - start_time
+        if elapsed_time > timeout_seconds:
+            print("⏰ Timeout de 60 segundos - no se encontraron imágenes, cerrando ventana")
+            # Desactivar proxy antes de cerrar por timeout
+            _desactivar_proxy()
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
+        
+        # Verificar número
+        numero_found = wait_for_creator_image("imagen_numero", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if numero_found:
+            numero_count += 1
+            obstaculo_count += 1
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Número encontrado (vez #{numero_count}) - cerrando")
+            
+            if obstaculo_count >= 2:
+                print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+                # Desactivar proxy antes de cerrar por segundo obstáculo
+                _desactivar_proxy()
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
+                return False, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}
+            
+            close_number_coords = coordinates.get("close_number_click")
+            if close_number_coords:
+                click_coordinates(close_number_coords)
+                time.sleep(1)
+                
+                continue2_coords = coordinates.get("continue_button2_click")
+                if continue2_coords:
+                    click_coordinates(continue2_coords)
+                    time.sleep(2)
+                    continue
+        
+        # Verificar captcha rojo
+        captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if captcha_found:
+            captcha_count += 1
+            obstaculo_count += 1
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Captcha encontrado (vez #{captcha_count}) - cerrando")
+            
+            if obstaculo_count >= 2:
+                print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+                # Desactivar proxy antes de cerrar por segundo obstáculo
+                _desactivar_proxy()
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
+                return False, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}
+            
+            close_captcha_coords = coordinates.get("close_captcha_click")
+            if close_captcha_coords:
+                click_coordinates(close_captcha_coords)
+                time.sleep(1)
+                
+                continue2_coords = coordinates.get("continue_button2_click")
+                if continue2_coords:
+                    click_coordinates(continue2_coords)
+                    time.sleep(2)
+                    continue
+        
+        # Verificar imágenes de éxito (cualquiera de las tres)
+        exito_found = False
+        exito_image_name = None
+        
+        # Lista de imágenes que indican éxito
+        exito_images = [
+            "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin",
+            "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin_2", 
+            "imagen_de_confirmacion_de_codigo",
+            "add_location"
+        ]
+        
+        # Buscar cualquiera de las imágenes de éxito
+        for image_name in exito_images:
+            if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True):
+                exito_found = True
+                exito_image_name = image_name
+                break
+        
+        if exito_found:
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Imagen de éxito encontrada - buscando cookie...")
+            
+            # Desactivar proxy después del éxito
+            _desactivar_proxy()
+            
+            # Intentar obtener cookie única (máximo 3 intentos)
+            max_intentos = 3
+            for intento in range(1, max_intentos + 1):
+                # Limpiar portapapeles antes de obtener la cookie
+                import pyperclip
+                pyperclip.copy("")
+                time.sleep(0.2)
+                
+                # Clic en cookie_editor_icon_click
+                cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
+                if cookie_editor_coords:
+                    click_coordinates(cookie_editor_coords)
+                    time.sleep(2)
+                    
+                    # Clic en save_cookie_clipboard_click
+                    save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
+                    if save_cookie_coords:
+                        click_coordinates(save_cookie_coords)
+                        time.sleep(1)
+                        
+                        # Obtener cookie del portapapeles
+                        cookie_raw = get_clipboard_content()
+                        
+                        # Validar que la cookie no esté vacía
+                        if not cookie_raw or len(cookie_raw.strip()) < 10:
+                            if intento < max_intentos:
+                                continue
+                            else:
+                                return False, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
+                        
+                        # Formatear cookie a una sola línea
+                        cookie = format_cookie_to_single_line(cookie_raw)
+                        
+                        # Validar que la cookie formateada sea válida
+                        if not cookie or len(cookie.strip()) < 10:
+                            if intento < max_intentos:
+                                continue
+                            else:
+                                return False, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}
+                        
+                        # Verificar que la cookie no sea duplicada
+                        if _verificar_cookie_duplicada(filepath, cookie):
+                            if intento < max_intentos:
+                                print(f"⚠️ Cookie duplicada detectada - intento {intento + 1}/{max_intentos}")
+                                time.sleep(1)
+                                continue
+                            else:
+                                print("❌ Cookie duplicada después de todos los intentos")
+                                return False, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}
+                        
+                        # Si llegamos aquí, la cookie es válida y única
+                        print("✅ Cookie única guardada")
+                        
+                        # Obtener user agent desde la base de datos
+                        creator_settings = get_creator_setting()
+                        if creator_settings and creator_settings.get('user_agent'):
+                            user_agent = creator_settings.get('user_agent')
+                            
+                            # Crear contenido del archivo con formato correcto (separado por tabs)
+                            contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
+                            
+                            # Agregar al archivo existente (modo append)
+                            try:
+                                with open(filepath, 'a', encoding='utf-8') as f:
+                                    f.write(contenido + "\n")
+                                return True, "exito", {"imagen_exito": exito_image_name, "intento": intento}
+                            except Exception as e:
+                                return False, "error_escritura_archivo", {"error": str(e)}
+                        else:
+                            return False, "user_agent_no_encontrado", {}
+                    else:
+                        return False, "coordenadas_save_cookie_no_encontradas", {}
+                else:
+                    return False, "coordenadas_cookie_editor_no_encontradas", {}
+            
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}
+        
+        # Si no se encontró ninguna imagen, incrementar contador
+        if not numero_found and not captcha_found and not exito_found:
+            ciclos_sin_imagen += 1
+        
+        # Pequeña pausa antes del siguiente ciclo
+        time.sleep(0.5)
+
+
 def procesar_email_individual(email_id, coordinates, filepath, contador, total):
     """
     Procesa un email individual en el proceso de creación de cuenta LinkedIn
@@ -316,6 +558,48 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total):
         return True
     else:
         return False
+
+
+def procesar_email_individual_con_detalle(email_id, coordinates, filepath, contador, total):
+    """
+    Procesa un email individual en el proceso de creación de cuenta LinkedIn con información detallada
+    Retorna: (exito: bool, motivo_fallo: str, detalles: dict)
+    """
+    from app.database.database import get_creator_email_by_id
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname
+    import time
+    
+    # Obtener el email por ID
+    current_email = get_creator_email_by_id(email_id)
+    if not current_email:
+        print(f"⚠️ Email ID {email_id} no encontrado")
+        return False, "email_no_encontrado", {"email_id": email_id}
+    
+    # Paso 1: Click en Brave
+    if not _click_brave(coordinates):
+        return False, "error_click_brave", {}
+    
+    # Paso 2: Click en LinkedIn fav
+    if not _click_linkedin_fav(coordinates):
+        return False, "error_click_linkedin_fav", {}
+    
+    # Paso 3: Verificar carga de LinkedIn
+    if not _verificar_carga_linkedin():
+        return False, "error_carga_linkedin", {}
+    
+    # Paso 4: Llenar formulario de registro
+    if not _llenar_formulario_registro(coordinates, current_email):
+        return False, "error_llenar_formulario", {}
+    
+    # Paso 5: Observar y crear cuenta con detalle
+    exito, motivo_fallo, detalles = observador_unificado_con_detalle(coordinates, current_email, _get_password_usado(), filepath)
+    
+    # Paso 6: Cerrar ventana si se creó exitosamente
+    if exito:
+        _cerrar_ventana(coordinates)
+        return True, "exito", detalles
+    else:
+        return False, motivo_fallo, detalles
 
 
 def _click_brave(coordinates):
@@ -708,13 +992,13 @@ def _verificar_hora_programada():
         return True  # En caso de error, continuar inmediatamente
 
 
-def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
+def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_fallidas=None, es_ciclo=False, ciclo_minutes=None):
     try:
         from app.confirmabot.hostinger_actions import send_email_with_file
         from app.database.database import get_creator_setting, get_all_emails, get_user_data
         from app.utils.http_utils import post
         import os
-        from datetime import datetime
+        from datetime import datetime, timedelta
         import json
         
         # Obtener credenciales de correo
@@ -755,26 +1039,28 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
         fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
         asunto = f"Reporte LinkedIn Creator - {fecha_hora}"
         
-        # Calcular emails utilizados (total procesados - cuentas creadas)
-        emails_utilizados = total_emails - emails_exitosos
+        # Calcular estadísticas reales
+        emails_fallidos = len(cuentas_fallidas) if cuentas_fallidas else 0
+        total_emails_solicitados = emails_exitosos + emails_fallidos
+        tasa_exito_real = (emails_exitosos / total_emails_solicitados * 100) if total_emails_solicitados > 0 else 0
+        
+        # Calcular próxima ejecución si es ciclo
+        proxima_ejecucion = ""
+        if es_ciclo and ciclo_minutes:
+            proxima = datetime.now() + timedelta(minutes=ciclo_minutes)
+            proxima_ejecucion = f"\n            ⏰ PRÓXIMO CICLO:\n            - Iniciará a las: {proxima.strftime('%H:%M:%S')}\n"
         
         cuerpo = f"""Hola,
 
             El proceso de creación de cuentas LinkedIn ha finalizado.
 
             📊 RESUMEN DEL PROCESO:
-            - Total de emails procesados: {total_emails}
+            - Total de emails solicitados del servidor: {total_emails_solicitados}
             - Cuentas creadas exitosamente: {emails_exitosos}
-            - Tasa de éxito: {(emails_exitosos/total_emails*100):.1f}%
-
-            💾 INFORMACIÓN DE BASE DE DATOS:
-            - Cuentas enviadas a la base de datos: {emails_exitosos}
-            - Total de cuentas en tu base de datos: {total_cuentas_servidor}
-
-            📈 ESTADÍSTICAS:
-            - Eficiencia: {emails_exitosos} cuentas creadas con {total_emails} emails
-            - Promedio: {(total_emails/emails_exitosos):.1f} emails por cuenta creada
-
+            - Cuentas que fallaron: {emails_fallidos}
+            - Tasa de éxito real: {tasa_exito_real:.1f}%
+            
+            {proxima_ejecucion}
             Saludos,
             ConfirmaBot
         """
@@ -789,7 +1075,7 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos):
         )
         
         if exito:
-            print(f"📧 Reporte enviado: {emails_exitosos}/{total_emails} cuentas")
+            print(f"📧 Reporte enviado: {emails_exitosos}/{total_emails_solicitados} cuentas")
         
         return exito
             
@@ -823,6 +1109,80 @@ def _enviar_correo_sin_adjunto(email_address: str, password: str, to_email: str,
         
     except Exception as e:
         print(f"❌ Error al enviar correo: {e}")
+        return False
+
+
+def _enviar_notificacion_inicio_ciclo(ciclo_numero: int, objetivo_cuentas: int, ciclo_minutes: int):
+    """
+    Envía una notificación por email al inicio de cada ciclo
+    """
+    try:
+        from app.database.database import get_creator_setting, get_all_emails
+        from datetime import datetime, timedelta
+        
+        # Obtener credenciales de correo
+        emails_data = get_all_emails()
+        if not emails_data:
+            return False
+        
+        # Buscar email con credenciales de Hostinger
+        email_address = None
+        email_password = None
+        for email_data in emails_data:
+            if email_data.get('email_hostinger') and email_data.get('password_hostinger'):
+                email_address = email_data['email_hostinger']
+                email_password = email_data['password_hostinger']
+                break
+        
+        if not email_address or not email_password:
+            return False
+        
+        # Obtener email de destino
+        settings = get_creator_setting()
+        email_destino = settings.get('notification_email') if settings else None
+        
+        if not email_destino:
+            return True  # No hay email configurado, continuar
+        
+        # Preparar correo
+        fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
+        asunto = f"Inicio Ciclo #{ciclo_numero} - LinkedIn Creator"
+        
+        # Calcular hora estimada de finalización
+        hora_finalizacion = datetime.now() + timedelta(minutes=ciclo_minutes)
+        hora_fin = hora_finalizacion.strftime('%H:%M:%S')
+        
+        cuerpo = f"""Hola,
+
+            🔄 CICLO #{ciclo_numero} INICIADO
+
+            📊 INFORMACIÓN DEL CICLO:
+            - Hora de inicio: {fecha_hora}
+            - Objetivo: {objetivo_cuentas} cuentas
+
+            🎯 El bot está procesando las cuentas...
+            Te notificaremos cuando termine este ciclo.
+
+            Saludos,
+            ConfirmaBot
+            """
+        
+        # Enviar correo
+        exito = _enviar_correo_sin_adjunto(
+            email_address=email_address,
+            password=email_password,
+            to_email=email_destino,
+            subject=asunto,
+            body=cuerpo
+        )
+        
+        if exito:
+            print(f"📧 Notificación de inicio de ciclo #{ciclo_numero} enviada")
+        
+        return exito
+            
+    except Exception as e:
+        print(f"❌ Error al enviar notificación de inicio de ciclo: {e}")
         return False
 
 
@@ -945,6 +1305,72 @@ def _guardar_cuentas_en_servidor(filepath):
             
     except Exception as e:
         print(f"❌ Error al guardar cuentas en servidor: {e}")
+        return False
+
+
+def _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas):
+    """
+    Guarda las cuentas fallidas en la base de datos del servidor
+    """
+    try:
+        from app.database.database import get_user_data
+        from app.utils.http_utils import post
+        import json
+        
+        if not cuentas_fallidas:
+            print("📝 No hay cuentas fallidas para guardar")
+            return True
+        
+        # Obtener datos del usuario logueado
+        user_data = get_user_data()
+        if not user_data:
+            print("❌ No se encontraron datos del usuario logueado")
+            return False
+        
+        user_id = user_data.get('id')
+        access_token = user_data.get('access_token')
+        
+        if not user_id or not access_token:
+            print("❌ Faltan datos del usuario (ID o access_token)")
+            return False
+        
+        # Extraer solo los emails de las cuentas fallidas
+        emails_fallidos = [cuenta['email'] for cuenta in cuentas_fallidas]
+        
+        # Preparar datos para el servidor (formato correcto)
+        payload = {
+            "access_token": access_token,
+            "emails": emails_fallidos
+        }
+        
+        # URL del servidor para emails fallidos
+        url = f"http://35.209.237.44/api/emails/save/{user_id}"
+        
+        # Headers
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        # Enviar petición al servidor
+        response = post(url, body=payload, headers=headers)
+        
+        if response:
+            try:
+                response_data = response.json()
+                saved_count = response_data.get('saved_count', 0)
+                total_processed = response_data.get('total_processed', 0)
+                
+                print(f"💾 Emails fallidos guardados en servidor: {saved_count}")
+                return True
+            except json.JSONDecodeError:
+                print("❌ Error al procesar respuesta del servidor")
+                return False
+        else:
+            print("❌ Error al conectar con el servidor")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error al guardar emails fallidos en servidor: {e}")
         return False
 
 
@@ -1086,17 +1512,39 @@ def _ejecutar_proceso_creator():
     
     # Procesar emails
     emails_exitosos = 0
+    cuentas_fallidas = []
+    
     for i, email_id in enumerate(email_ids, 1):
         _ejecutar_modo_avion()
         print(f"📧 {i}/{len(email_ids)}")
         
-        exito = procesar_email_individual(email_id, coordinates, filepath, i, len(email_ids))
+        exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, i, len(email_ids))
         
         if exito:
             emails_exitosos += 1
             print(f"✅ Completado")
         else:
-            print(f"❌ Falló")
+            print(f"❌ Falló - {motivo_fallo}")
+            # Agregar a la lista de cuentas fallidas
+            from app.database.database import get_creator_email_by_id
+            from app.database.database import get_creator_setting
+            from datetime import datetime
+            
+            current_email = get_creator_email_by_id(email_id)
+            creator_settings = get_creator_setting()
+            user_agent = creator_settings.get('user_agent', '') if creator_settings else ''
+            
+            cuenta_fallida = {
+                "email": current_email if current_email else f"email_id_{email_id}",
+                "password": _get_password_usado(),
+                "user_agent": user_agent,
+                "motivo_fallo": motivo_fallo,
+                "detalles": detalles,
+                "fecha_fallo": datetime.now().isoformat(),
+                "contador": i,
+                "total": len(email_ids)
+            }
+            cuentas_fallidas.append(cuenta_fallida)
         
         update_creator_email_progress(email_id, emails_exitosos)
         if i < len(email_ids):
@@ -1104,12 +1552,21 @@ def _ejecutar_proceso_creator():
     
     print(f"🎉 Completado: {emails_exitosos}/{len(email_ids)}")
     _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)
-    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos)
+    
+    # Guardar cuentas fallidas en el servidor
+    if cuentas_fallidas:
+        print(f"💾 Guardando {len(cuentas_fallidas)} cuentas fallidas en el servidor...")
+        print("📧 EMAILS FALLIDOS:")
+        for i, cuenta in enumerate(cuentas_fallidas, 1):
+            print(f"  {i}. {cuenta['email']} - {cuenta['motivo_fallo']}")
+        _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas)
+    
+    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_fallidas)
     
     return True
 
 
-def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int) -> int:
+def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool = False, ciclo_minutes: int = None) -> int:
     """
     Ejecuta el proceso de creación de cuentas con un objetivo específico
     """
@@ -1133,6 +1590,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int) -> int:
         return 0
     
     cuentas_creadas = 0
+    cuentas_fallidas = []
     intento = 1
     
     while cuentas_creadas < objetivo_cuentas and intento <= 10:
@@ -1174,13 +1632,34 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int) -> int:
             _ejecutar_modo_avion()
             print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
             
-            exito = procesar_email_individual(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
+            exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
             
             if exito:
                 cuentas_creadas += 1
                 print(f"✅ Cuenta {cuentas_creadas}")
             else:
-                print(f"❌ Falló")
+                print(f"❌ Falló - {motivo_fallo}")
+                # Agregar a la lista de cuentas fallidas
+                from app.database.database import get_creator_email_by_id
+                from app.database.database import get_creator_setting
+                from datetime import datetime
+                
+                current_email = get_creator_email_by_id(email_id)
+                creator_settings = get_creator_setting()
+                user_agent = creator_settings.get('user_agent', '') if creator_settings else ''
+                
+                cuenta_fallida = {
+                    "email": current_email if current_email else f"email_id_{email_id}",
+                    "password": _get_password_usado(),
+                    "user_agent": user_agent,
+                    "motivo_fallo": motivo_fallo,
+                    "detalles": detalles,
+                    "fecha_fallo": datetime.now().isoformat(),
+                    "contador": cuentas_creadas + 1,
+                    "total": objetivo_cuentas,
+                    "intento": intento
+                }
+                cuentas_fallidas.append(cuenta_fallida)
             
             update_creator_email_progress(email_id, cuentas_creadas)
             if i < len(email_ids):
@@ -1190,7 +1669,16 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int) -> int:
     
     print(f"🎉 Completado: {cuentas_creadas}/{objetivo_cuentas}")
     _actualizar_encabezado_con_exitos(filepath, objetivo_cuentas, cuentas_creadas)
-    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas)
+    
+    # Guardar cuentas fallidas en el servidor
+    if cuentas_fallidas:
+        print(f"💾 Guardando {len(cuentas_fallidas)} cuentas fallidas en el servidor...")
+        print("📧 EMAILS FALLIDOS:")
+        for i, cuenta in enumerate(cuentas_fallidas, 1):
+            print(f"  {i}. {cuenta['email']} - {cuenta['motivo_fallo']}")
+        _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas)
+    
+    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_fallidas, es_ciclo, ciclo_minutes)
     
     return cuentas_creadas
 
@@ -1217,6 +1705,9 @@ def _ejecutar_creator_en_ciclo():
     try:
         while True:
             print(f"\n🔄 CICLO #{ciclo}")
+            
+            # Enviar notificación de inicio de ciclo
+            _enviar_notificacion_inicio_ciclo(ciclo, accounts_per_cycle, cycle_minutes)
             
             # Limpiar emails del ciclo anterior
             if ciclo > 1:
@@ -1248,7 +1739,7 @@ def _ejecutar_creator_en_ciclo():
                 continue
             
             # Ejecutar proceso de creación
-            cuentas_creadas = _ejecutar_proceso_creator_con_objetivo(accounts_per_cycle)
+            cuentas_creadas = _ejecutar_proceso_creator_con_objetivo(accounts_per_cycle, es_ciclo=True, ciclo_minutes=cycle_minutes)
             
             # Mostrar resultado
             if cuentas_creadas >= accounts_per_cycle:
