@@ -612,7 +612,7 @@ def _click_brave(coordinates):
         return False
     
     click_coordinates(brave_coords, double_click=True)
-    time.sleep(0.5)
+    time.sleep(1)
     return True
 
 
