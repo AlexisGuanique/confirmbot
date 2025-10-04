@@ -653,6 +653,11 @@ def _llenar_formulario_registro(coordinates, email):
     click_coordinates(email_coords)
     time.sleep(0.5)
     
+    # Limpiar portapapeles antes de escribir email
+    import pyperclip
+    pyperclip.copy("")
+    time.sleep(0.2)
+    
     # Escribir email
     type_text(email)
     time.sleep(0.5)
