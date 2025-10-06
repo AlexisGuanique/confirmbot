@@ -542,6 +542,14 @@ def run_checker():
                             # Agregar email a la lista de verificados
                             emails_verificados_totales.append(final_email.strip())
                             
+                            # Mostrar progreso hacia el próximo corte
+                            config = get_bot_settings()
+                            emails_per_batch = config.get("emails_per_batch", 5) if config else 5
+                            cuentas_actuales = (successful_iterations % emails_per_batch)
+                            if cuentas_actuales == 0:
+                                cuentas_actuales = emails_per_batch
+                            print(f"🎯 {cuentas_actuales}/{emails_per_batch} cuentas para el corte.")
+                            
                             # 📧 Enviar emails a base de datos periódicamente basado en la configuración
                             config = get_bot_settings()
                             emails_per_batch = config.get("emails_per_batch", 5) if config else 5
@@ -624,6 +632,7 @@ def run_checker():
 
                     elapsed = time.time() - start_time
                     print(f"⏱️ Tiempo de ejecución de la iteración: {elapsed:.2f} segundos")
+                    print("########################################################")
                 
 
             # Enviar emails restantes si los hay (no enviados en cortes anteriores)

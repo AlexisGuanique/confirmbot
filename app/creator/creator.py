@@ -84,7 +84,7 @@ def observador_unificado(coordinates, email, password, filepath):
     print("👁️ Observando número, captcha rojo o éxito...")
     
     start_time = time.time()
-    timeout_seconds = 120  # 2 minutos
+    timeout_seconds = 60  # 2 minutos
     
     # Contadores para evitar bucles infinitos
     numero_count = 0
@@ -97,7 +97,7 @@ def observador_unificado(coordinates, email, password, filepath):
         # Verificar si ha pasado el timeout
         elapsed_time = time.time() - start_time
         if elapsed_time > timeout_seconds:
-            print("⏰ Timeout de 120 segundos - no se encontraron imágenes, cerrando ventana")
+            print("⏰ Timeout de 60 segundos - no se encontraron imágenes, cerrando ventana")
             # Desactivar proxy antes de cerrar por timeout
             _desactivar_proxy()
             close_window_coords = coordinates.get("close_window")
@@ -640,10 +640,87 @@ def _verificar_carga_linkedin():
     return True
 
 
+def _escribir_y_verificar_email(email, max_intentos=3):
+    """
+    Escribe el email y verifica que se haya pegado correctamente.
+    Reintenta hasta 3 veces si no se pega correctamente.
+    """
+    from app.creator.computer_actions import type_text
+    import time
+    import pyperclip
+    
+    for intento in range(max_intentos):
+        print(f"📧 Intentando escribir email (intento {intento + 1}/{max_intentos}): {email}")
+        
+        # Limpiar el campo primero
+        pyperclip.copy("")
+        time.sleep(0.1)
+        
+        # Seleccionar todo el texto en el campo
+        import pyautogui
+        pyautogui.hotkey('ctrl', 'a')
+        time.sleep(0.2)
+        
+        # Escribir el email
+        success = type_text(email)
+        if not success:
+            print(f"⚠️ Error en type_text, intento {intento + 1}")
+            time.sleep(0.5)
+            continue
+        
+        # Esperar un poco más para que se complete la operación
+        time.sleep(0.8)
+        
+        # Verificar que el email se haya pegado correctamente
+        if _verificar_email_pegado(email):
+            print(f"✅ Email pegado correctamente: {email}")
+            return True
+        else:
+            print(f"⚠️ Email no se pegó correctamente, reintentando...")
+            time.sleep(0.5)
+    
+    print(f"❌ No se pudo pegar el email después de {max_intentos} intentos")
+    return False
+
+
+def _verificar_email_pegado(email_esperado):
+    """
+    Verifica que el email se haya pegado correctamente en el campo.
+    Lee el contenido del portapapeles después de seleccionar todo el texto del campo.
+    """
+    import pyperclip
+    import pyautogui
+    import time
+    
+    try:
+        # Seleccionar todo el texto en el campo actual
+        pyautogui.hotkey('ctrl', 'a')
+        time.sleep(0.2)
+        
+        # Copiar el texto seleccionado
+        pyautogui.hotkey('ctrl', 'c')
+        time.sleep(0.3)
+        
+        # Leer el contenido del portapapeles
+        texto_pegado = pyperclip.paste()
+        
+        # Verificar si el email está en el texto pegado
+        if email_esperado in texto_pegado:
+            return True
+        else:
+            print(f"🔍 Verificación fallida - Esperado: '{email_esperado}', Obtenido: '{texto_pegado}'")
+            return False
+            
+    except Exception as e:
+        print(f"⚠️ Error verificando email pegado: {e}")
+        return False
+
+
 def _llenar_formulario_registro(coordinates, email):
     """Llena el formulario de registro de LinkedIn"""
     from app.creator.computer_actions import click_coordinates, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname, wait_for_creator_image
     import time
+    import pyperclip
     
     # Click en email_input_click
     email_coords = coordinates.get("email_input_click")
@@ -654,13 +731,13 @@ def _llenar_formulario_registro(coordinates, email):
     time.sleep(0.5)
     
     # Limpiar portapapeles antes de escribir email
-    import pyperclip
     pyperclip.copy("")
     time.sleep(0.2)
     
-    # Escribir email
-    type_text(email)
-    time.sleep(0.5)
+    # Escribir email con verificación
+    if not _escribir_y_verificar_email(email):
+        print("❌ Error: No se pudo escribir el email correctamente")
+        return False
     
     # Ir al campo de contraseña
     press_key("tab")
