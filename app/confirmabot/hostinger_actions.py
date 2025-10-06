@@ -359,9 +359,94 @@ class HostingerEmailClient:
             logger.error(f"Error al acceder a la carpeta Confirmar: {e}")
             return []
 
+    def get_unread_emails_for_target(self, folder_name: str, target_email: str, limit: int = 10) -> List[Dict]:
+        """
+        Obtiene SOLO emails NO LEÍDOS de una carpeta específica que coincidan con el destinatario
+        Los emails que no coincidan se marcan como no leídos nuevamente
+        
+        Args:
+            folder_name: Nombre de la carpeta
+            target_email: Email de destino a buscar
+            limit: Número máximo de emails a obtener
+            
+        Returns:
+            List[Dict]: Lista de diccionarios con información de los emails NO LEÍDOS que coinciden
+        """
+        if not self.connected:
+            logger.error("No hay conexión activa al servidor")
+            return []
+        
+        try:
+            # Seleccionar la carpeta específica
+            status, messages = self.imap_server.select(folder_name)
+            if status != 'OK':
+                logger.error(f"Error al seleccionar la carpeta '{folder_name}'")
+                return []
+            
+            # Buscar SOLO emails NO LEÍDOS
+            status, messages = self.imap_server.search(None, 'UNSEEN')
+            
+            if status != 'OK' or not messages[0]:
+                logger.info(f"No hay emails NO LEÍDOS en la carpeta '{folder_name}'")
+                return []
+            
+            email_ids = messages[0].split()
+            emails = []
+            target_email_lower = target_email.lower().strip()
+            
+            for email_id in email_ids:
+                try:
+                    # Obtener el email (se marcará como leído automáticamente)
+                    status, msg_data = self.imap_server.fetch(email_id, '(RFC822)')
+                    
+                    if status != 'OK':
+                        continue
+                    
+                    # Parsear el email
+                    email_message = email.message_from_bytes(msg_data[0][1])
+                    
+                    # Extraer información del email
+                    email_info = self._parse_email(email_message, email_id.decode())
+                    
+                    # Verificar si el destinatario coincide
+                    to_email = email_info.get('to', '').lower().strip()
+                    if to_email == target_email_lower:
+                        emails.append(email_info)
+                        logger.info(f"✅ Email encontrado para destinatario: {to_email}")
+                        # El email correcto se mantiene como leído
+                    else:
+                        logger.debug(f"❌ Email no coincide: esperado '{target_email_lower}', encontrado '{to_email}' - marcando como no leído")
+                        # Marcar como no leído el email que no coincide
+                        self.mark_as_unread(email_id.decode())
+                    
+                    # Limitar el número de emails
+                    if len(emails) >= limit:
+                        break
+                    
+                except Exception as e:
+                    logger.error(f"Error al procesar email {email_id}: {e}")
+                    # En caso de error, marcar como no leído por seguridad
+                    try:
+                        self.mark_as_unread(email_id.decode())
+                    except:
+                        pass
+                    continue
+            
+            logger.info(f"Se encontraron {len(emails)} emails NO LEÍDOS para el destinatario '{target_email}' en la carpeta '{folder_name}'")
+            
+            # Ordenar emails del más nuevo al más viejo
+            emails = self._sort_emails_by_date(emails)
+            
+            return emails
+            
+        except Exception as e:
+            logger.error(f"Error al obtener emails NO LEÍDOS para destinatario de la carpeta '{folder_name}': {e}")
+            return []
+
     def get_unread_emails_from_folder(self, folder_name: str, limit: int = 10) -> List[Dict]:
         """
         Obtiene SOLO emails NO LEÍDOS de una carpeta específica
+        Los emails se mantienen como no leídos hasta que se determine si son correctos
         
         Args:
             folder_name: Nombre de la carpeta
@@ -398,7 +483,7 @@ class HostingerEmailClient:
             
             for email_id in email_ids:
                 try:
-                    # Obtener el email
+                    # Obtener el email (se marcará como leído automáticamente)
                     status, msg_data = self.imap_server.fetch(email_id, '(RFC822)')
                     
                     if status != 'OK':
@@ -408,11 +493,16 @@ class HostingerEmailClient:
                     email_message = email.message_from_bytes(msg_data[0][1])
                     
                     # Extraer información del email
-                    email_info = self._parse_email(email_message)
+                    email_info = self._parse_email(email_message, email_id.decode())
                     emails.append(email_info)
                     
                 except Exception as e:
                     logger.error(f"Error al procesar email {email_id}: {e}")
+                    # En caso de error, marcar como no leído por seguridad
+                    try:
+                        self.mark_as_unread(email_id.decode())
+                    except:
+                        pass
                     continue
             
             logger.info(f"Se obtuvieron {len(emails)} emails NO LEÍDOS de la carpeta '{folder_name}'")
@@ -470,7 +560,7 @@ class HostingerEmailClient:
             
             for email_id in email_ids:
                 try:
-                    # Obtener el email
+                    # Obtener el email (se marcará como leído automáticamente)
                     status, msg_data = self.imap_server.fetch(email_id, '(RFC822)')
                     
                     if status != 'OK':
@@ -480,7 +570,7 @@ class HostingerEmailClient:
                     email_message = email.message_from_bytes(msg_data[0][1])
                     
                     # Extraer información del email
-                    email_info = self._parse_email(email_message)
+                    email_info = self._parse_email(email_message, email_id.decode())
                     emails.append(email_info)
                     
                 except Exception as e:
@@ -533,7 +623,7 @@ class HostingerEmailClient:
             
             for email_id in email_ids:
                 try:
-                    # Obtener el email
+                    # Obtener el email (se marcará como leído automáticamente)
                     status, msg_data = self.imap_server.fetch(email_id, '(RFC822)')
                     
                     if status != 'OK':
@@ -543,7 +633,7 @@ class HostingerEmailClient:
                     email_message = email.message_from_bytes(msg_data[0][1])
                     
                     # Extraer información del email
-                    email_info = self._parse_email(email_message)
+                    email_info = self._parse_email(email_message, email_id.decode())
                     emails.append(email_info)
                     
                 except Exception as e:
@@ -561,12 +651,13 @@ class HostingerEmailClient:
             logger.error(f"Error al obtener emails: {e}")
             return []
     
-    def _parse_email(self, email_message) -> Dict:
+    def _parse_email(self, email_message, email_id: str = None) -> Dict:
         """
         Parsea un mensaje de email y extrae información relevante
         
         Args:
             email_message: Objeto email.message.Message
+            email_id: ID del email (opcional)
             
         Returns:
             Dict: Diccionario con información del email
@@ -577,7 +668,8 @@ class HostingerEmailClient:
             'to': '',
             'date': '',
             'body': '',
-            'attachments': []
+            'attachments': [],
+            'email_id': email_id
         }
         
         try:
@@ -739,6 +831,24 @@ class HostingerEmailClient:
             logger.error(f"Error al marcar email como leído: {e}")
             return False
     
+    def mark_as_unread(self, email_id: str) -> bool:
+        """
+        Marca un email como no leído
+        
+        Args:
+            email_id: ID del email
+            
+        Returns:
+            bool: True si fue exitoso, False en caso contrario
+        """
+        try:
+            self.imap_server.store(email_id, '-FLAGS', '\\Seen')
+            logger.info(f"Email {email_id} marcado como no leído")
+            return True
+        except Exception as e:
+            logger.error(f"Error al marcar email como no leído: {e}")
+            return False
+    
     def mark_email_as_read_by_content(self, email_content: str) -> bool:
         """
         Marca un email como leído basándose en su contenido
@@ -760,7 +870,7 @@ class HostingerEmailClient:
             
             for email_id in email_ids:
                 try:
-                    # Obtener el email
+                    # Obtener el email (se marcará como leído automáticamente)
                     status, msg_data = self.imap_server.fetch(email_id, '(RFC822)')
                     if status != 'OK':
                         continue
@@ -790,12 +900,13 @@ class HostingerEmailClient:
             return False
 
 
-def extract_confirmation_url(email_info: Dict) -> Optional[str]:
+def extract_confirmation_url(email_info: Dict, target_email: str = None) -> Optional[str]:
     """
     Extrae la URL de confirmación de un email de 33mail.com
     
     Args:
         email_info: Diccionario con información del email
+        target_email: Email de destino que se está intentando confirmar (opcional)
         
     Returns:
         Optional[str]: URL de confirmación si se encuentra, None en caso contrario
@@ -804,6 +915,7 @@ def extract_confirmation_url(email_info: Dict) -> Optional[str]:
         # Verificar si es un email de 33mail.com
         subject = email_info.get('subject', '').lower()
         from_email = email_info.get('from', '').lower()
+        to_email = email_info.get('to', '').lower()
         body = email_info.get('body', '')
         
         # Verificar si es un email de 33mail.com signup
@@ -815,6 +927,18 @@ def extract_confirmation_url(email_info: Dict) -> Optional[str]:
         
         if not is_33mail_signup:
             return None
+        
+        # Si se proporciona un email de destino, verificar que coincida
+        if target_email:
+            target_email_lower = target_email.lower().strip()
+            to_email_clean = to_email.strip()
+            
+            # Verificar si el destinatario coincide con el email objetivo
+            if target_email_lower != to_email_clean:
+                logger.debug(f"❌ Email de destino no coincide: esperado '{target_email_lower}', encontrado '{to_email_clean}'")
+                return None
+            else:
+                logger.info(f"✅ Email de destino coincide: '{to_email_clean}'")
         
         # Buscar URL de confirmación en el cuerpo del email
         # Patrón para URLs de confirmación de 33mail.com
@@ -870,13 +994,14 @@ def print_email_full(email_info: Dict, email_number: int):
     print("-" * 80)
 
 
-def wait_for_confirmation_email(email_address: str, password: str, timeout_seconds: int = 45) -> Tuple[bool, Optional[str]]:
+def wait_for_confirmation_email(email_address: str, password: str, target_email: str = None, timeout_seconds: int = 45) -> Tuple[bool, Optional[str]]:
     """
     Espera hasta que llegue un nuevo email de 33mail.com y extrae la URL de confirmación
     
     Args:
         email_address: Dirección de correo electrónico
         password: Contraseña de la cuenta
+        target_email: Email de destino que se está intentando confirmar (opcional)
         timeout_seconds: Tiempo máximo de espera en segundos (default: 45)
     
     Returns:
@@ -896,33 +1021,56 @@ def wait_for_confirmation_email(email_address: str, password: str, timeout_secon
         
         while time.time() - start_time < timeout_seconds:
             try:
-                # Verificar SOLO emails NO LEÍDOS en la carpeta Confirmar
-                emails = email_client.get_unread_emails_from_folder('INBOX.Confirmar', limit=5)
-                
-                if not emails:
-                    # Si no hay emails no leídos en Confirmar, verificar bandeja de entrada principal
-                    emails = email_client.get_inbox_emails(limit=5)
+                # Si se proporciona un email de destino, buscar específicamente por ese destinatario
+                if target_email:
+                    # Buscar SOLO emails NO LEÍDOS para el destinatario específico en la carpeta Confirmar
+                    emails = email_client.get_unread_emails_for_target('INBOX.Confirmar', target_email, limit=5)
+                    
+                    if not emails:
+                        # Si no hay emails no leídos en Confirmar, verificar bandeja de entrada principal
+                        emails = email_client.get_unread_emails_for_target('INBOX', target_email, limit=5)
+                else:
+                    # Verificar SOLO emails NO LEÍDOS en la carpeta Confirmar (comportamiento original)
+                    emails = email_client.get_unread_emails_from_folder('INBOX.Confirmar', limit=5)
+                    
+                    if not emails:
+                        # Si no hay emails no leídos en Confirmar, verificar bandeja de entrada principal
+                        emails = email_client.get_inbox_emails(limit=5)
                 
                 current_email_count = len(emails)
                 
                 # Si hay emails NO LEÍDOS y es el primer chequeo o hay más emails que antes
                 if emails and (last_email_count == 0 or current_email_count > last_email_count):
-                    logger.info(f"📧 Se encontraron {current_email_count} emails NO LEÍDOS")
-                    
-                    # Buscar en el email más reciente NO LEÍDO (primer elemento de la lista ordenada)
-                    latest_email = emails[0]
-                    logger.info(f"🔍 Analizando email más reciente NO LEÍDO: {latest_email.get('subject', 'Sin asunto')}")
-                    
-                    # Intentar extraer URL de confirmación
-                    confirmation_url = extract_confirmation_url(latest_email)
-                    
-                    if confirmation_url:
-                        logger.info(f"✅ URL de confirmación encontrada!")
-                        logger.info(f"📧 Asunto: {latest_email.get('subject', 'Sin asunto')}")
-                        logger.info(f"🔗 URL: {confirmation_url}")
-                        return True, confirmation_url
+                    if target_email:
+                        logger.info(f"📧 Se encontraron {current_email_count} emails NO LEÍDOS para el destinatario '{target_email}'")
                     else:
-                        logger.debug(f"❌ No se encontró URL de confirmación en el email más reciente NO LEÍDO")
+                        logger.info(f"📧 Se encontraron {current_email_count} emails NO LEÍDOS")
+                    
+                    # Buscar en todos los emails NO LEÍDOS, no solo el más reciente
+                    for i, email_info in enumerate(emails):
+                        logger.info(f"🔍 Analizando email #{i+1} NO LEÍDO: {email_info.get('subject', 'Sin asunto')}")
+                        logger.info(f"📧 Destinatario: {email_info.get('to', 'Desconocido')}")
+                        
+                        # Intentar extraer URL de confirmación con verificación de destinatario
+                        confirmation_url = extract_confirmation_url(email_info, target_email)
+                        
+                        if confirmation_url:
+                            logger.info(f"✅ URL de confirmación encontrada en email #{i+1}!")
+                            logger.info(f"📧 Asunto: {email_info.get('subject', 'Sin asunto')}")
+                            logger.info(f"📧 Destinatario: {email_info.get('to', 'Desconocido')}")
+                            logger.info(f"🔗 URL: {confirmation_url}")
+                            
+                            # El email correcto ya está marcado como leído por get_unread_emails_for_target
+                            logger.info(f"📧 Email correcto ya marcado como leído: {email_info.get('email_id')}")
+                            
+                            return True, confirmation_url
+                        else:
+                            logger.info(f"❌ No se encontró URL de confirmación válida en email #{i+1} - marcando como NO LEÍDO")
+                            # Marcar como no leído el email incorrecto
+                            email_id = email_info.get('email_id')
+                            if email_id:
+                                email_client.mark_as_unread(email_id)
+                                logger.info(f"📧 Email #{i+1} marcado como no leído: {email_id}")
                 
                 last_email_count = current_email_count
                 
@@ -935,7 +1083,10 @@ def wait_for_confirmation_email(email_address: str, password: str, timeout_secon
                 time.sleep(3)
                 continue
         
-        logger.warning(f"⏰ Timeout alcanzado ({timeout_seconds}s). No se encontró URL de confirmación.")
+        if target_email:
+            logger.warning(f"⏰ Timeout alcanzado ({timeout_seconds}s). No se encontró URL de confirmación para el destinatario '{target_email}'.")
+        else:
+            logger.warning(f"⏰ Timeout alcanzado ({timeout_seconds}s). No se encontró URL de confirmación.")
         return False, None
     
     except Exception as e:
@@ -947,7 +1098,7 @@ def wait_for_confirmation_email(email_address: str, password: str, timeout_secon
         email_client.disconnect()
 
 
-def extract_latest_confirmation_url(email_address: str, password: str):
+def extract_latest_confirmation_url(email_address: str, password: str, target_email: str = None):
     """
     Función automatizada que extrae la URL de confirmación del email más reciente de 33mail.com
     Sin requerir interacción del usuario
@@ -955,6 +1106,7 @@ def extract_latest_confirmation_url(email_address: str, password: str):
     Args:
         email_address: Dirección de correo electrónico
         password: Contraseña de la cuenta
+        target_email: Email de destino que se está intentando confirmar (opcional)
     
     Returns:
         Optional[str]: URL de confirmación si se encuentra, None en caso contrario
@@ -970,33 +1122,60 @@ def extract_latest_confirmation_url(email_address: str, password: str):
         
         logger.info("Conexión exitosa al servidor de correo")
         
-        # Ir directamente a la carpeta Confirmar
-        emails = email_client.go_to_confirmar_folder(limit=10)
-        
-        if not emails:
-            logger.warning("No se encontraron emails en la carpeta 'Confirmar'")
-            # Verificar también la bandeja de entrada principal
-            emails = email_client.get_inbox_emails(limit=10)
+        # Si se proporciona un email de destino, buscar específicamente por ese destinatario
+        if target_email:
+            # Buscar SOLO emails NO LEÍDOS para el destinatario específico en la carpeta Confirmar
+            emails = email_client.get_unread_emails_for_target('INBOX.Confirmar', target_email, limit=10)
+            
+            if not emails:
+                logger.warning(f"No se encontraron emails para el destinatario '{target_email}' en la carpeta 'Confirmar'")
+                # Verificar también la bandeja de entrada principal
+                emails = email_client.get_unread_emails_for_target('INBOX', target_email, limit=10)
+        else:
+            # Ir directamente a la carpeta Confirmar (comportamiento original)
+            emails = email_client.go_to_confirmar_folder(limit=10)
+            
+            if not emails:
+                logger.warning("No se encontraron emails en la carpeta 'Confirmar'")
+                # Verificar también la bandeja de entrada principal
+                emails = email_client.get_inbox_emails(limit=10)
         
         if emails:
-            logger.info(f"Se encontraron {len(emails)} emails")
+            if target_email:
+                logger.info(f"Se encontraron {len(emails)} emails para el destinatario '{target_email}'")
+            else:
+                logger.info(f"Se encontraron {len(emails)} emails")
             
             # Buscar en los emails más recientes
             for i, email_info in enumerate(emails):
                 logger.info(f"Analizando email #{i+1}: {email_info.get('subject', 'Sin asunto')}")
+                logger.info(f"📧 Destinatario: {email_info.get('to', 'Desconocido')}")
                 
-                # Intentar extraer URL de confirmación
-                confirmation_url = extract_confirmation_url(email_info)
+                # Intentar extraer URL de confirmación con verificación de destinatario
+                confirmation_url = extract_confirmation_url(email_info, target_email)
                 
                 if confirmation_url:
                     logger.info(f"✅ URL de confirmación encontrada en email #{i+1}")
                     logger.info(f"📧 Asunto: {email_info.get('subject', 'Sin asunto')}")
+                    logger.info(f"📧 Destinatario: {email_info.get('to', 'Desconocido')}")
                     logger.info(f"🔗 URL: {confirmation_url}")
+                    
+                    # El email correcto ya está marcado como leído por las funciones de obtención
+                    logger.info(f"📧 Email correcto ya marcado como leído: {email_info.get('email_id')}")
+                    
                     return confirmation_url
                 else:
-                    logger.debug(f"❌ No se encontró URL de confirmación en email #{i+1}")
+                    logger.info(f"❌ No se encontró URL de confirmación válida en email #{i+1} - marcando como NO LEÍDO")
+                    # Marcar como no leído el email incorrecto
+                    email_id = email_info.get('email_id')
+                    if email_id:
+                        email_client.mark_as_unread(email_id)
+                        logger.info(f"📧 Email #{i+1} marcado como no leído: {email_id}")
             
-            logger.warning("No se encontró ningún email de 33mail.com con URL de confirmación")
+            if target_email:
+                logger.warning(f"No se encontró ningún email de 33mail.com con URL de confirmación para el destinatario '{target_email}'")
+            else:
+                logger.warning("No se encontró ningún email de 33mail.com con URL de confirmación")
             return None
         else:
             logger.warning("No se encontraron emails en ninguna carpeta")

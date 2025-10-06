@@ -203,8 +203,8 @@ def mail_actions(driver, domain, enable_proxy=True, force_disable_proxy=False):
         username = generate_custom_username()
         username2 = generate_custom_username()
         second_username = generate_custom_username()
-        final_email = f"{second_username}@{username}.33mail.com"
-        generated_email = f"{username2}{domain}"
+        final_email = f"{second_username}@{username}.33mail.com"  # Email que se guarda en BD
+        generated_email = f"{username2}{domain}"  # Email usado en formulario para buscar URL
         password = generate_secure_password()
 
         wait = WebDriverWait(driver, 30)
@@ -284,7 +284,7 @@ def mail_actions(driver, domain, enable_proxy=True, force_disable_proxy=False):
                     proxy_controller.close()
             raise Exception("Timeout esperando confirmación de registro.")
 
-        return True, final_email
+        return True, final_email, generated_email
 
     except Exception as e:
         print(f"❌ Error durante las acciones en mail: {e}")
@@ -299,4 +299,4 @@ def mail_actions(driver, domain, enable_proxy=True, force_disable_proxy=False):
                 proxy_controller.close()
         except:
             pass  # Ignorar errores al desactivar proxy
-        return False, None
+        return False, None, None

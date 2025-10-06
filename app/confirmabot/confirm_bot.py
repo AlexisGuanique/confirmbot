@@ -36,6 +36,11 @@ def stop_bot():
 BRAVE_EXE = r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe"
 
 def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromedriver_exe=None):
+    # Configurar variables de entorno para silenciar logs de Chrome
+    import os
+    os.environ['CHROME_LOG_FILE'] = os.devnull
+    os.environ['CHROME_LOG_LEVEL'] = '3'
+    
     if kill_residual:
         for exe in ("brave.exe", "BraveCrashHandler.exe"):
             try:
@@ -57,6 +62,8 @@ def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromed
     options.add_argument("--no-first-run")
     options.add_argument("--no-default-browser-check")
     options.add_argument("--remote-debugging-port=0")
+    options.add_argument("--disable-remote-debugging")
+    options.add_argument("--disable-dev-tools")
     
     # 🔧 Opciones para evitar error DevToolsActivePort
     options.add_argument("--disable-dev-shm-usage")
@@ -69,6 +76,24 @@ def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromed
     options.add_argument("--disable-web-security")
     options.add_argument("--allow-running-insecure-content")
     options.add_argument("--disable-features=VizDisplayCompositor")
+    
+    # 🔇 Silenciar logs molestos de Chrome
+    options.add_argument("--log-level=3")  # Solo errores fatales
+    options.add_argument("--silent")  # Modo silencioso
+    options.add_argument("--disable-logging")  # Deshabilitar logging
+    options.add_argument("--disable-dev-tools")  # Deshabilitar DevTools
+    options.add_argument("--disable-remote-debugging")  # Deshabilitar debugging remoto
+    options.add_argument("--disable-background-networking")  # Deshabilitar networking en background
+    options.add_argument("--disable-default-apps")  # Deshabilitar apps por defecto
+    options.add_argument("--disable-hang-monitor")  # Deshabilitar monitor de cuelgues
+    options.add_argument("--disable-sync")  # Deshabilitar sincronización
+    options.add_argument("--disable-translate")  # Deshabilitar traducción
+    options.add_argument("--mute-audio")  # Silenciar audio
+    options.add_argument("--safebrowsing-disable-auto-update")  # Deshabilitar actualización de safebrowsing
+    options.add_argument("--disable-component-update")  # Deshabilitar actualización de componentes
+    options.add_argument("--disable-domain-reliability")  # Deshabilitar domain reliability
+    options.add_argument("--disable-features=TranslateUI,BlinkGenPropertyTrees")  # Deshabilitar más features
+    options.add_argument("--disable-ipc-flooding-protection")  # Deshabilitar protección contra flooding IPC
     
     # ✅ Permitir extensiones (se cargarán automáticamente)
     
@@ -110,9 +135,17 @@ def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromed
     try:
         if chromedriver_exe and os.path.exists(chromedriver_exe):
             service = Service(chromedriver_exe)
+            # Redirigir logs de Chrome al vacío
+            service.log_path = os.devnull
+            # Configurar ChromeDriver para no mostrar logs
+            service.start_error_message = ""
             driver = webdriver.Chrome(service=service, options=options)
         else:
-            driver = webdriver.Chrome(options=options)
+            # Configurar ChromeDriver para no mostrar logs
+            service = Service()
+            service.log_path = os.devnull
+            service.start_error_message = ""
+            driver = webdriver.Chrome(service=service, options=options)
         
         # Esperar un momento para que el navegador se inicialice completamente
         time.sleep(2)
@@ -128,7 +161,11 @@ def open_temp_chrome_profile(profile_name="Default", kill_residual=True, chromed
         options.add_argument("--disable-javascript")  # Deshabilitar JavaScript temporalmente
         
         try:
-            driver = webdriver.Chrome(options=options)
+            # Configurar ChromeDriver para no mostrar logs
+            service = Service()
+            service.log_path = os.devnull
+            service.start_error_message = ""
+            driver = webdriver.Chrome(service=service, options=options)
             time.sleep(2)
             return driver
         except Exception as e2:
@@ -409,6 +446,16 @@ def run_checker():
             # ✅ Limpiar el archivo solo una vez al comenzar este ID
             with open(file_path, "w", encoding="utf-8"):
                 pass
+            
+            # Crear archivo para emails no verificados
+            unverified_file_path = file_path.replace('.txt', '_no_verificados.txt')
+            with open(unverified_file_path, "w", encoding="utf-8") as f_unverified:
+                f_unverified.write("# Emails no verificados - No se pudo extraer URL de confirmación\n")
+                f_unverified.write(f"# Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f_unverified.write("# ================================================\n\n")
+            
+            print(f"📁 Archivo principal: {file_path}")
+            print(f"📁 Archivo de no verificados: {unverified_file_path}")
 
             with open(file_path, "a", encoding="utf-8") as f:
                 successful_iterations = 0
@@ -477,12 +524,12 @@ def run_checker():
 
                     try:
                         enable_proxy = config.get("enable_proxy", True)
-                        mail_ok, final_email = mail_actions(driver, domain, enable_proxy)
+                        mail_ok, final_email, generated_email = mail_actions(driver, domain, enable_proxy)
                         if not mail_ok:
                             print("❌ Falló la creación del correo en 33mail.")
                             continue
 
-                        is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger)
+                        is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger, generated_email)
 
                         if is_verified:
                             f.write(f"{final_email.strip()}\n")
@@ -521,10 +568,14 @@ def run_checker():
                                 
                                 emails_sent_count = successful_iterations
                         else:
-                            f.write(f"{final_email.strip()} <-- no verificado\n")
-                            f.flush()
-                            os.fsync(f.fileno())
-                            print(f"⚠️ Email no verificado: {final_email.strip()}")
+                            # Guardar email no verificado en archivo separado
+                            unverified_file_path = file_path.replace('.txt', '_no_verificados.txt')
+                            with open(unverified_file_path, 'a', encoding='utf-8') as f_unverified:
+                                f_unverified.write(f"{final_email.strip()}\n")
+                                f_unverified.flush()
+                                os.fsync(f_unverified.fileno())
+                            
+                            print(f"⚠️ Email no verificado guardado en archivo separado: {final_email.strip()}")
                             failed_iterations += 1
 
                         # ✅ Guardar email generado sin verificar en Hostinger
@@ -573,6 +624,7 @@ def run_checker():
 
                     elapsed = time.time() - start_time
                     print(f"⏱️ Tiempo de ejecución de la iteración: {elapsed:.2f} segundos")
+                
 
             # Enviar emails restantes si los hay (no enviados en cortes anteriores)
             emails_restantes = []
@@ -618,6 +670,22 @@ def run_checker():
             print(f"  📈 Tasa de éxito: {(successful_iterations/iteraciones)*100:.1f}%")
             if emails_restantes:
                 print(f"  📤 Emails restantes enviados: {len(emails_restantes)}")
+            
+            # Mostrar información de archivos generados
+            print(f"  📧 Emails verificados guardados en: {file_path}")
+            print(f"  ⚠️ Emails no verificados guardados en: {unverified_file_path}")
+            
+            # Mostrar estadísticas de archivos
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    verified_count = len([line for line in f if line.strip() and not line.startswith('#')])
+                with open(unverified_file_path, 'r', encoding='utf-8') as f:
+                    unverified_count = len([line for line in f if line.strip() and not line.startswith('#')])
+                print(f"  📊 Emails verificados en archivo: {verified_count}")
+                print(f"  📊 Emails no verificados en archivo: {unverified_count}")
+            except Exception as e:
+                print(f"  ⚠️ Error al contar emails en archivos: {e}")
+            
             print("-" * 50)
 
         return at_least_one_verified
