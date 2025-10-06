@@ -204,7 +204,6 @@ def generate_random_name():
     """
     fake = Faker('es_ES')  # Usar español de España para nombres más comunes
     name = fake.first_name()
-    print(f"👤 Nombre generado: {name}")
     return name
 
 def generate_random_lastname():
@@ -213,7 +212,6 @@ def generate_random_lastname():
     """
     fake = Faker('es_ES')  # Usar español de España para apellidos más comunes
     lastname = fake.last_name()
-    print(f"👤 Apellido generado: {lastname}")
     return lastname
 
 def get_clipboard_content():

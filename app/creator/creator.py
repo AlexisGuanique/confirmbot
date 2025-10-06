@@ -189,6 +189,7 @@ def observador_unificado(coordinates, email, password, filepath):
             ciclos_sin_imagen = 0  # Resetear contador
             print(f"✅ Imagen de éxito encontrada - buscando cookie...")
             
+            
             # Desactivar proxy después del éxito
             _desactivar_proxy()
             
@@ -430,6 +431,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
         if exito_found:
             ciclos_sin_imagen = 0  # Resetear contador
             print(f"✅ Imagen de éxito encontrada - buscando cookie...")
+           
             
             # Desactivar proxy después del éxito
             _desactivar_proxy()
@@ -640,53 +642,72 @@ def _verificar_carga_linkedin():
     return True
 
 
-def _escribir_y_verificar_email(email, max_intentos=3):
+def _escribir_y_verificar_campo(texto, tipo_campo="campo", max_intentos=3):
     """
-    Escribe el email y verifica que se haya pegado correctamente.
-    Reintenta hasta 3 veces si no se pega correctamente.
+    Función unificada para escribir y verificar cualquier campo del formulario.
+    
+    Args:
+        texto (str): El texto a escribir
+        tipo_campo (str): Tipo de campo para los mensajes (email, password, nombre, apellido, etc.)
+        max_intentos (int): Número máximo de intentos (default: 3)
+    
+    Returns:
+        bool: True si se escribió correctamente, False en caso contrario
     """
     from app.creator.computer_actions import type_text
     import time
     import pyperclip
+    import pyautogui
+    
+    # Iconos para diferentes tipos de campo
+    iconos = {
+        "email": "📧",
+        "password": "🔐", 
+        "nombre": "👤",
+        "apellido": "👥",
+        "campo": "📝"
+    }
+    
+    icono = iconos.get(tipo_campo, "📝")
     
     for intento in range(max_intentos):
-        print(f"📧 Intentando escribir email (intento {intento + 1}/{max_intentos}): {email}")
-        
         # Limpiar el campo primero
         pyperclip.copy("")
-        time.sleep(0.1)
+        time.sleep(0.05)
         
         # Seleccionar todo el texto en el campo
-        import pyautogui
         pyautogui.hotkey('ctrl', 'a')
-        time.sleep(0.2)
+        time.sleep(0.1)
         
-        # Escribir el email
-        success = type_text(email)
+        # Escribir el texto
+        success = type_text(texto)
         if not success:
-            print(f"⚠️ Error en type_text, intento {intento + 1}")
-            time.sleep(0.5)
+            time.sleep(0.3)
             continue
         
         # Esperar un poco más para que se complete la operación
-        time.sleep(0.8)
+        time.sleep(0.4)
         
-        # Verificar que el email se haya pegado correctamente
-        if _verificar_email_pegado(email):
-            print(f"✅ Email pegado correctamente: {email}")
+        # Verificar que el texto se haya pegado correctamente
+        if _verificar_campo_pegado(texto, tipo_campo):
             return True
         else:
-            print(f"⚠️ Email no se pegó correctamente, reintentando...")
-            time.sleep(0.5)
+            time.sleep(0.3)
     
-    print(f"❌ No se pudo pegar el email después de {max_intentos} intentos")
     return False
 
 
-def _verificar_email_pegado(email_esperado):
+def _verificar_campo_pegado(texto_esperado, tipo_campo="campo"):
     """
-    Verifica que el email se haya pegado correctamente en el campo.
+    Verifica que el texto se haya pegado correctamente en el campo.
     Lee el contenido del portapapeles después de seleccionar todo el texto del campo.
+    
+    Args:
+        texto_esperado (str): El texto que se espera encontrar
+        tipo_campo (str): Tipo de campo para los mensajes de error
+    
+    Returns:
+        bool: True si el texto se pegó correctamente, False en caso contrario
     """
     import pyperclip
     import pyautogui
@@ -695,24 +716,22 @@ def _verificar_email_pegado(email_esperado):
     try:
         # Seleccionar todo el texto en el campo actual
         pyautogui.hotkey('ctrl', 'a')
-        time.sleep(0.2)
+        time.sleep(0.1)
         
         # Copiar el texto seleccionado
         pyautogui.hotkey('ctrl', 'c')
-        time.sleep(0.3)
+        time.sleep(0.2)
         
         # Leer el contenido del portapapeles
         texto_pegado = pyperclip.paste()
         
-        # Verificar si el email está en el texto pegado
-        if email_esperado in texto_pegado:
+        # Verificar si el texto está en el texto pegado
+        if texto_esperado in texto_pegado:
             return True
         else:
-            print(f"🔍 Verificación fallida - Esperado: '{email_esperado}', Obtenido: '{texto_pegado}'")
             return False
             
     except Exception as e:
-        print(f"⚠️ Error verificando email pegado: {e}")
         return False
 
 
@@ -735,18 +754,17 @@ def _llenar_formulario_registro(coordinates, email):
     time.sleep(0.2)
     
     # Escribir email con verificación
-    if not _escribir_y_verificar_email(email):
-        print("❌ Error: No se pudo escribir el email correctamente")
+    if not _escribir_y_verificar_campo(email, "email"):
         return False
     
     # Ir al campo de contraseña
     press_key("tab")
     time.sleep(0.5)
     
-    # Escribir contraseña aleatoria
+    # Escribir contraseña aleatoria (sin verificación para mayor velocidad)
     password = generate_random_password()
     type_text(password)
-    time.sleep(0.5)
+    time.sleep(0.3)  # Tiempo mínimo para que se escriba
     
     checkbox_found = wait_for_creator_image("Checkbox recuerdame", max_attempts=1, delay_between_attempts=0.5, silent=True)
     
@@ -773,19 +791,19 @@ def _llenar_formulario_registro(coordinates, email):
     click_coordinates(name_coords)
     time.sleep(0.5)
     
-    # Escribir nombre aleatorio
+    # Escribir nombre aleatorio con verificación
     random_name = generate_random_name()
-    type_text(random_name)
-    time.sleep(0.5)
+    if not _escribir_y_verificar_campo(random_name, "nombre"):
+        return False
     
     # Ir al campo de apellido
     press_key("tab")
     time.sleep(0.5)
     
-    # Escribir apellido aleatorio
+    # Escribir apellido aleatorio con verificación
     random_lastname = generate_random_lastname()
-    type_text(random_lastname)
-    time.sleep(0.5)
+    if not _escribir_y_verificar_campo(random_lastname, "apellido"):
+        return False
     
     # Activar proxy antes de hacer clic en continue_button2_click
     _activar_proxy()
@@ -894,7 +912,7 @@ def _activar_proxy():
         except Exception as e:
             print(f"❌ Error al activar proxy: {e}")
     else:
-        print("❌ Proxy no habilitado en configuración")
+        pass
 
 
 def _desactivar_proxy():
@@ -920,7 +938,7 @@ def _desactivar_proxy():
         except Exception as e:
             print(f"❌ Error al desactivar proxy: {e}")
     else:
-        print("❌ Proxy no habilitado en configuración")
+        pass
 
 
 def _actualizar_encabezado_con_exitos(filepath, total_emails, emails_exitosos):
@@ -1719,8 +1737,10 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
             if exito:
                 cuentas_creadas += 1
                 print(f"✅ Cuenta {cuentas_creadas}")
+
             else:
                 print(f"❌ Falló - {motivo_fallo}")
+
                 # Agregar a la lista de cuentas fallidas
                 from app.database.database import get_creator_email_by_id
                 from app.database.database import get_creator_setting
