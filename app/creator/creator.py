@@ -51,7 +51,7 @@ def observador_unificado(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 45
+    timeout_seconds = 60
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -73,6 +73,13 @@ def observador_unificado(coordinates, email, password, filepath):
         if captcha_result is False:  # Segundo obstáculo detectado
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_result is True:  # Procesado correctamente, continuar
+            continue
+        
+        # Verificar captcha imposible
+        captcha_imposible_result = _procesar_captcha_imposible(coordinates, estado)
+        if captcha_imposible_result is False:  # Segundo obstáculo detectado
+            return False, "captcha_imposible_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
+        elif captcha_imposible_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar éxito
@@ -105,7 +112,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 45
+    timeout_seconds = 60
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -127,6 +134,13 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
         if captcha_result is False:  # Segundo obstáculo detectado
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_result is True:  # Procesado correctamente, continuar
+            continue
+        
+        # Verificar captcha imposible
+        captcha_imposible_result = _procesar_captcha_imposible(coordinates, estado)
+        if captcha_imposible_result is False:  # Segundo obstáculo detectado
+            return False, "captcha_imposible_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
+        elif captcha_imposible_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar éxito
@@ -223,6 +237,43 @@ def _procesar_captcha_rojo(coordinates, estado):
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
     print(f"✅ Captcha encontrado (vez #{estado.captcha_count}) - cerrando")
+    
+    if estado.obstaculo_count >= 2:
+        print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+        _desactivar_proxy()
+        close_window_coords = coordinates.get("close_window")
+        if close_window_coords:
+            click_coordinates(close_window_coords)
+            time.sleep(1)
+        return False  # Terminar el proceso
+    
+    close_captcha_coords = coordinates.get("close_captcha_click")
+    if close_captcha_coords:
+        click_coordinates(close_captcha_coords)
+        time.sleep(1)
+        
+        continue2_coords = coordinates.get("continue_button2_click")
+        if continue2_coords:
+            click_coordinates(continue2_coords)
+            time.sleep(2)
+    
+    return True
+
+
+def _procesar_captcha_imposible(coordinates, estado):
+    """Procesa la detección de captcha imposible"""
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    import time
+    
+    captcha_found = wait_for_creator_image("captcha_imposible", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    
+    if not captcha_found:
+        return None  # No hay captcha que procesar
+    
+    estado.captcha_count += 1
+    estado.obstaculo_count += 1
+    estado.ciclos_sin_imagen = 0
+    print(f"✅ Captcha imposible encontrado (vez #{estado.captcha_count}) - cerrando")
     
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")

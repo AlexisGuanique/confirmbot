@@ -517,6 +517,7 @@ def create_new_window(parent_root):
         "Imagen de creación de cuenta con éxito (logo LinkedIn) 2",
         "Imagen de confirmación de código",
         "add_location",
+        "captcha_imposible",
     ]
     
     # Crear encabezados de la tabla de imágenes
