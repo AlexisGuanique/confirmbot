@@ -24,6 +24,18 @@ def create_database():
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
+        # 🔹 Crear tabla de versiones de migración
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS migrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version INTEGER UNIQUE NOT NULL,
+                description TEXT NOT NULL,
+                applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
+
         # 🔹 Crear tabla de usuario
         cursor.execute(
             '''
@@ -168,6 +180,14 @@ def create_database():
         except sqlite3.OperationalError:
             # La columna ya existe, no hacer nada
             pass
+        
+        # Migrar tabla existente si no tiene la columna white_captcha_click
+        try:
+            cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN white_captcha_click TEXT NOT NULL DEFAULT ''")
+            print("✅ Columna white_captcha_click agregada a creator_coordinates")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
 
         # 🔹 Tabla para configuración del creator
         cursor.execute(
@@ -279,9 +299,82 @@ def create_database():
         conn.commit()
         conn.close()
         print(f"✅ Base de datos lista en {DB_PATH}")
+        
+        # Ejecutar migraciones automáticamente
+        run_migrations()
 
     except Exception as e:
         print(f"❌ Error al crear la base de datos: {e}")
+
+
+def run_migrations():
+    """
+    Ejecuta migraciones automáticamente basándose en la versión actual
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Obtener la versión actual de migración
+        cursor.execute("SELECT MAX(version) FROM migrations")
+        current_version = cursor.fetchone()[0] or 0
+        
+        print(f"🔄 Versión actual de migración: {current_version}")
+        
+        # Definir migraciones pendientes
+        migrations = [
+            {
+                'version': 1,
+                'description': 'Agregar columna white_captcha_click a creator_coordinates',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN white_captcha_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 2,
+                'description': 'Eliminar columna duplicada close_captcha_white_click',
+                'sql': "ALTER TABLE creator_coordinates DROP COLUMN close_captcha_white_click"
+            },
+            {
+                'version': 3,
+                'description': 'Agregar columna white_captcha_click después de eliminar duplicada',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN white_captcha_click TEXT NOT NULL DEFAULT ''"
+            }
+        ]
+        
+        # Ejecutar migraciones pendientes
+        for migration in migrations:
+            if migration['version'] > current_version:
+                try:
+                    print(f"🔄 Ejecutando migración {migration['version']}: {migration['description']}")
+                    cursor.execute(migration['sql'])
+                    
+                    # Registrar la migración
+                    cursor.execute(
+                        "INSERT INTO migrations (version, description) VALUES (?, ?)",
+                        (migration['version'], migration['description'])
+                    )
+                    
+                    print(f"✅ Migración {migration['version']} completada")
+                    
+                except sqlite3.OperationalError as e:
+                    if "duplicate column name" in str(e).lower() or "no such column" in str(e).lower():
+                        print(f"⚠️ Migración {migration['version']} ya aplicada o no aplicable: {e}")
+                        # Registrar como aplicada para evitar intentos futuros
+                        try:
+                            cursor.execute(
+                                "INSERT INTO migrations (version, description) VALUES (?, ?)",
+                                (migration['version'], migration['description'])
+                            )
+                        except sqlite3.IntegrityError:
+                            pass  # Ya existe
+                    else:
+                        print(f"❌ Error en migración {migration['version']}: {e}")
+        
+        conn.commit()
+        conn.close()
+        print("✅ Migraciones completadas")
+        
+    except Exception as e:
+        print(f"❌ Error al ejecutar migraciones: {e}")
 
 
 #! FUNCIONES DE USERS
@@ -649,7 +742,7 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
         if existing_row:
             values = list(existing_row[1:])  # Excluir el id
         else:
-            values = [''] * 12  # 12 campos vacíos
+            values = [''] * 14  # 14 campos vacíos
 
         # Mapeo de nombres de campos a índices
         field_mapping = {
@@ -664,7 +757,8 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
             'cookie_editor_icon_click': 8,
             'save_cookie_clipboard_click': 9,
             'close_window': 10,
-            'continue_button_click_optional': 11
+            'continue_button_click_optional': 11,
+            'white_captcha_click': 12
         }
 
         # Actualizar valores desde coordinates_dict si se proporciona
@@ -684,8 +778,9 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
                 id, brave_click, linkedin_fav_click, email_input_click,
                 continue_button_click, name_input_click, continue_button2_click,
                 close_captcha_click, close_number_click, cookie_editor_icon_click,
-                save_cookie_clipboard_click, close_window, continue_button_click_optional
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                save_cookie_clipboard_click, close_window, continue_button_click_optional,
+                white_captcha_click
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             tuple(values)
         )
@@ -725,7 +820,8 @@ def get_creator_coordinates(*field_names):
             'cookie_editor_icon_click': 9,
             'save_cookie_clipboard_click': 10,
             'close_window': 11,
-            'continue_button_click_optional': 12
+            'continue_button_click_optional': 12,
+            'white_captcha_click': 13
         }
 
         # Si no se especifican campos, devolver todos
@@ -742,7 +838,8 @@ def get_creator_coordinates(*field_names):
                 'cookie_editor_icon_click': row[9],
                 'save_cookie_clipboard_click': row[10],
                 'close_window': row[11],
-                'continue_button_click_optional': row[12]
+                'continue_button_click_optional': row[12],
+                'white_captcha_click': row[13]
             }
 
         # Devolver solo los campos solicitados

@@ -39,55 +39,294 @@ def _verificar_cookie_duplicada(filepath, nueva_cookie):
 
 
 def observador_unificado(coordinates, email, password, filepath):
-    """
-    Observador unificado que detecta números, captchas y éxito en la creación de cuentas
-    """
+    
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, get_clipboard_content
     from app.database.database import get_creator_setting
     import time
+    import os
     import json
+    from datetime import datetime
+    
+    def format_cookie_to_single_line(cookie_content):
+        """
+        Convierte el contenido de cookies del portapapeles a formato de una sola línea
+        """
+        try:
+            # Buscar el inicio del JSON (primer '[')
+            json_start = cookie_content.find('[')
+            if json_start == -1:
+                print("⚠️ No se encontró un array JSON válido en las cookies")
+                return cookie_content
+            
+            # Extraer solo la parte JSON
+            json_content = cookie_content[json_start:]
+            
+            # Parsear el JSON
+            data = json.loads(json_content)
+            
+            # Convertir a JSON compacto (una sola línea)
+            json_single_line = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+            
+            # Si hay contenido antes del JSON, mantenerlo
+            if json_start > 0:
+                prefix = cookie_content[:json_start]
+                return prefix + json_single_line
+            else:
+                return json_single_line
+                
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Error al parsear cookies JSON: {e}")
+            return cookie_content
+        except Exception as e:
+            print(f"⚠️ Error inesperado al formatear cookies: {e}")
+            return cookie_content
     
     print("👁️ Observando número, captcha rojo, captcha blanco o éxito...")
     
-    # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 45
+    timeout_seconds = 60  # 2 minutos
     
-    # Estado del observador
-    estado = ObservadorEstado()
+    # Contadores para evitar bucles infinitos
+    numero_count = 0
+    captcha_count = 0
+    ciclos_sin_imagen = 0
+    # Contador global para cualquier obstáculo (número o captcha)
+    obstaculo_count = 0
+    # Bandera para captcha blanco
+    captcha_blanco_flag = 0
     
     while True:
-        # Verificar timeout
-        if _verificar_timeout(start_time, timeout_seconds, coordinates):
-            return False, "timeout", {"tiempo_transcurrido": time.time() - start_time, "timeout_seconds": timeout_seconds}
+        # Verificar si ha pasado el timeout
+        elapsed_time = time.time() - start_time
+        if elapsed_time > timeout_seconds:
+            print("⏰ Timeout de 60 segundos - no se encontraron imágenes, cerrando ventana")
+            # Desactivar proxy antes de cerrar por timeout
+            _desactivar_proxy()
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Verificar número
-        numero_result = _procesar_numero(coordinates, estado)
-        if numero_result is False:  # Segundo obstáculo detectado
-            return False, "numero_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
-        elif numero_result is True:  # Procesado correctamente, continuar
-            continue
+        numero_found = wait_for_creator_image("imagen_numero", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if numero_found:
+            numero_count += 1
+            obstaculo_count += 1
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Número encontrado (vez #{numero_count}) - cerrando")
+            
+            if obstaculo_count >= 2:
+                print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+                # Desactivar proxy antes de cerrar por segundo obstáculo
+                _desactivar_proxy()
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
+                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
+            
+            close_number_coords = coordinates.get("close_number_click")
+            if close_number_coords:
+                click_coordinates(close_number_coords)
+                time.sleep(1)
+                
+                continue2_coords = coordinates.get("continue_button2_click")
+                if continue2_coords:
+                    click_coordinates(continue2_coords)
+                    time.sleep(2)
+                    continue
         
         # Verificar captcha rojo
-        captcha_result = _procesar_captcha_rojo(coordinates, estado)
-        if captcha_result is False:  # Segundo obstáculo detectado
-            return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
-        elif captcha_result is True:  # Procesado correctamente, continuar
-            continue
+        captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.5, silent=True)
         
-        # Verificar éxito
-        exito_result = _procesar_exito(coordinates, email, password, filepath)
-        if exito_result is not None:
-            return exito_result
+        if captcha_found:
+            captcha_count += 1
+            obstaculo_count += 1
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Captcha encontrado (vez #{captcha_count}) - cerrando")
+            
+            if obstaculo_count >= 2:
+                print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+                # Desactivar proxy antes de cerrar por segundo obstáculo
+                _desactivar_proxy()
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
+                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
+            
+            close_captcha_coords = coordinates.get("close_captcha_click")
+            if close_captcha_coords:
+                click_coordinates(close_captcha_coords)
+                time.sleep(1)
+                
+                continue2_coords = coordinates.get("continue_button2_click")
+                if continue2_coords:
+                    click_coordinates(continue2_coords)
+                    time.sleep(2)
+                    continue
         
-        # Verificar captcha blanco (solo si no hay éxito)
-        captcha_blanco_result = _procesar_captcha_blanco(coordinates, estado)
-        if captcha_blanco_result is False:  # Tercera detección de captcha blanco
-            return False, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": estado.captcha_blanco_flag}
-        elif captcha_blanco_result is True:  # Procesado correctamente, continuar
-            continue
+        # Verificar imágenes de éxito PRIMERO (cualquiera de las tres)
+        exito_found = False
+        exito_image_name = None
         
-        # Pausa entre ciclos
+        # Lista de imágenes que indican éxito
+        exito_images = [
+            "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin",
+            "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin_2", 
+            "imagen_de_confirmacion_de_codigo",
+            "add_location"
+        ]
+        
+        # Buscar cualquiera de las imágenes de éxito
+        for image_name in exito_images:
+            if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True):
+                exito_found = True
+                exito_image_name = image_name
+                break
+        
+        # Solo verificar captcha blanco si NO hay éxito
+        if not exito_found:
+            # Verificar captcha blanco con alta precisión (confidence 0.95)
+            captcha_blanco_found = wait_for_creator_image("imagen_captcha_blanco", max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True)
+            
+            if captcha_blanco_found:
+                # Verificar que NO hay captcha rojo presente (para evitar confusión con captcha en carga)
+                captcha_rojo_presente = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.1, silent=True)
+                
+                if not captcha_rojo_presente:
+                    # Solo considerar captcha blanco si no hay captcha rojo presente
+                    captcha_blanco_flag += 1
+                    print(f"✅ Captcha blanco real encontrado (vez #{captcha_blanco_flag})")
+                    
+                    if captcha_blanco_flag == 1:
+                        # Primera vez: solo marcar bandera y continuar
+                        print("📝 Primera detección - marcando bandera y continuando...")
+                        continue
+                    elif captcha_blanco_flag == 2:
+                        # Segunda vez: cerrar captcha y continuar normalmente
+                        print("🔄 Segunda detección - cerrando captcha y continuando...")
+                        captcha_count += 1
+                        obstaculo_count += 1
+                        ciclos_sin_imagen = 0  # Resetear contador
+                        
+                        close_captcha_blanco_coords = coordinates.get("white_captcha_click")
+                        if close_captcha_blanco_coords:
+                            click_coordinates(close_captcha_blanco_coords)
+                            time.sleep(1)
+                            
+                            continue2_coords = coordinates.get("continue_button2_click")
+                            if continue2_coords:
+                                click_coordinates(continue2_coords)
+                                time.sleep(2)
+                                continue
+                    elif captcha_blanco_flag >= 3:
+                        # Tercera vez o más: finalizar proceso como cuenta fallida
+                        print("❌ Tercera detección de captcha blanco - finalizando proceso")
+                        # Desactivar proxy antes de cerrar
+                        _desactivar_proxy()
+                        close_window_coords = coordinates.get("close_window")
+                        if close_window_coords:
+                            click_coordinates(close_window_coords)
+                            time.sleep(1)
+                        return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}
+                else:
+                    # Si hay captcha rojo presente, es probable que sea un captcha en carga, no blanco
+                    print("⚠️ Captcha en proceso de carga detectado - ignorando detección de captcha blanco")
+                    continue
+        
+        if exito_found:
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Imagen de éxito encontrada - buscando cookie...")
+            
+            
+            # Desactivar proxy después del éxito
+            _desactivar_proxy()
+            
+            # Intentar obtener cookie única (máximo 3 intentos)
+            max_intentos = 3
+            for intento in range(1, max_intentos + 1):
+                # Limpiar portapapeles antes de obtener la cookie
+                import pyperclip
+                pyperclip.copy("")
+                time.sleep(0.2)
+                
+                # Clic en cookie_editor_icon_click
+                cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
+                if cookie_editor_coords:
+                    click_coordinates(cookie_editor_coords)
+                    time.sleep(2)
+                    
+                    # Clic en save_cookie_clipboard_click
+                    save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
+                    if save_cookie_coords:
+                        click_coordinates(save_cookie_coords)
+                        time.sleep(1)
+                        
+                        # Obtener cookie del portapapeles
+                        cookie_raw = get_clipboard_content()
+                        
+                        # Validar que la cookie no esté vacía
+                        if not cookie_raw or len(cookie_raw.strip()) < 10:
+                            if intento < max_intentos:
+                                continue
+                            else:
+                                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "error_escritura_archivo", {"error": str(e)}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}
+                        
+                        # Formatear cookie a una sola línea
+                        cookie = format_cookie_to_single_line(cookie_raw)
+                        
+                        # Validar que la cookie formateada sea válida
+                        if not cookie or len(cookie.strip()) < 10:
+                            if intento < max_intentos:
+                                continue
+                            else:
+                                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "error_escritura_archivo", {"error": str(e)}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}
+                        
+                        # Verificar que la cookie no sea duplicada
+                        if _verificar_cookie_duplicada(filepath, cookie):
+                            if intento < max_intentos:
+                                print(f"⚠️ Cookie duplicada detectada - intento {intento + 1}/{max_intentos}")
+                                time.sleep(1)
+                                continue
+                            else:
+                                print("❌ Cookie duplicada después de todos los intentos")
+                                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "error_escritura_archivo", {"error": str(e)}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}
+                        
+                        # Si llegamos aquí, la cookie es válida y única
+                        print("✅ Cookie única guardada")
+                        
+                        # Obtener user agent desde la base de datos
+                        creator_settings = get_creator_setting()
+                        if creator_settings and creator_settings.get('user_agent'):
+                            user_agent = creator_settings.get('user_agent')
+                            
+                            # Crear contenido del archivo con formato correcto (separado por tabs)
+                            contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
+                            
+                            # Agregar al archivo existente (modo append)
+                            try:
+                                with open(filepath, 'a', encoding='utf-8') as f:
+                                    f.write(contenido + "\n")
+                                return True
+                            except Exception as e:
+                                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "error_escritura_archivo", {"error": str(e)}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}
+                        else:
+                            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}
+                    else:
+                        return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}
+                else:
+                    return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
+            
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
+        
+        # Si no se encontró ninguna imagen, incrementar contador
+        if not numero_found and not captcha_found and not captcha_blanco_found and not exito_found:
+            ciclos_sin_imagen += 1
+        
+        # Pequeña pausa antes del siguiente ciclo
         time.sleep(0.5)
 
 
@@ -99,468 +338,291 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, get_clipboard_content
     from app.database.database import get_creator_setting
     import time
+    import os
     import json
+    from datetime import datetime
+    
+    def format_cookie_to_single_line(cookie_content):
+        """
+        Convierte el contenido de cookies del portapapeles a formato de una sola línea
+        """
+        try:
+            # Buscar el inicio del JSON (primer '[')
+            json_start = cookie_content.find('[')
+            if json_start == -1:
+                print("⚠️ No se encontró un array JSON válido en las cookies")
+                return cookie_content
+            
+            # Extraer solo la parte JSON
+            json_content = cookie_content[json_start:]
+            
+            # Parsear el JSON
+            data = json.loads(json_content)
+            
+            # Convertir a JSON compacto (una sola línea)
+            json_single_line = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
+            
+            # Si hay contenido antes del JSON, mantenerlo
+            if json_start > 0:
+                prefix = cookie_content[:json_start]
+                return prefix + json_single_line
+            else:
+                return json_single_line
+                
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Error al parsear cookies JSON: {e}")
+            return cookie_content
+        except Exception as e:
+            print(f"⚠️ Error inesperado al formatear cookies: {e}")
+            return cookie_content
     
     print("👁️ Observando número, captcha rojo, captcha blanco o éxito...")
     
-    # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 45
+    timeout_seconds = 60 # 1 minutos
     
-    # Estado del observador
-    estado = ObservadorEstado()
+    # Contadores para evitar bucles infinitos
+    numero_count = 0
+    captcha_count = 0
+    ciclos_sin_imagen = 0
+    # Contador global para cualquier obstáculo (número o captcha)
+    obstaculo_count = 0
+    # Bandera para captcha blanco
+    captcha_blanco_flag = 0
     
     while True:
-        # Verificar timeout
-        if _verificar_timeout(start_time, timeout_seconds, coordinates):
-            return False, "timeout", {"tiempo_transcurrido": time.time() - start_time, "timeout_seconds": timeout_seconds}
+        # Verificar si ha pasado el timeout
+        elapsed_time = time.time() - start_time
+        if elapsed_time > timeout_seconds:
+            print("⏰ Timeout de 60 segundos - no se encontraron imágenes, cerrando ventana")
+            # Desactivar proxy antes de cerrar por timeout
+            _desactivar_proxy()
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Verificar número
-        numero_result = _procesar_numero(coordinates, estado)
-        if numero_result is False:  # Segundo obstáculo detectado
-            return False, "numero_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
-        elif numero_result is True:  # Procesado correctamente, continuar
-            continue
+        numero_found = wait_for_creator_image("imagen_numero", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if numero_found:
+            numero_count += 1
+            obstaculo_count += 1
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Número encontrado (vez #{numero_count}) - cerrando")
+            
+            if obstaculo_count >= 2:
+                print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+                # Desactivar proxy antes de cerrar por segundo obstáculo
+                _desactivar_proxy()
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
+                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}
+            
+            close_number_coords = coordinates.get("close_number_click")
+            if close_number_coords:
+                click_coordinates(close_number_coords)
+                time.sleep(1)
+                
+                continue2_coords = coordinates.get("continue_button2_click")
+                if continue2_coords:
+                    click_coordinates(continue2_coords)
+                    time.sleep(2)
+                    continue
         
         # Verificar captcha rojo
-        captcha_result = _procesar_captcha_rojo(coordinates, estado)
-        if captcha_result is False:  # Segundo obstáculo detectado
-            return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
-        elif captcha_result is True:  # Procesado correctamente, continuar
-            continue
+        captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.5, silent=True)
         
-        # Verificar éxito
-        exito_result = _procesar_exito_con_detalle(coordinates, email, password, filepath)
-        if exito_result is not None:
-            return exito_result
+        if captcha_found:
+            captcha_count += 1
+            obstaculo_count += 1
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Captcha encontrado (vez #{captcha_count}) - cerrando")
+            
+            if obstaculo_count >= 2:
+                print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+                # Desactivar proxy antes de cerrar por segundo obstáculo
+                _desactivar_proxy()
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
+                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}
+            
+            close_captcha_coords = coordinates.get("close_captcha_click")
+            if close_captcha_coords:
+                click_coordinates(close_captcha_coords)
+                time.sleep(1)
+                
+                continue2_coords = coordinates.get("continue_button2_click")
+                if continue2_coords:
+                    click_coordinates(continue2_coords)
+                    time.sleep(2)
+                    continue
         
-        # Verificar captcha blanco (solo si no hay éxito)
-        captcha_blanco_result = _procesar_captcha_blanco(coordinates, estado)
-        if captcha_blanco_result is False:  # Tercera detección de captcha blanco
-            return False, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": estado.captcha_blanco_flag}
-        elif captcha_blanco_result is True:  # Procesado correctamente, continuar
-            continue
+        # Verificar imágenes de éxito PRIMERO (cualquiera de las tres)
+        exito_found = False
+        exito_image_name = None
         
-        # Pausa entre ciclos
+        # Lista de imágenes que indican éxito
+        exito_images = [
+            "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin",
+            "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin_2", 
+            "imagen_de_confirmacion_de_codigo",
+            "add_location"
+        ]
+        
+        # Buscar cualquiera de las imágenes de éxito
+        for image_name in exito_images:
+            if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True):
+                exito_found = True
+                exito_image_name = image_name
+                break
+        
+        # Solo verificar captcha blanco si NO hay éxito
+        if not exito_found:
+            # Verificar captcha blanco con alta precisión (confidence 0.95)
+            captcha_blanco_found = wait_for_creator_image("imagen_captcha_blanco", max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True)
+            
+            if captcha_blanco_found:
+                # Verificar que NO hay captcha rojo presente (para evitar confusión con captcha en carga)
+                captcha_rojo_presente = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.1, silent=True)
+                
+                if not captcha_rojo_presente:
+                    # Solo considerar captcha blanco si no hay captcha rojo presente
+                    captcha_blanco_flag += 1
+                    print(f"✅ Captcha blanco real encontrado (vez #{captcha_blanco_flag})")
+                    
+                    if captcha_blanco_flag == 1:
+                        # Primera vez: solo marcar bandera y continuar
+                        print("📝 Primera detección - marcando bandera y continuando...")
+                        continue
+                    elif captcha_blanco_flag == 2:
+                        # Segunda vez: cerrar captcha y continuar normalmente
+                        print("🔄 Segunda detección - cerrando captcha y continuando...")
+                        captcha_count += 1
+                        obstaculo_count += 1
+                        ciclos_sin_imagen = 0  # Resetear contador
+                        
+                        close_captcha_blanco_coords = coordinates.get("white_captcha_click")
+                        if close_captcha_blanco_coords:
+                            click_coordinates(close_captcha_blanco_coords)
+                            time.sleep(1)
+                            
+                            continue2_coords = coordinates.get("continue_button2_click")
+                            if continue2_coords:
+                                click_coordinates(continue2_coords)
+                                time.sleep(2)
+                                continue
+                    elif captcha_blanco_flag >= 3:
+                        # Tercera vez o más: finalizar proceso como cuenta fallida
+                        print("❌ Tercera detección de captcha blanco - finalizando proceso")
+                        # Desactivar proxy antes de cerrar
+                        _desactivar_proxy()
+                        close_window_coords = coordinates.get("close_window")
+                        if close_window_coords:
+                            click_coordinates(close_window_coords)
+                            time.sleep(1)
+                        return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}
+                else:
+                    # Si hay captcha rojo presente, es probable que sea un captcha en carga, no blanco
+                    print("⚠️ Captcha en proceso de carga detectado - ignorando detección de captcha blanco")
+                    continue
+        
+        if exito_found:
+            ciclos_sin_imagen = 0  # Resetear contador
+            print(f"✅ Imagen de éxito encontrada - buscando cookie...")
+           
+            
+            # Desactivar proxy después del éxito
+            _desactivar_proxy()
+            
+            # Intentar obtener cookie única (máximo 3 intentos)
+            max_intentos = 3
+            for intento in range(1, max_intentos + 1):
+                # Limpiar portapapeles antes de obtener la cookie
+                import pyperclip
+                pyperclip.copy("")
+                time.sleep(0.2)
+                
+                # Clic en cookie_editor_icon_click
+                cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
+                if cookie_editor_coords:
+                    click_coordinates(cookie_editor_coords)
+                    time.sleep(2)
+                    
+                    # Clic en save_cookie_clipboard_click
+                    save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
+                    if save_cookie_coords:
+                        click_coordinates(save_cookie_coords)
+                        time.sleep(1)
+                        
+                        # Obtener cookie del portapapeles
+                        cookie_raw = get_clipboard_content()
+                        
+                        # Validar que la cookie no esté vacía
+                        if not cookie_raw or len(cookie_raw.strip()) < 10:
+                            if intento < max_intentos:
+                                continue
+                            else:
+                                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "error_escritura_archivo", {"error": str(e)}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
+                        
+                        # Formatear cookie a una sola línea
+                        cookie = format_cookie_to_single_line(cookie_raw)
+                        
+                        # Validar que la cookie formateada sea válida
+                        if not cookie or len(cookie.strip()) < 10:
+                            if intento < max_intentos:
+                                continue
+                            else:
+                                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "error_escritura_archivo", {"error": str(e)}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}
+                        
+                        # Verificar que la cookie no sea duplicada
+                        if _verificar_cookie_duplicada(filepath, cookie):
+                            if intento < max_intentos:
+                                print(f"⚠️ Cookie duplicada detectada - intento {intento + 1}/{max_intentos}")
+                                time.sleep(1)
+                                continue
+                            else:
+                                print("❌ Cookie duplicada después de todos los intentos")
+                                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "error_escritura_archivo", {"error": str(e)}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}
+                        
+                        # Si llegamos aquí, la cookie es válida y única
+                        print("✅ Cookie única guardada")
+                        
+                        # Obtener user agent desde la base de datos
+                        creator_settings = get_creator_setting()
+                        if creator_settings and creator_settings.get('user_agent'):
+                            user_agent = creator_settings.get('user_agent')
+                            
+                            # Crear contenido del archivo con formato correcto (separado por tabs)
+                            contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
+                            
+                            # Agregar al archivo existente (modo append)
+                            try:
+                                with open(filepath, 'a', encoding='utf-8') as f:
+                                    f.write(contenido + "\n")
+                                return True, "exito", {"imagen_exito": exito_image_name, "intento": intento}
+                            except Exception as e:
+                                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "error_escritura_archivo", {"error": str(e)}, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}, "error_escritura_archivo", {"error": str(e)}
+                        else:
+                            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "user_agent_no_encontrado", {}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}, "user_agent_no_encontrado", {}
+                    else:
+                        return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "coordenadas_save_cookie_no_encontradas", {}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": captcha_blanco_flag}, "coordenadas_save_cookie_no_encontradas", {}
+                else:
+                    return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "coordenadas_cookie_editor_no_encontradas", {}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "coordenadas_cookie_editor_no_encontradas", {}
+            
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}, "max_intentos_cookie", {"max_intentos": max_intentos}
+        
+        # Si no se encontró ninguna imagen, incrementar contador
+        if not numero_found and not captcha_found and not captcha_blanco_found and not exito_found:
+            ciclos_sin_imagen += 1
+        
+        # Pequeña pausa antes del siguiente ciclo
         time.sleep(0.5)
-
-
-class ObservadorEstado:
-    """Clase para manejar el estado del observador"""
-    def __init__(self):
-        self.numero_count = 0
-        self.captcha_count = 0
-        self.ciclos_sin_imagen = 0
-        self.obstaculo_count = 0
-        self.captcha_blanco_flag = 0
-
-
-def _verificar_timeout(start_time, timeout_seconds, coordinates):
-    """Verifica si ha pasado el timeout y cierra la ventana si es necesario"""
-    from app.creator.computer_actions import click_coordinates
-    import time
-    
-    elapsed_time = time.time() - start_time
-    if elapsed_time > timeout_seconds:
-        print("⏰ Timeout de 60 segundos - no se encontraron imágenes, cerrando ventana")
-        _desactivar_proxy()
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return True
-    return False
-
-
-def _procesar_numero(coordinates, estado):
-    """Procesa la detección de número"""
-    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
-    import time
-    
-    numero_found = wait_for_creator_image("imagen_numero", max_attempts=1, delay_between_attempts=0.5, silent=True)
-    
-    if not numero_found:
-        return None  # No hay número que procesar
-    
-    estado.numero_count += 1
-    estado.obstaculo_count += 1
-    estado.ciclos_sin_imagen = 0
-    print(f"✅ Número encontrado (vez #{estado.numero_count}) - cerrando")
-    
-    if estado.obstaculo_count >= 2:
-        print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        _desactivar_proxy()
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return False  # Terminar el proceso
-    
-    close_number_coords = coordinates.get("close_number_click")
-    if close_number_coords:
-        click_coordinates(close_number_coords)
-        time.sleep(1)
-        
-        continue2_coords = coordinates.get("continue_button2_click")
-        if continue2_coords:
-            click_coordinates(continue2_coords)
-            time.sleep(2)
-    
-    return True
-
-
-def _procesar_captcha_rojo(coordinates, estado):
-    """Procesa la detección de captcha rojo"""
-    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
-    import time
-    
-    captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.5, silent=True)
-    
-    if not captcha_found:
-        return None  # No hay captcha que procesar
-    
-    estado.captcha_count += 1
-    estado.obstaculo_count += 1
-    estado.ciclos_sin_imagen = 0
-    print(f"✅ Captcha encontrado (vez #{estado.captcha_count}) - cerrando")
-    
-    if estado.obstaculo_count >= 2:
-        print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        _desactivar_proxy()
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return False  # Terminar el proceso
-    
-    close_captcha_coords = coordinates.get("close_captcha_click")
-    if close_captcha_coords:
-        click_coordinates(close_captcha_coords)
-        time.sleep(1)
-        
-        continue2_coords = coordinates.get("continue_button2_click")
-        if continue2_coords:
-            click_coordinates(continue2_coords)
-            time.sleep(2)
-    
-    return True
-
-
-def _procesar_exito(coordinates, email, password, filepath):
-    """Procesa la detección de éxito en la creación de cuenta"""
-    from app.creator.computer_actions import wait_for_creator_image
-    
-    exito_images = [
-        "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin",
-        "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin_2", 
-        "imagen_de_confirmacion_de_codigo",
-        "add_location"
-    ]
-    
-    exito_found = False
-    exito_image_name = None
-    
-    for image_name in exito_images:
-        if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True):
-            exito_found = True
-            exito_image_name = image_name
-            break
-    
-    if not exito_found:
-        return None
-    
-    print(f"✅ Imagen de éxito encontrada - buscando cookie...")
-    _desactivar_proxy()
-    
-    return _obtener_y_guardar_cookie(coordinates, email, password, filepath)
-
-
-def _procesar_exito_con_detalle(coordinates, email, password, filepath):
-    """Procesa la detección de éxito con información detallada"""
-    from app.creator.computer_actions import wait_for_creator_image
-    
-    exito_images = [
-        "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin",
-        "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin_2", 
-        "imagen_de_confirmacion_de_codigo",
-        "add_location"
-    ]
-    
-    exito_found = False
-    exito_image_name = None
-    
-    for image_name in exito_images:
-        if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True):
-            exito_found = True
-            exito_image_name = image_name
-            break
-    
-    if not exito_found:
-        return None
-    
-    print(f"✅ Imagen de éxito encontrada - buscando cookie...")
-    _desactivar_proxy()
-    
-    return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name)
-
-
-def _procesar_captcha_blanco(coordinates, estado):
-    """Procesa la detección de captcha blanco con delay y doble verificación"""
-    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
-    import time
-    
-    # Primera detección de captcha blanco
-    captcha_blanco_found = wait_for_creator_image("imagen_captcha_blanco", max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True)
-    
-    if not captcha_blanco_found:
-        return None  # No hay captcha blanco que procesar
-    
-    # Verificar que NO hay captcha rojo presente
-    captcha_rojo_presente = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.1, silent=True)
-    
-    if captcha_rojo_presente:
-        print("⚠️ Captcha en proceso de carga detectado - ignorando detección de captcha blanco")
-        return None
-    
-    print(f"✅ Captcha blanco detectado (vez #{estado.captcha_blanco_flag + 1})")
-    
-    # Esperar 2 segundos antes de la segunda verificación
-    print("⏳ Esperando 3 segundos para verificación...")
-    time.sleep(3)
-    
-    # Segunda verificación después del delay
-    captcha_blanco_confirmado = wait_for_creator_image("imagen_captcha_blanco", max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True)
-    
-    if not captcha_blanco_confirmado:
-        print("⚠️ Captcha blanco no confirmado después del delay - ignorando")
-        return None
-    
-    # Captcha blanco confirmado
-    estado.captcha_blanco_flag += 1
-    print(f"✅ Captcha blanco confirmado (vez #{estado.captcha_blanco_flag})")
-    
-    if estado.captcha_blanco_flag == 1:
-        print("📝 Primera detección - marcando bandera y continuando...")
-        return True
-    elif estado.captcha_blanco_flag == 2:
-        print("🔄 Segunda detección - cerrando captcha y continuando...")
-        estado.captcha_count += 1
-        estado.obstaculo_count += 1
-        estado.ciclos_sin_imagen = 0
-        
-        close_captcha_blanco_coords = coordinates.get("white_captcha_click")
-        if close_captcha_blanco_coords:
-            click_coordinates(close_captcha_blanco_coords)
-            time.sleep(1)
-            
-            continue2_coords = coordinates.get("continue_button2_click")
-            if continue2_coords:
-                click_coordinates(continue2_coords)
-                time.sleep(2)
-        return True
-    elif estado.captcha_blanco_flag >= 3:
-        print("❌ Tercera detección de captcha blanco - finalizando proceso")
-        _desactivar_proxy()
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return False  # Terminar el proceso
-    
-    return True
-
-
-def _obtener_y_guardar_cookie(coordinates, email, password, filepath):
-    """Obtiene y guarda la cookie de la cuenta creada"""
-    from app.creator.computer_actions import click_coordinates, get_clipboard_content
-    from app.database.database import get_creator_setting
-    import time
-    import pyperclip
-    
-    max_intentos = 3
-    for intento in range(1, max_intentos + 1):
-        # Limpiar portapapeles
-        pyperclip.copy("")
-        time.sleep(0.2)
-        
-        # Clic en cookie_editor_icon_click
-        cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
-        if not cookie_editor_coords:
-            return False, "coordenadas_cookie_editor_no_encontradas", {}
-        
-        click_coordinates(cookie_editor_coords)
-        time.sleep(2)
-        
-        # Clic en save_cookie_clipboard_click
-        save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
-        if not save_cookie_coords:
-            return False, "coordenadas_save_cookie_no_encontradas", {}
-        
-        click_coordinates(save_cookie_coords)
-        time.sleep(1)
-        
-        # Obtener cookie del portapapeles
-        cookie_raw = get_clipboard_content()
-        
-        # Validar cookie
-        if not cookie_raw or len(cookie_raw.strip()) < 10:
-            if intento < max_intentos:
-                continue
-            else:
-                return False, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
-        
-        # Formatear cookie
-        cookie = _format_cookie_to_single_line(cookie_raw)
-        
-        if not cookie or len(cookie.strip()) < 10:
-            if intento < max_intentos:
-                continue
-            else:
-                return False, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
-        
-        # Verificar duplicado
-        if _verificar_cookie_duplicada(filepath, cookie):
-            if intento < max_intentos:
-                print(f"⚠️ Cookie duplicada detectada - intento {intento + 1}/{max_intentos}")
-                time.sleep(1)
-                continue
-            else:
-                print("❌ Cookie duplicada después de todos los intentos")
-                return False, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
-        
-        # Guardar cookie
-        print("✅ Cookie única guardada")
-        
-        creator_settings = get_creator_setting()
-        if not creator_settings or not creator_settings.get('user_agent'):
-            return False, "user_agent_no_encontrado", {}
-        
-        user_agent = creator_settings.get('user_agent')
-        contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
-        
-        try:
-            with open(filepath, 'a', encoding='utf-8') as f:
-                f.write(contenido + "\n")
-            return True
-        except Exception as e:
-            return False, "error_escritura_archivo", {"error": str(e)}
-    
-    return False, "max_intentos_cookie", {"max_intentos": max_intentos}
-
-
-def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name):
-    """Obtiene y guarda la cookie con información detallada"""
-    from app.creator.computer_actions import click_coordinates, get_clipboard_content
-    from app.database.database import get_creator_setting
-    import time
-    import pyperclip
-    
-    max_intentos = 3
-    for intento in range(1, max_intentos + 1):
-        # Limpiar portapapeles
-        pyperclip.copy("")
-        time.sleep(0.2)
-        
-        # Clic en cookie_editor_icon_click
-        cookie_editor_coords = coordinates.get("cookie_editor_icon_click")
-        if not cookie_editor_coords:
-            return False, "coordenadas_cookie_editor_no_encontradas", {}
-        
-        click_coordinates(cookie_editor_coords)
-        time.sleep(2)
-        
-        # Clic en save_cookie_clipboard_click
-        save_cookie_coords = coordinates.get("save_cookie_clipboard_click")
-        if not save_cookie_coords:
-            return False, "coordenadas_save_cookie_no_encontradas", {}
-        
-        click_coordinates(save_cookie_coords)
-        time.sleep(1)
-        
-        # Obtener cookie del portapapeles
-        cookie_raw = get_clipboard_content()
-        
-        # Validar cookie
-        if not cookie_raw or len(cookie_raw.strip()) < 10:
-            if intento < max_intentos:
-                continue
-            else:
-                return False, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
-        
-        # Formatear cookie
-        cookie = _format_cookie_to_single_line(cookie_raw)
-        
-        if not cookie or len(cookie.strip()) < 10:
-            if intento < max_intentos:
-                continue
-            else:
-                return False, "cookie_invalida", {"intento": intento, "max_intentos": max_intentos}
-        
-        # Verificar duplicado
-        if _verificar_cookie_duplicada(filepath, cookie):
-            if intento < max_intentos:
-                print(f"⚠️ Cookie duplicada detectada - intento {intento + 1}/{max_intentos}")
-                time.sleep(1)
-                continue
-            else:
-                print("❌ Cookie duplicada después de todos los intentos")
-                return False, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}
-        
-        # Guardar cookie
-        print("✅ Cookie única guardada")
-        
-        creator_settings = get_creator_setting()
-        if not creator_settings or not creator_settings.get('user_agent'):
-            return False, "user_agent_no_encontrado", {}
-        
-        user_agent = creator_settings.get('user_agent')
-        contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
-        
-        try:
-            with open(filepath, 'a', encoding='utf-8') as f:
-                f.write(contenido + "\n")
-            return True, "exito", {"imagen_exito": exito_image_name, "intento": intento}
-        except Exception as e:
-            return False, "error_escritura_archivo", {"error": str(e)}
-    
-    return False, "max_intentos_cookie", {"max_intentos": max_intentos}
-
-
-def _format_cookie_to_single_line(cookie_content):
-    """Convierte el contenido de cookies del portapapeles a formato de una sola línea"""
-    import json
-    
-    try:
-        # Buscar el inicio del JSON (primer '[')
-        json_start = cookie_content.find('[')
-        if json_start == -1:
-            print("⚠️ No se encontró un array JSON válido en las cookies")
-            return cookie_content
-        
-        # Extraer solo la parte JSON
-        json_content = cookie_content[json_start:]
-        
-        # Parsear el JSON
-        data = json.loads(json_content)
-        
-        # Convertir a JSON compacto (una sola línea)
-        json_single_line = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
-        
-        # Si hay contenido antes del JSON, mantenerlo
-        if json_start > 0:
-            prefix = cookie_content[:json_start]
-            return prefix + json_single_line
-        else:
-            return json_single_line
-            
-    except json.JSONDecodeError as e:
-        print(f"⚠️ Error al parsear cookies JSON: {e}")
-        return cookie_content
-    except Exception as e:
-        print(f"⚠️ Error inesperado al formatear cookies: {e}")
-        return cookie_content
-
-
 
 
 def procesar_email_individual(email_id, coordinates, filepath, contador, total):
@@ -656,7 +718,7 @@ def _click_brave(coordinates):
         return False
     
     click_coordinates(brave_coords, double_click=True)
-    time.sleep(2)
+    time.sleep(1)
     return True
 
 
@@ -771,7 +833,7 @@ def _verificar_campo_pegado(texto_esperado, tipo_campo="campo"):
         if texto_esperado in texto_pegado:
             return True
         else:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
             
     except Exception as e:
         return False
@@ -814,13 +876,13 @@ def _llenar_formulario_registro(coordinates, email):
         # Si encuentra el checkbox, usar continue_button_click
         continue_coords = coordinates.get("continue_button_click")
         if not continue_coords:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         click_coordinates(continue_coords)
     else:
         # Si no encuentra el checkbox, usar continue_button_click_optional
         continue_coords = coordinates.get("continue_button_click_optional")
         if not continue_coords:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         click_coordinates(continue_coords)
     
     time.sleep(2)
@@ -1146,7 +1208,7 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
         # Obtener credenciales de correo
         emails_data = get_all_emails()
         if not emails_data:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Buscar email con credenciales de Hostinger
         email_address = None
@@ -1158,11 +1220,11 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
                 break
         
         if not email_address or not email_password:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Verificar archivo
         if not os.path.exists(filepath):
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Obtener email de destino
         settings = get_creator_setting()
@@ -1239,7 +1301,7 @@ def _enviar_correo_sin_adjunto(email_address: str, password: str, to_email: str,
         # Conectar al servidor
         if not email_client.connect():
             print("❌ Error al conectar con el servidor de correo")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Enviar correo
         success = email_client.send_email(to_email, subject, body)
@@ -1265,7 +1327,7 @@ def _enviar_notificacion_inicio_ciclo(ciclo_numero: int, objetivo_cuentas: int, 
         # Obtener credenciales de correo
         emails_data = get_all_emails()
         if not emails_data:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Buscar email con credenciales de Hostinger
         email_address = None
@@ -1277,7 +1339,7 @@ def _enviar_notificacion_inicio_ciclo(ciclo_numero: int, objetivo_cuentas: int, 
                 break
         
         if not email_address or not email_password:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Obtener email de destino
         settings = get_creator_setting()
@@ -1397,20 +1459,20 @@ def _guardar_cuentas_en_servidor(filepath):
         user_data = get_user_data()
         if not user_data:
             print("❌ No se encontraron datos del usuario logueado")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         user_id = user_data.get('id')
         access_token = user_data.get('access_token')
         
         if not user_id or not access_token:
             print("❌ Faltan datos del usuario (ID o access_token)")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Leer y parsear el archivo de cuentas
         accounts = _leer_cuentas_del_archivo(filepath)
         if not accounts:
             print("❌ No se encontraron cuentas en el archivo")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Preparar datos para el servidor
         payload = {
@@ -1440,10 +1502,10 @@ def _guardar_cuentas_en_servidor(filepath):
                 return True
             except json.JSONDecodeError:
                 print("❌ Error al procesar respuesta del servidor")
-                return False, "numero_segundo_obstaculo", {"numero_count": 0, "obstaculo_count": 0}
+                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         else:
             print("❌ Error al conectar con el servidor")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
             
     except Exception as e:
         print(f"❌ Error al guardar cuentas en servidor: {e}")
@@ -1467,14 +1529,14 @@ def _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas):
         user_data = get_user_data()
         if not user_data:
             print("❌ No se encontraron datos del usuario logueado")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         user_id = user_data.get('id')
         access_token = user_data.get('access_token')
         
         if not user_id or not access_token:
             print("❌ Faltan datos del usuario (ID o access_token)")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         
         # Extraer solo los emails de las cuentas fallidas
         emails_fallidos = [cuenta['email'] for cuenta in cuentas_fallidas]
@@ -1506,10 +1568,10 @@ def _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas):
                 return True
             except json.JSONDecodeError:
                 print("❌ Error al procesar respuesta del servidor")
-                return False, "numero_segundo_obstaculo", {"numero_count": 0, "obstaculo_count": 0}
+                return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "captcha_segundo_obstaculo", {"captcha_count": captcha_count, "obstaculo_count": obstaculo_count}, "numero_segundo_obstaculo", {"numero_count": numero_count, "obstaculo_count": obstaculo_count}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         else:
             print("❌ Error al conectar con el servidor")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
             
     except Exception as e:
         print(f"❌ Error al guardar emails fallidos en servidor: {e}")
@@ -1630,10 +1692,10 @@ def _ejecutar_proceso_creator():
                 "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
             )
             root.destroy()
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
         elif not resultado:
             print("❌ Error al obtener emails")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, "max_intentos_cookie", {"max_intentos": max_intentos}, "timeout", {"tiempo_transcurrido": elapsed_time, "timeout_seconds": timeout_seconds}
             
         email_ids = get_all_available_creator_emails()
         print(f"🔄 Procesando {len(email_ids)} cuentas")
