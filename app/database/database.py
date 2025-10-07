@@ -160,7 +160,8 @@ def create_database():
                 cookie_editor_icon_click TEXT NOT NULL,
                 save_cookie_clipboard_click TEXT NOT NULL,
                 close_window TEXT NOT NULL,
-                continue_button_click_optional TEXT NOT NULL
+                continue_button_click_optional TEXT NOT NULL,
+                white_captcha_click TEXT NOT NULL
             )
             '''
         )
@@ -188,6 +189,71 @@ def create_database():
         except sqlite3.OperationalError:
             # La columna ya existe, no hacer nada
             pass
+        
+        # 🔄 MIGRACIÓN ESPECIAL: Verificar y corregir estructura de creator_coordinates
+        print("🔄 Verificando estructura de creator_coordinates...")
+        cursor.execute("PRAGMA table_info(creator_coordinates)")
+        creator_columns = [col[1] for col in cursor.fetchall()]
+        
+        expected_creator_columns = [
+            'id', 'brave_click', 'linkedin_fav_click', 'email_input_click',
+            'continue_button_click', 'name_input_click', 'continue_button2_click',
+            'close_captcha_click', 'close_number_click', 'cookie_editor_icon_click',
+            'save_cookie_clipboard_click', 'close_window', 'continue_button_click_optional',
+            'white_captcha_click'
+        ]
+        
+        # Si la tabla no tiene la estructura correcta, recrearla
+        if len(creator_columns) != len(expected_creator_columns) or not all(col in creator_columns for col in expected_creator_columns):
+            print("🔄 Recreando tabla creator_coordinates con estructura correcta...")
+            
+            # Obtener datos existentes si los hay
+            cursor.execute("SELECT * FROM creator_coordinates WHERE id = 1")
+            existing_data = cursor.fetchone()
+            
+            # Eliminar la tabla existente
+            cursor.execute("DROP TABLE IF EXISTS creator_coordinates")
+            
+            # Crear la tabla con la estructura correcta
+            cursor.execute('''
+                CREATE TABLE creator_coordinates (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    brave_click TEXT NOT NULL,
+                    linkedin_fav_click TEXT NOT NULL,
+                    email_input_click TEXT NOT NULL,
+                    continue_button_click TEXT NOT NULL,
+                    name_input_click TEXT NOT NULL,
+                    continue_button2_click TEXT NOT NULL,
+                    close_captcha_click TEXT NOT NULL,
+                    close_number_click TEXT NOT NULL,
+                    cookie_editor_icon_click TEXT NOT NULL,
+                    save_cookie_clipboard_click TEXT NOT NULL,
+                    close_window TEXT NOT NULL,
+                    continue_button_click_optional TEXT NOT NULL,
+                    white_captcha_click TEXT NOT NULL
+                )
+            ''')
+            
+            # Restaurar datos existentes si los hay
+            if existing_data:
+                # Asegurar que tenemos 13 valores de datos (excluyendo id)
+                values = list(existing_data[1:])  # Excluir id
+                while len(values) < 13:  # Asegurar que tenemos 13 valores de datos
+                    values.append('')
+                
+                cursor.execute('''
+                    INSERT INTO creator_coordinates (
+                        id, brave_click, linkedin_fav_click, email_input_click,
+                        continue_button_click, name_input_click, continue_button2_click,
+                        close_captcha_click, close_number_click, cookie_editor_icon_click,
+                        save_cookie_clipboard_click, close_window, continue_button_click_optional,
+                        white_captcha_click
+                    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', tuple(values))
+            
+            print("✅ Tabla creator_coordinates recreada con estructura correcta")
+        else:
+            print("✅ Tabla creator_coordinates ya tiene la estructura correcta")
 
         # 🔹 Tabla para configuración del creator
         cursor.execute(
@@ -741,10 +807,14 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
         # Preparar valores con los existentes como base
         if existing_row:
             values = list(existing_row[1:])  # Excluir el id
+            # Asegurar que tenemos exactamente 13 valores (14 columnas - 1 id)
+            while len(values) < 13:
+                values.append('')
+            values = values[:13]  # Limitar a 13 valores máximo
         else:
-            values = [''] * 14  # 14 campos vacíos
+            values = [''] * 13  # 13 campos de datos (sin id)
 
-        # Mapeo de nombres de campos a índices
+        # Mapeo de nombres de campos a índices (0-12 para 13 campos)
         field_mapping = {
             'brave_click': 0,
             'linkedin_fav_click': 1,

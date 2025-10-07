@@ -285,15 +285,15 @@ def create_new_window(parent_root):
         "Click del link de LinkedIn en fav",
         "Click input email",
         "Click botón Agree",
-        "Click botón Agree opcional",
         "Click input de nombre",
         "Click botón continue",
         "Click cerrar captcha",
-        "Click captcha blanco",
         "Click cerrar número",
         "Click icono cookie editor",
         "Click guardar cookie portapapeles",
-        "Click cerrar ventana"
+        "Click cerrar ventana",
+        "Click botón Agree opcional",
+        "Click captcha blanco"
     ]
     
     # Mapeo de nombres a campos de la base de datos
