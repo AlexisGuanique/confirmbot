@@ -1256,6 +1256,60 @@ def _verificar_hora_programada():
         return True  # En caso de error, continuar inmediatamente
 
 
+def _determinar_emails_realmente_fallidos(emails_procesados):
+    """
+    Determina qué emails realmente fallaron (no se usaron exitosamente en ningún momento)
+    
+    Args:
+        emails_procesados (list): Lista de emails procesados con sus resultados
+    
+    Returns:
+        list: Lista de emails que realmente fallaron (no exitosos)
+    """
+    try:
+        from app.database.database import get_creator_setting
+        from datetime import datetime
+        
+        cuentas_realmente_fallidas = []
+        creator_settings = get_creator_setting()
+        user_agent = creator_settings.get('user_agent', '') if creator_settings else ''
+        
+        # Agrupar emails por dirección de email para determinar el estado final
+        emails_por_direccion = {}
+        for email_resultado in emails_procesados:
+            email = email_resultado['email']
+            if email not in emails_por_direccion:
+                emails_por_direccion[email] = []
+            emails_por_direccion[email].append(email_resultado)
+        
+        # Determinar el estado final de cada email
+        for email, resultados in emails_por_direccion.items():
+            # Si algún resultado fue exitoso, el email no es realmente fallido
+            tiene_exito = any(resultado['exito'] for resultado in resultados)
+            
+            if not tiene_exito:
+                # Buscar el último resultado fallido para obtener los detalles más recientes
+                ultimo_fallo = max(resultados, key=lambda x: x.get('contador', 0))
+                
+                cuenta_fallida = {
+                    "email": email,
+                    "password": _get_password_usado(),
+                    "user_agent": user_agent,
+                    "motivo_fallo": ultimo_fallo['motivo_fallo'],
+                    "detalles": ultimo_fallo['detalles'],
+                    "fecha_fallo": datetime.now().isoformat(),
+                    "contador": ultimo_fallo['contador'],
+                    "total": len(emails_procesados)
+                }
+                cuentas_realmente_fallidas.append(cuenta_fallida)
+        
+        return cuentas_realmente_fallidas
+        
+    except Exception as e:
+        print(f"❌ Error al determinar emails realmente fallidos: {e}")
+        return []
+
+
 def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_fallidas=None, es_ciclo=False, ciclo_minutes=None):
     try:
         from app.confirmabot.hostinger_actions import send_email_with_file
@@ -1783,39 +1837,34 @@ def _ejecutar_proceso_creator():
     
     # Procesar emails
     emails_exitosos = 0
-    cuentas_fallidas = []
+    emails_procesados = []  # Lista para trackear todos los emails procesados
     
     for i, email_id in enumerate(email_ids, 1):
         _ejecutar_modo_avion()
         print(f"📧 {i}/{len(email_ids)}")
         
+        # Obtener email antes de procesarlo
+        from app.database.database import get_creator_email_by_id
+        current_email = get_creator_email_by_id(email_id)
+        
         exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, i, len(email_ids))
+        
+        # Trackear el resultado del procesamiento
+        email_resultado = {
+            "email_id": email_id,
+            "email": current_email if current_email else f"email_id_{email_id}",
+            "exito": exito,
+            "motivo_fallo": motivo_fallo,
+            "detalles": detalles,
+            "contador": i
+        }
+        emails_procesados.append(email_resultado)
         
         if exito:
             emails_exitosos += 1
-            print(f"✅ Completado")
+            print(f"✅ Cuenta {emails_exitosos}")
         else:
             print(f"❌ Falló - {motivo_fallo}")
-            # Agregar a la lista de cuentas fallidas
-            from app.database.database import get_creator_email_by_id
-            from app.database.database import get_creator_setting
-            from datetime import datetime
-            
-            current_email = get_creator_email_by_id(email_id)
-            creator_settings = get_creator_setting()
-            user_agent = creator_settings.get('user_agent', '') if creator_settings else ''
-            
-            cuenta_fallida = {
-                "email": current_email if current_email else f"email_id_{email_id}",
-                "password": _get_password_usado(),
-                "user_agent": user_agent,
-                "motivo_fallo": motivo_fallo,
-                "detalles": detalles,
-                "fecha_fallo": datetime.now().isoformat(),
-                "contador": i,
-                "total": len(email_ids)
-            }
-            cuentas_fallidas.append(cuenta_fallida)
         
         update_creator_email_progress(email_id, emails_exitosos)
         if i < len(email_ids):
@@ -1824,15 +1873,20 @@ def _ejecutar_proceso_creator():
     print(f"🎉 Completado: {emails_exitosos}/{len(email_ids)}")
     _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)
     
-    # Guardar cuentas fallidas en el servidor
-    if cuentas_fallidas:
-        print(f"💾 Guardando {len(cuentas_fallidas)} cuentas fallidas en el servidor...")
-        print("📧 EMAILS FALLIDOS:")
-        for i, cuenta in enumerate(cuentas_fallidas, 1):
-            print(f"  {i}. {cuenta['email']} - {cuenta['motivo_fallo']}")
-        _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas)
+    # Determinar emails realmente fallidos (no usados exitosamente)
+    cuentas_realmente_fallidas = _determinar_emails_realmente_fallidos(emails_procesados)
     
-    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_fallidas)
+    # Guardar solo emails realmente fallidos en el servidor
+    if cuentas_realmente_fallidas:
+        print(f"💾 Guardando {len(cuentas_realmente_fallidas)} emails realmente fallidos en el servidor...")
+        print("📧 EMAILS REALMENTE FALLIDOS:")
+        for i, cuenta in enumerate(cuentas_realmente_fallidas, 1):
+            print(f"  {i}. {cuenta['email']} - {cuenta['motivo_fallo']}")
+        _guardar_cuentas_fallidas_en_servidor(cuentas_realmente_fallidas)
+    else:
+        print("✅ No hay emails realmente fallidos para reportar")
+    
+    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_realmente_fallidas)
     
     return True
 
@@ -1861,7 +1915,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
         return 0
     
     cuentas_creadas = 0
-    cuentas_fallidas = []
+    emails_procesados = []  # Lista para trackear todos los emails procesados
     intento = 1
     
     while cuentas_creadas < objetivo_cuentas and intento <= 10:
@@ -1903,36 +1957,29 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
             _ejecutar_modo_avion()
             print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
             
+            # Obtener email antes de procesarlo
+            from app.database.database import get_creator_email_by_id
+            current_email = get_creator_email_by_id(email_id)
+            
             exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
+            
+            # Trackear el resultado del procesamiento
+            email_resultado = {
+                "email_id": email_id,
+                "email": current_email if current_email else f"email_id_{email_id}",
+                "exito": exito,
+                "motivo_fallo": motivo_fallo,
+                "detalles": detalles,
+                "contador": cuentas_creadas + 1,
+                "intento": intento
+            }
+            emails_procesados.append(email_resultado)
             
             if exito:
                 cuentas_creadas += 1
                 print(f"✅ Cuenta {cuentas_creadas}")
-
             else:
                 print(f"❌ Falló - {motivo_fallo}")
-
-                # Agregar a la lista de cuentas fallidas
-                from app.database.database import get_creator_email_by_id
-                from app.database.database import get_creator_setting
-                from datetime import datetime
-                
-                current_email = get_creator_email_by_id(email_id)
-                creator_settings = get_creator_setting()
-                user_agent = creator_settings.get('user_agent', '') if creator_settings else ''
-                
-                cuenta_fallida = {
-                    "email": current_email if current_email else f"email_id_{email_id}",
-                    "password": _get_password_usado(),
-                    "user_agent": user_agent,
-                    "motivo_fallo": motivo_fallo,
-                    "detalles": detalles,
-                    "fecha_fallo": datetime.now().isoformat(),
-                    "contador": cuentas_creadas + 1,
-                    "total": objetivo_cuentas,
-                    "intento": intento
-                }
-                cuentas_fallidas.append(cuenta_fallida)
             
             update_creator_email_progress(email_id, cuentas_creadas)
             if i < len(email_ids):
@@ -1943,15 +1990,20 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     print(f"🎉 Completado: {cuentas_creadas}/{objetivo_cuentas}")
     _actualizar_encabezado_con_exitos(filepath, objetivo_cuentas, cuentas_creadas)
     
-    # Guardar cuentas fallidas en el servidor
-    if cuentas_fallidas:
-        print(f"💾 Guardando {len(cuentas_fallidas)} cuentas fallidas en el servidor...")
-        print("📧 EMAILS FALLIDOS:")
-        for i, cuenta in enumerate(cuentas_fallidas, 1):
-            print(f"  {i}. {cuenta['email']} - {cuenta['motivo_fallo']}")
-        _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas)
+    # Determinar emails realmente fallidos (no usados exitosamente)
+    cuentas_realmente_fallidas = _determinar_emails_realmente_fallidos(emails_procesados)
     
-    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_fallidas, es_ciclo, ciclo_minutes)
+    # Guardar solo emails realmente fallidos en el servidor
+    if cuentas_realmente_fallidas:
+        print(f"💾 Guardando {len(cuentas_realmente_fallidas)} emails realmente fallidos en el servidor...")
+        print("📧 EMAILS REALMENTE FALLIDOS:")
+        for i, cuenta in enumerate(cuentas_realmente_fallidas, 1):
+            print(f"  {i}. {cuenta['email']} - {cuenta['motivo_fallo']}")
+        _guardar_cuentas_fallidas_en_servidor(cuentas_realmente_fallidas)
+    else:
+        print("✅ No hay emails realmente fallidos para reportar")
+    
+    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_realmente_fallidas, es_ciclo, ciclo_minutes)
     
     return cuentas_creadas
 

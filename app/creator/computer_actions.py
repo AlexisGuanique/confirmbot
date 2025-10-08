@@ -218,14 +218,58 @@ def generate_random_lastname():
 
 def generate_email_prefix():
     """
-    Genera un prefijo aleatorio para emails (8-12 caracteres)
+    Genera un prefijo aleatorio para emails usando palabras del archivo JSON + números
     """
     import random
-    import string
+    import json
+    import os
     
-    # Generar prefijo aleatorio de 8-12 caracteres
-    prefix_length = random.randint(8, 12)
-    prefix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=prefix_length))
+    # Ruta del archivo de palabras
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    words_file = os.path.join(current_dir, "email_words.json")
+    
+    try:
+        # Cargar palabras desde el archivo JSON
+        with open(words_file, 'r', encoding='utf-8') as f:
+            words_data = json.load(f)
+        
+        # Combinar todas las categorías de palabras
+        all_words = []
+        for category, words in words_data.items():
+            all_words.extend(words)
+        
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        # Fallback a palabras básicas si hay error
+        all_words = [
+            "alex", "mike", "john", "sarah", "emma", "david", "lisa", "chris", "anna", "mark",
+            "creative", "smart", "cool", "happy", "bright", "quick", "swift", "clever", "bold", "wise",
+            "tech", "pro", "ace", "star", "nova", "zen", "max", "neo", "ultra", "mega",
+            "blue", "red", "green", "gold", "silver", "dark", "light", "bright", "deep", "pure"
+        ]
+    
+    # Generar prefijo combinando 1-2 palabras + números
+    num_palabras = random.randint(1, 2)
+    palabras_seleccionadas = random.sample(all_words, num_palabras)
+    
+    # Combinar palabras
+    base = ''.join(palabras_seleccionadas)
+    
+    # Agregar números (4-6 dígitos para mayor unicidad)
+    num_digitos = random.randint(4, 6)
+    numeros = ''.join([str(random.randint(0, 9)) for _ in range(num_digitos)])
+    
+    # Combinar base + números
+    prefix = base + numeros
+    
+    # Asegurar que tenga entre 10-18 caracteres (aumentado para acomodar más números)
+    if len(prefix) < 10:
+        # Agregar más números si es muy corto
+        extra_digitos = 10 - len(prefix)
+        prefix += ''.join([str(random.randint(0, 9)) for _ in range(extra_digitos)])
+    elif len(prefix) > 18:
+        # Truncar si es muy largo
+        prefix = prefix[:18]
+    
     return prefix
 
 def get_clipboard_content():

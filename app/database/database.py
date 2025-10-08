@@ -1678,7 +1678,8 @@ def _mostrar_error_servidor(titulo, mensaje):
 
 def save_emails_from_server(emails_data: list) -> bool:
     """
-    Guarda los emails obtenidos del servidor en la base de datos local
+    Guarda los emails obtenidos del servidor en la base de datos local.
+    Limpia todos los emails existentes y guarda los nuevos del servidor.
     
     Args:
         emails_data (list): Lista de emails del servidor con formato:
@@ -1710,11 +1711,11 @@ def save_emails_from_server(emails_data: list) -> bool:
             status_counts[status] = status_counts.get(status, 0) + 1
             
             cursor.execute('''
-                INSERT OR IGNORE INTO creator_email (email, created_at)
+                INSERT INTO creator_email (email, created_at)
                 VALUES (?, ?)
             ''', (email, created_at))
             
-            #print(f"📧 Email: {email} | Status: {status} | Usos: {usage_count}")
+            print(f"📧 Email guardado: {email} | Status: {status} | Usos: {usage_count}")
         
         conn.commit()
         conn.close()
@@ -1812,9 +1813,33 @@ def fetch_and_append_emails_for_cycle(count: int) -> bool:
         return False
 
 
+def check_email_exists(email: str) -> bool:
+    """
+    Verifica si un email ya existe en la base de datos
+    
+    Args:
+        email (str): Email a verificar
+    
+    Returns:
+        bool: True si existe, False si no existe
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM creator_email WHERE email = ?", (email,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"❌ Error al verificar email: {e}")
+        return False
+
+
 def append_emails_from_server(emails_data: list) -> bool:
     """
-    Agrega los emails obtenidos del servidor a la base de datos local sin limpiar los existentes
+    Agrega los emails obtenidos del servidor a la base de datos local.
+    Si un email ya existe, lo elimina y lo reemplaza con la versión del servidor
+    (ya que si el servidor lo envía, significa que aún tiene usos disponibles)
     
     Args:
         emails_data (list): Lista de emails del servidor con formato:
@@ -1830,8 +1855,10 @@ def append_emails_from_server(emails_data: list) -> bool:
         
         # Contar emails por status
         status_counts = {}
+        emails_nuevos = 0
+        emails_actualizados = 0
         
-        # Insertar nuevos emails sin limpiar los existentes
+        # Procesar cada email del servidor
         for email_data in emails_data:
             email = email_data['email']
             created_at = email_data['created_at']
@@ -1841,22 +1868,38 @@ def append_emails_from_server(emails_data: list) -> bool:
             # Contar por status
             status_counts[status] = status_counts.get(status, 0) + 1
             
+            # Verificar si el email ya existe
+            if check_email_exists(email):
+                # Eliminar el email existente y agregar el del servidor
+                cursor.execute("DELETE FROM creator_email WHERE email = ?", (email,))
+                emails_actualizados += 1
+                print(f"🔄 Email actualizado: {email} | Status: {status} | Usos: {usage_count}")
+            else:
+                emails_nuevos += 1
+                print(f"📧 Email nuevo: {email} | Status: {status} | Usos: {usage_count}")
+            
+            # Insertar el email del servidor
             cursor.execute('''
-                INSERT OR IGNORE INTO creator_email (email, created_at)
+                INSERT INTO creator_email (email, created_at)
                 VALUES (?, ?)
             ''', (email, created_at))
-            
-            #print(f"📧 Email: {email} | Status: {status} | Usos: {usage_count}")
         
         conn.commit()
         conn.close()
         
+        # Si se actualizaron emails, reiniciar el progreso para que estén disponibles
+        if emails_actualizados > 0:
+            print("🔄 Emails actualizados detectados - reiniciando progreso para disponibilidad")
+            reset_creator_email_progress()
+        
         # Mostrar resumen por status
-        print(f"📊 Resumen de emails agregados:")
+        print(f"📊 Resumen de emails procesados:")
         for status, count in status_counts.items():
             print(f"   - {status}: {count} emails")
         
-        print(f"✅ Agregados {len(emails_data)} emails a la base de datos local")
+        print(f"📧 Emails nuevos agregados: {emails_nuevos}")
+        print(f"🔄 Emails actualizados: {emails_actualizados}")
+        print(f"✅ Procesados {len(emails_data)} emails del servidor")
         return True
         
     except Exception as e:

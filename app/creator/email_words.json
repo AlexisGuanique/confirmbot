@@ -1,0 +1,29 @@
+{
+  "nombres": [
+    "alex", "mike", "john", "sarah", "emma", "david", "lisa", "chris", "anna", "mark",
+    "julia", "peter", "maria", "james", "sophie", "daniel", "laura", "robert", "nina", "thomas",
+    "carlos", "ana", "luis", "carla", "miguel", "sofia", "antonio", "isabel", "jose", "carmen"
+  ],
+  "adjetivos": [
+    "creative", "smart", "cool", "happy", "bright", "quick", "swift", "clever", "bold", "wise",
+    "amazing", "awesome", "brilliant", "dynamic", "elegant", "fantastic", "genius", "heroic", "incredible", "jovial",
+    "kind", "lively", "magical", "noble", "optimistic", "powerful", "quiet", "radiant", "stellar", "triumphant"
+  ],
+  "terminos_tecnicos": [
+    "tech", "pro", "ace", "star", "nova", "zen", "max", "neo", "ultra", "mega",
+    "cyber", "digital", "virtual", "quantum", "photon", "laser", "pixel", "byte", "code", "data",
+    "cloud", "web", "net", "link", "hub", "core", "edge", "node", "grid", "mesh"
+  ],
+  "colores": [
+    "blue", "red", "green", "gold", "silver", "dark", "light", "bright", "deep", "pure",
+    "crimson", "azure", "emerald", "amber", "violet", "coral", "jade", "ruby", "sapphire", "pearl"
+  ],
+  "animales": [
+    "tiger", "eagle", "wolf", "lion", "fox", "bear", "hawk", "shark", "panther", "falcon",
+    "dolphin", "phoenix", "dragon", "raven", "lynx", "jaguar", "cobra", "viper", "python", "serpent"
+  ],
+  "naturaleza": [
+    "ocean", "mountain", "forest", "river", "valley", "canyon", "desert", "island", "beach", "meadow",
+    "thunder", "lightning", "storm", "wind", "fire", "ice", "snow", "rain", "sun", "moon"
+  ]
+}
