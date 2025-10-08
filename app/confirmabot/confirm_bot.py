@@ -532,15 +532,18 @@ def run_checker():
                         is_verified = login_to_hostinger(driver, email_hostinger, password_hostinger, generated_email)
 
                         if is_verified:
-                            f.write(f"{final_email.strip()}\n")
+                            # Extraer solo el dominio del email completo
+                            domain_only = f"@{final_email.split('@')[1]}" if '@' in final_email else final_email
+                            
+                            f.write(f"{domain_only.strip()}\n")
                             f.flush()
                             os.fsync(f.fileno())
-                            print(f"📝 Email verificado guardado: {final_email.strip()}")
+                            print(f"📝 Dominio verificado guardado: {domain_only.strip()}")
                             at_least_one_verified = True
                             successful_iterations += 1
                             
-                            # Agregar email a la lista de verificados
-                            emails_verificados_totales.append(final_email.strip())
+                            # Agregar dominio a la lista de verificados
+                            emails_verificados_totales.append(domain_only.strip())
                             
                             # Mostrar progreso hacia el próximo corte
                             config = get_bot_settings()
@@ -566,7 +569,7 @@ def run_checker():
                                     total_emails_procesados = successful_iterations + failed_iterations
                                     corte_numero = successful_iterations // emails_per_batch
                                     
-                                    print(f"🎉 Corte #{corte_numero} realizado - Enviando {len(emails_nuevos)} emails nuevos a la base de datos...")
+                                    print(f"🎉 Corte #{corte_numero} realizado - Enviando {len(emails_nuevos)} dominios nuevos a la base de datos...")
                                     
                                     # Enviar a base de datos remota
                                     db_success = _enviar_emails_a_base_datos(emails_nuevos, total_emails_procesados, len(emails_nuevos), corte_numero)
@@ -576,14 +579,15 @@ def run_checker():
                                 
                                 emails_sent_count = successful_iterations
                         else:
-                            # Guardar email no verificado en archivo separado
+                            # Guardar dominio no verificado en archivo separado
+                            domain_only = f"@{final_email.split('@')[1]}" if '@' in final_email else final_email
                             unverified_file_path = file_path.replace('.txt', '_no_verificados.txt')
                             with open(unverified_file_path, 'a', encoding='utf-8') as f_unverified:
-                                f_unverified.write(f"{final_email.strip()}\n")
+                                f_unverified.write(f"{domain_only.strip()}\n")
                                 f_unverified.flush()
                                 os.fsync(f_unverified.fileno())
                             
-                            print(f"⚠️ Email no verificado guardado en archivo separado: {final_email.strip()}")
+                            print(f"⚠️ Dominio no verificado guardado en archivo separado: {domain_only.strip()}")
                             failed_iterations += 1
 
                         # ✅ Guardar email generado sin verificar en Hostinger
@@ -646,7 +650,7 @@ def run_checker():
                     emails_restantes = emails_verificados_totales[emails_enviados_en_cortes:]
                     
                     if emails_restantes:
-                        print(f"📤 Enviando {len(emails_restantes)} emails restantes al finalizar...")
+                        print(f"📤 Enviando {len(emails_restantes)} dominios restantes al finalizar...")
                         
                         # Enviar emails restantes a la base de datos
                         total_emails_procesados = successful_iterations + failed_iterations

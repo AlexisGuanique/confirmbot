@@ -200,19 +200,33 @@ def wait_for_creator_image(image_name, max_attempts=10, delay_between_attempts=1
 
 def generate_random_name():
     """
-    Genera un nombre aleatorio usando faker
+    Genera un nombre aleatorio de 2 palabras usando faker
     """
     fake = Faker('es_ES')  # Usar español de España para nombres más comunes
-    name = fake.first_name()
-    return name
+    first_name = fake.first_name()
+    second_name = fake.first_name()
+    return f"{first_name} {second_name}"
 
 def generate_random_lastname():
     """
-    Genera un apellido aleatorio usando faker
+    Genera un apellido aleatorio de 2 palabras usando faker
     """
     fake = Faker('es_ES')  # Usar español de España para apellidos más comunes
-    lastname = fake.last_name()
-    return lastname
+    first_lastname = fake.last_name()
+    second_lastname = fake.last_name()
+    return f"{first_lastname} {second_lastname}"
+
+def generate_email_prefix():
+    """
+    Genera un prefijo aleatorio para emails (8-12 caracteres)
+    """
+    import random
+    import string
+    
+    # Generar prefijo aleatorio de 8-12 caracteres
+    prefix_length = random.randint(8, 12)
+    prefix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=prefix_length))
+    return prefix
 
 def get_clipboard_content():
     """

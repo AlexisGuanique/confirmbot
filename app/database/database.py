@@ -1621,6 +1621,19 @@ def fetch_emails_from_server(count: int) -> list:
         
         emails = data['emails']
         
+        # Mostrar información adicional de la respuesta
+        active_count = data.get('active_count', 0)
+        completed_count = data.get('completed_count', 0)
+        requested_count = data.get('requested_count', 0)
+        message = data.get('message', 'Sin mensaje')
+        
+        print(f"📊 Información del servidor:")
+        print(f"   - Emails activos: {active_count}")
+        print(f"   - Emails completados: {completed_count}")
+        print(f"   - Emails solicitados: {requested_count}")
+        print(f"   - Emails obtenidos: {len(emails)}")
+        print(f"   - Mensaje: {message}")
+        
         # Verificar si no hay emails disponibles
         if len(emails) == 0:
             print("📭 No hay más emails disponibles en el servidor")
@@ -1669,7 +1682,8 @@ def save_emails_from_server(emails_data: list) -> bool:
     
     Args:
         emails_data (list): Lista de emails del servidor con formato:
-            [{"id": 1, "email": "test@example.com", "created_at": "2025-01-01T00:00:00", "user_id": 1}, ...]
+            [{"id": 1, "email": "@lawyer313ztle.33mail.com", "created_at": "2025-10-08T18:04:41.187967", 
+              "status": "completed", "usage_count": 2, "user_id": 2}, ...]
     
     Returns:
         bool: True si se guardaron correctamente, False en caso contrario
@@ -1682,15 +1696,33 @@ def save_emails_from_server(emails_data: list) -> bool:
         cursor.execute("DELETE FROM creator_email")
         cursor.execute("DELETE FROM sqlite_sequence WHERE name='creator_email'")
         
+        # Contar emails por status
+        status_counts = {}
+        
         # Insertar nuevos emails
         for email_data in emails_data:
+            email = email_data['email']
+            created_at = email_data['created_at']
+            status = email_data.get('status', 'unknown')
+            usage_count = email_data.get('usage_count', 0)
+            
+            # Contar por status
+            status_counts[status] = status_counts.get(status, 0) + 1
+            
             cursor.execute('''
-                INSERT INTO creator_email (email, created_at)
+                INSERT OR IGNORE INTO creator_email (email, created_at)
                 VALUES (?, ?)
-            ''', (email_data['email'], email_data['created_at']))
+            ''', (email, created_at))
+            
+            #print(f"📧 Email: {email} | Status: {status} | Usos: {usage_count}")
         
         conn.commit()
         conn.close()
+        
+        # Mostrar resumen por status
+        print(f"📊 Resumen de emails guardados:")
+        for status, count in status_counts.items():
+            print(f"   - {status}: {count} emails")
         
         print(f"✅ Guardados {len(emails_data)} emails en la base de datos local")
         return True
@@ -1786,7 +1818,8 @@ def append_emails_from_server(emails_data: list) -> bool:
     
     Args:
         emails_data (list): Lista de emails del servidor con formato:
-            [{"id": 1, "email": "test@example.com", "created_at": "2025-01-01T00:00:00", "user_id": 1}, ...]
+            [{"id": 1, "email": "@lawyer313ztle.33mail.com", "created_at": "2025-10-08T18:04:41.187967", 
+              "status": "completed", "usage_count": 2, "user_id": 2}, ...]
     
     Returns:
         bool: True si se guardaron correctamente, False en caso contrario
@@ -1795,15 +1828,33 @@ def append_emails_from_server(emails_data: list) -> bool:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
+        # Contar emails por status
+        status_counts = {}
+        
         # Insertar nuevos emails sin limpiar los existentes
         for email_data in emails_data:
+            email = email_data['email']
+            created_at = email_data['created_at']
+            status = email_data.get('status', 'unknown')
+            usage_count = email_data.get('usage_count', 0)
+            
+            # Contar por status
+            status_counts[status] = status_counts.get(status, 0) + 1
+            
             cursor.execute('''
-                INSERT INTO creator_email (email, created_at)
+                INSERT OR IGNORE INTO creator_email (email, created_at)
                 VALUES (?, ?)
-            ''', (email_data['email'], email_data['created_at']))
+            ''', (email, created_at))
+            
+            #print(f"📧 Email: {email} | Status: {status} | Usos: {usage_count}")
         
         conn.commit()
         conn.close()
+        
+        # Mostrar resumen por status
+        print(f"📊 Resumen de emails agregados:")
+        for status, count in status_counts.items():
+            print(f"   - {status}: {count} emails")
         
         print(f"✅ Agregados {len(emails_data)} emails a la base de datos local")
         return True

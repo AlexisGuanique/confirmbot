@@ -28,7 +28,7 @@ def create_new_window(parent_root):
             response = post(url, body=body, headers=headers)
             if response and response.status_code == 200:
                 data = response.json()
-                return data.get('email_count', 0)
+                return data.get('available_count', 0)
             return None
         except Exception as e:
             print(f"❌ Error al obtener conteo global: {e}")

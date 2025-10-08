@@ -10,7 +10,8 @@ def _verificar_cookie_duplicada(filepath, nueva_cookie):
         bool: True si la cookie es duplicada, False si es única
     """
     try:
-        # Leer las últimas 10 líneas del archivo para verificar duplicados
+        
+        # Leer todas las líneas del archivo para verificar duplicados
         with open(filepath, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         
@@ -21,21 +22,78 @@ def _verificar_cookie_duplicada(filepath, nueva_cookie):
             if '\t' in line and not line.startswith('CUENTAS') and not line.startswith('=') and not line.startswith('Total') and not line.startswith('Formato'):
                 data_lines.append(line.strip())
         
-        # Verificar solo las últimas 5 cookies guardadas
-        recent_cookies = data_lines[-5:] if len(data_lines) >= 5 else data_lines
+        # Verificar TODAS las cookies guardadas (no solo las últimas 5)
         
-        for line in recent_cookies:
+        for i, line in enumerate(data_lines):
             parts = line.split('\t')
             if len(parts) >= 4:  # user_agent, email, password, cookie
                 existing_cookie = parts[3]
-                # Comparar cookies
+                
+                # Comparar cookies completas
                 if existing_cookie == nueva_cookie:
+                    return True
+                
+                # Verificar si las cookies son muy similares (mismo patrón base)
+                if _son_cookies_similares(existing_cookie, nueva_cookie):
                     return True
         
         return False
         
     except Exception as e:
         return False  # En caso de error, permitir guardar
+
+
+def _son_cookies_similares(cookie1, cookie2):
+    """
+    Verifica si dos cookies son muy similares (mismo patrón base de LinkedIn)
+    """
+    try:
+        import json
+        
+        # Parsear ambas cookies como JSON
+        data1 = json.loads(cookie1)
+        data2 = json.loads(cookie2)
+        
+        # Verificar si tienen la misma estructura básica
+        if len(data1) != len(data2):
+            return False
+        
+        # Verificar si tienen los mismos nombres de cookies
+        names1 = set([item.get('name', '') for item in data1])
+        names2 = set([item.get('name', '') for item in data2])
+        
+        if names1 != names2:
+            return False
+        
+        # Verificar si los dominios son iguales
+        domains1 = set([item.get('domain', '') for item in data1])
+        domains2 = set([item.get('domain', '') for item in data2])
+        
+        if domains1 != domains2:
+            return False
+        
+        # Si llegamos aquí, las cookies tienen la misma estructura
+        # Verificar si los valores son muy similares (mismo patrón)
+        similar_count = 0
+        total_cookies = len(data1)
+        
+        for i in range(total_cookies):
+            value1 = data1[i].get('value', '')
+            value2 = data2[i].get('value', '')
+            
+            # Si los valores son idénticos o muy similares
+            if value1 == value2 or (len(value1) > 10 and len(value2) > 10 and value1[:10] == value2[:10]):
+                similar_count += 1
+        
+        # Si más del 70% de las cookies son similares, considerarlas duplicadas
+        similarity_ratio = similar_count / total_cookies if total_cookies > 0 else 0
+        is_similar = similarity_ratio > 0.7
+        
+        
+        return is_similar
+        
+    except Exception as e:
+        return False
 
 
 def observador_unificado(coordinates, email, password, filepath):
@@ -567,6 +625,7 @@ def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath
         user_agent = creator_settings.get('user_agent')
         contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
         
+        
         try:
             with open(filepath, 'a', encoding='utf-8') as f:
                 f.write(contenido + "\n")
@@ -613,7 +672,6 @@ def _format_cookie_to_single_line(cookie_content):
 
 
 
-
 def procesar_email_individual(email_id, coordinates, filepath, contador, total):
     """
     Procesa un email individual en el proceso de creación de cuenta LinkedIn
@@ -641,11 +699,12 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total):
         return False
     
     # Paso 4: Llenar formulario de registro
-    if not _llenar_formulario_registro(coordinates, current_email):
+    formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email)
+    if not formulario_ok:
         return False
     
     # Paso 5: Observar y crear cuenta
-    cuenta_creada = observador_unificado(coordinates, current_email, _get_password_usado(), filepath)
+    cuenta_creada = observador_unificado(coordinates, full_email, _get_password_usado(), filepath)
     
     # Paso 6: Cerrar ventana si se creó exitosamente
     if cuenta_creada:
@@ -683,11 +742,12 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         return False, "error_carga_linkedin", {}
     
     # Paso 4: Llenar formulario de registro
-    if not _llenar_formulario_registro(coordinates, current_email):
+    formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email)
+    if not formulario_ok:
         return False, "error_llenar_formulario", {}
     
     # Paso 5: Observar y crear cuenta con detalle
-    exito, motivo_fallo, detalles = observador_unificado_con_detalle(coordinates, current_email, _get_password_usado(), filepath)
+    exito, motivo_fallo, detalles = observador_unificado_con_detalle(coordinates, full_email, _get_password_usado(), filepath)
     
     # Paso 6: Cerrar ventana si se creó exitosamente
     if exito:
@@ -830,14 +890,14 @@ def _verificar_campo_pegado(texto_esperado, tipo_campo="campo"):
 
 def _llenar_formulario_registro(coordinates, email):
     """Llena el formulario de registro de LinkedIn"""
-    from app.creator.computer_actions import click_coordinates, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname, wait_for_creator_image
+    from app.creator.computer_actions import click_coordinates, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname, wait_for_creator_image, generate_email_prefix
     import time
     import pyperclip
     
     # Click en email_input_click
     email_coords = coordinates.get("email_input_click")
     if not email_coords:
-        return False
+        return False, None
     
     click_coordinates(email_coords)
     time.sleep(0.5)
@@ -846,9 +906,20 @@ def _llenar_formulario_registro(coordinates, email):
     pyperclip.copy("")
     time.sleep(0.2)
     
-    # Escribir email con verificación
-    if not _escribir_y_verificar_campo(email, "email"):
-        return False
+    # Generar prefijo aleatorio para el email si viene solo el dominio
+    if email.startswith('@'):
+        # Generar prefijo aleatorio y concatenar con el dominio
+        prefix = generate_email_prefix()
+        full_email = f"{prefix}{email}"
+        print(f"📧 Email generado: {full_email} (dominio: {email})")
+    else:
+        # Si ya viene completo, usar tal como está
+        full_email = email
+        print(f"📧 Email completo recibido: {full_email}")
+    
+    # Escribir email completo con verificación
+    if not _escribir_y_verificar_campo(full_email, "email"):
+        return False, None
     
     # Ir al campo de contraseña
     press_key("tab")
@@ -865,13 +936,13 @@ def _llenar_formulario_registro(coordinates, email):
         # Si encuentra el checkbox, usar continue_button_click
         continue_coords = coordinates.get("continue_button_click")
         if not continue_coords:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, None
         click_coordinates(continue_coords)
     else:
         # Si no encuentra el checkbox, usar continue_button_click_optional
         continue_coords = coordinates.get("continue_button_click_optional")
         if not continue_coords:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False, None
         click_coordinates(continue_coords)
     
     time.sleep(2)
@@ -879,7 +950,7 @@ def _llenar_formulario_registro(coordinates, email):
     # Click en name_input_click
     name_coords = coordinates.get("name_input_click")
     if not name_coords:
-        return False
+        return False, None
     
     click_coordinates(name_coords)
     time.sleep(0.5)
@@ -887,7 +958,7 @@ def _llenar_formulario_registro(coordinates, email):
     # Escribir nombre aleatorio con verificación
     random_name = generate_random_name()
     if not _escribir_y_verificar_campo(random_name, "nombre"):
-        return False
+        return False, None
     
     # Ir al campo de apellido
     press_key("tab")
@@ -896,7 +967,7 @@ def _llenar_formulario_registro(coordinates, email):
     # Escribir apellido aleatorio con verificación
     random_lastname = generate_random_lastname()
     if not _escribir_y_verificar_campo(random_lastname, "apellido"):
-        return False
+        return False, None
     
     # Activar proxy antes de hacer clic en continue_button2_click
     _activar_proxy()
@@ -904,7 +975,7 @@ def _llenar_formulario_registro(coordinates, email):
     # Click en continue_button2_click
     continue2_coords = coordinates.get("continue_button2_click")
     if not continue2_coords:
-        return False
+        return False, None
     
     click_coordinates(continue2_coords)
     time.sleep(2)
@@ -912,7 +983,7 @@ def _llenar_formulario_registro(coordinates, email):
     # Guardar password para uso posterior
     global _password_usado
     _password_usado = password
-    return True
+    return True, full_email
 
 
 def _get_password_usado():
@@ -1444,6 +1515,7 @@ def _guardar_cuentas_en_servidor(filepath):
         from app.utils.http_utils import post
         import json
         
+        
         # Obtener datos del usuario logueado
         user_data = get_user_data()
         if not user_data:
@@ -1457,11 +1529,13 @@ def _guardar_cuentas_en_servidor(filepath):
             print("❌ Faltan datos del usuario (ID o access_token)")
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
         
+        
         # Leer y parsear el archivo de cuentas
         accounts = _leer_cuentas_del_archivo(filepath)
         if not accounts:
             print("❌ No se encontraron cuentas en el archivo")
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+        
         
         # Preparar datos para el servidor
         payload = {
@@ -1477,6 +1551,7 @@ def _guardar_cuentas_en_servidor(filepath):
             'Content-Type': 'application/json'
         }
         
+        
         # Enviar petición al servidor
         response = post(url, body=payload, headers=headers)
         
@@ -1486,6 +1561,7 @@ def _guardar_cuentas_en_servidor(filepath):
                 saved_count = response_data.get('saved_count', 0)
                 duplicate_count = response_data.get('duplicate_count', 0)
                 total_processed = response_data.get('total_processed', 0)
+                
                 
                 print(f"💾 Cuentas guardadas en servidor: {saved_count} nuevas, {duplicate_count} duplicadas")
                 return True
@@ -1577,8 +1653,9 @@ def _leer_cuentas_del_archivo(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         
+        
         # Buscar las líneas que contienen datos de cuentas (saltar encabezados)
-        for line in lines:
+        for i, line in enumerate(lines):
             line = line.strip()
             # Si la línea contiene tabs y no es un encabezado
             if '\t' in line and not line.startswith('CUENTAS') and not line.startswith('=') and not line.startswith('Total') and not line.startswith('Formato'):
@@ -1588,6 +1665,7 @@ def _leer_cuentas_del_archivo(filepath):
                     email = parts[1].strip()
                     password = parts[2].strip()
                     cookie = parts[3].strip()
+                    
                     
                     # Agregar cuenta al array
                     account = {
