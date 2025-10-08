@@ -28,7 +28,7 @@ def create_new_window(parent_root):
             response = post(url, body=body, headers=headers)
             if response and response.status_code == 200:
                 data = response.json()
-                return data.get('available_count', 0)
+                return data  # Devolver toda la información del servidor
             return None
         except Exception as e:
             print(f"❌ Error al obtener conteo global: {e}")
@@ -217,8 +217,8 @@ def create_new_window(parent_root):
     # Obtener cantidad actual de emails locales
     current_email_count = get_creator_email_count()
     
-    # Obtener cantidad de emails globales del servidor
-    global_email_count = get_global_email_count()
+    # Obtener información detallada de emails globales del servidor
+    global_email_data = get_global_email_count()
     
     # Label con información de emails locales
     emails_info_label = ctk.CTkLabel(
@@ -229,15 +229,53 @@ def create_new_window(parent_root):
     )
     emails_info_label.pack(pady=(15, 5), padx=20, anchor="w")
     
-    # Label con información de emails globales
-    global_emails_info_label = ctk.CTkLabel(
-        emails_frame,
-        text=f"🌐 Emails globales en el servidor: {global_email_count if global_email_count is not None else 'Error al obtener'}" + 
-             (" 🔄" if global_email_count is None else ""),
-        font=("Arial", 12, "bold"),
-        text_color="black"
-    )
-    global_emails_info_label.pack(pady=(5, 10), padx=20, anchor="w")
+    # Información detallada de emails del servidor
+    if global_email_data:
+        breakdown = global_email_data.get('breakdown', {})
+        disponibles = breakdown.get('disponibles', 0)
+        usados_una_vez = breakdown.get('usados_una_vez', 0)
+        usados_dos_veces = breakdown.get('usados_dos_veces', 0)
+        completados = breakdown.get('completados', 0)
+        
+        # Total de emails que puedes usar (disponibles + usados 1 vez + usados 2 veces)
+        total_utilizables = disponibles + usados_una_vez + usados_dos_veces
+        
+        # Label principal con total de emails utilizables
+        total_utilizables_label = ctk.CTkLabel(
+            emails_frame,
+            text=f"📊 Total de emails utilizables: {total_utilizables}",
+            font=("Arial", 12, "bold"),
+            text_color="black"
+        )
+        total_utilizables_label.pack(pady=(5, 5), padx=20, anchor="w")
+        
+        # Desglose detallado
+        breakdown_text = f"📋 Desglose: {disponibles} disponibles | {usados_una_vez} usados 1 vez | {usados_dos_veces} usados 2 veces"
+        breakdown_label = ctk.CTkLabel(
+            emails_frame,
+            text=breakdown_text,
+            font=("Arial", 10),
+            text_color="gray"
+        )
+        breakdown_label.pack(pady=(0, 5), padx=20, anchor="w")
+        
+        # Información de completados (solo para referencia)
+        completados_label = ctk.CTkLabel(
+            emails_frame,
+            text=f"⚠️ Completados (no utilizables): {completados}",
+            font=("Arial", 10),
+            text_color="red"
+        )
+        completados_label.pack(pady=(0, 10), padx=20, anchor="w")
+    else:
+        # Si no se pudo obtener la información
+        global_emails_info_label = ctk.CTkLabel(
+            emails_frame,
+            text="🌐 Emails globales en el servidor: Error al obtener 🔄",
+            font=("Arial", 12, "bold"),
+            text_color="black"
+        )
+        global_emails_info_label.pack(pady=(5, 10), padx=20, anchor="w")
     
     # Función para eliminar todos los emails
     def delete_all_emails():
