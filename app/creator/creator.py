@@ -696,6 +696,9 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total):
     
     # Paso 3: Verificar carga de LinkedIn
     if not _verificar_carga_linkedin():
+        print("❌ LinkedIn no cargó correctamente - cerrando ventana")
+        _desactivar_proxy()
+        _cerrar_ventana(coordinates)
         return False
     
     # Paso 4: Llenar formulario de registro
@@ -739,6 +742,9 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
     
     # Paso 3: Verificar carga de LinkedIn
     if not _verificar_carga_linkedin():
+        print("❌ LinkedIn no cargó correctamente - cerrando ventana")
+        _desactivar_proxy()
+        _cerrar_ventana(coordinates)
         return False, "error_carga_linkedin", {}
     
     # Paso 4: Llenar formulario de registro
