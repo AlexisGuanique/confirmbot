@@ -109,7 +109,7 @@ def observador_unificado(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 60
+    timeout_seconds = 90
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -170,7 +170,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 60
+    timeout_seconds = 90
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -795,7 +795,7 @@ def _verificar_carga_linkedin():
     """Verifica que LinkedIn haya cargado correctamente"""
     from app.creator.computer_actions import wait_for_creator_image
     
-    verification_image = wait_for_creator_image("imagen_de_verificacion_de_exito_carga_linkedin", max_attempts=15, delay_between_attempts=1)
+    verification_image = wait_for_creator_image("imagen_de_verificacion_de_exito_carga_linkedin", max_attempts=90, delay_between_attempts=1)
     if not verification_image:
         return False
     return True
@@ -905,6 +905,7 @@ def _llenar_formulario_registro(coordinates, email):
     if not email_coords:
         return False, None
     
+    time.sleep(0.5)
     click_coordinates(email_coords)
     time.sleep(0.5)
     

@@ -163,7 +163,7 @@ def generate_random_password(length=12):
     password = ''.join(random.choice(characters) for _ in range(length))
     return password
 
-def wait_for_image(image_path, max_attempts=10, delay_between_attempts=1, confidence=0.7, silent=False):
+def wait_for_image(image_path, max_attempts=90, delay_between_attempts=1, confidence=0.7, silent=False):
 
     if not silent:
         print(f"🔍 Iniciando observador para imagen: {os.path.basename(image_path)}")
@@ -188,7 +188,7 @@ def wait_for_image(image_path, max_attempts=10, delay_between_attempts=1, confid
         print(f"❌ No se encontró la imagen después de {max_attempts} intentos")
     return None
 
-def wait_for_creator_image(image_name, max_attempts=10, delay_between_attempts=1, confidence=0.7, silent=False):
+def wait_for_creator_image(image_name, max_attempts=90, delay_between_attempts=1, confidence=0.7, silent=False):
 
     image_path = get_image_path(image_name)
     if not image_path:
