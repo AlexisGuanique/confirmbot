@@ -1060,6 +1060,7 @@ def _activar_proxy():
     
     if enable_proxy:
         try:
+            print("########################################################")
             print("🌐 Activando proxy...")
             proxy_controller = ProxyController()
             try:
