@@ -319,11 +319,16 @@ def _procesar_captcha_rojo(coordinates, estado):
 
 
 def _procesar_captcha_imposible(coordinates, estado):
-    """Procesa la detección de captcha imposible"""
+    """Procesa la detección de captcha imposible (incluye captcha_imposible y captcha_imposible_2)"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
+    # Detectar captcha imposible (versión 1)
     captcha_found = wait_for_creator_image("captcha_imposible", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    
+    # Si no se encuentra la versión 1, intentar con la versión 2
+    if not captcha_found:
+        captcha_found = wait_for_creator_image("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.5, silent=True)
     
     if not captcha_found:
         return None  # No hay captcha que procesar
@@ -433,9 +438,9 @@ def _procesar_captcha_blanco(coordinates, estado):
     
     print(f"✅ Captcha blanco detectado (vez #{estado.captcha_blanco_flag + 1})")
     
-    # Esperar 2 segundos antes de la segunda verificación
-    print("⏳ Esperando 3 segundos para verificación...")
-    time.sleep(3)
+    # Esperar 6 segundos antes de la segunda verificación
+    print("⏳ Esperando 6 segundos para verificación...")
+    time.sleep(6)
     
     # Segunda verificación después del delay
     captcha_blanco_confirmado = wait_for_creator_image("imagen_captcha_blanco", max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True)
@@ -975,9 +980,11 @@ def _llenar_formulario_registro(coordinates, email):
     random_lastname = generate_random_lastname()
     if not _escribir_y_verificar_campo(random_lastname, "apellido"):
         return False, None
-    
+
+
     # Activar proxy antes de hacer clic en continue_button2_click
     _activar_proxy()
+
     
     # Click en continue_button2_click
     continue2_coords = coordinates.get("continue_button2_click")
@@ -985,7 +992,7 @@ def _llenar_formulario_registro(coordinates, email):
         return False, None
     
     click_coordinates(continue2_coords)
-    time.sleep(2)
+
     
     # Guardar password para uso posterior
     global _password_usado
@@ -1050,48 +1057,42 @@ def _ejecutar_modo_avion():
 
 
 def _activar_proxy():
-    """Activa el proxy si está habilitado en la configuración"""
+    """Activa el proxy si está habilitado en la configuración - VERSIÓN SEGURA"""
     import time
     from app.database.database import get_bot_settings
-    from app.confirmabot.utils.proxy_tool import ProxyController
+    from app.confirmabot.utils.proxy_tool_safe import SafeProxyController
     
     config = get_bot_settings()
     enable_proxy = config.get("enable_proxy", True)
     
     if enable_proxy:
         try:
-            print("########################################################")
+           
             print("🌐 Activando proxy...")
-            proxy_controller = ProxyController()
+            proxy_controller = SafeProxyController()
             try:
-                # Solo activar el proxy sin cambiar la configuración existente
-                proxy_controller.enable_proxy_only()
-                proxy_controller.refresh_internet_settings()
-                
-                # Verificar que el proxy esté realmente activo
-                print("🔍 Verificando que el proxy esté activado...")
-                enabled, server, port = proxy_controller.get_proxy_status()
-                if enabled and server:
-                    print(f"✅ Proxy confirmado activado: {server}")
-                else:
-                    print("⚠️ Proxy no se activó correctamente, reintentando...")
-                    proxy_controller.enable_proxy_only()
+                # Solo activar el proxy sin verificaciones que puedan colgarse
+                success = proxy_controller.enable_proxy_only()
+                if success:
                     proxy_controller.refresh_internet_settings()
-                    time.sleep(3)  # Esperar más tiempo en el segundo intento
+                    print("✅ Proxy activado - continuando...")
+                else:
+                    print("⚠️ No se pudo activar proxy, continuando...")
                     
             finally:
                 proxy_controller.close()
         except Exception as e:
             print(f"❌ Error al activar proxy: {e}")
+            print("🔄 Continuando sin proxy...")
     else:
-        pass
+        print("⚠️ Proxy deshabilitado en configuración")
 
 
 def _desactivar_proxy():
-    """Desactiva el proxy si está habilitado en la configuración"""
+    """Desactiva el proxy si está habilitado en la configuración - VERSIÓN SEGURA"""
     import time
     from app.database.database import get_bot_settings
-    from app.confirmabot.utils.proxy_tool import ProxyController
+    from app.confirmabot.utils.proxy_tool_safe import SafeProxyController
     
     config = get_bot_settings()
     enable_proxy = config.get("enable_proxy", True)
@@ -1099,14 +1100,17 @@ def _desactivar_proxy():
     if enable_proxy:
         try:
             print("🌐 Desactivando proxy...")
-            proxy_controller = ProxyController()
+            proxy_controller = SafeProxyController()
             try:
-                proxy_controller.disable_proxy()
-                proxy_controller.refresh_internet_settings()
-                print("✅ Proxy desactivado exitosamente")
+                success = proxy_controller.disable_proxy()
+                if success:
+                    proxy_controller.refresh_internet_settings()
+                    print("✅ Proxy desactivado exitosamente")
+                else:
+                    print("⚠️ No se pudo desactivar proxy completamente")
+                time.sleep(1)  # Esperar un momento para que el proxy se desactive
             finally:
                 proxy_controller.close()
-            time.sleep(1)  # Esperar un momento para que el proxy se desactive
         except Exception as e:
             print(f"❌ Error al desactivar proxy: {e}")
     else:
@@ -2037,6 +2041,7 @@ def _ejecutar_creator_en_ciclo():
     
     try:
         while True:
+            print("########################################################")
             print(f"\n🔄 CICLO #{ciclo}")
             
             # Enviar notificación de inicio de ciclo
