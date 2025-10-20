@@ -140,6 +140,11 @@ def observador_unificado(coordinates, email, password, filepath):
         elif captcha_imposible_result is True:  # Procesado correctamente, continuar
             continue
         
+        # Verificar captcha bueno (solo desactiva proxy)
+        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado)
+        if captcha_bueno_result is True:  # Procesado correctamente, continuar
+            continue
+        
         # Verificar éxito
         exito_result = _procesar_exito(coordinates, email, password, filepath)
         if exito_result is not None:
@@ -201,6 +206,11 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
         elif captcha_imposible_result is True:  # Procesado correctamente, continuar
             continue
         
+        # Verificar captcha bueno (solo desactiva proxy)
+        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado)
+        if captcha_bueno_result is True:  # Procesado correctamente, continuar
+            continue
+        
         # Verificar éxito
         exito_result = _procesar_exito_con_detalle(coordinates, email, password, filepath)
         if exito_result is not None:
@@ -225,6 +235,7 @@ class ObservadorEstado:
         self.ciclos_sin_imagen = 0
         self.obstaculo_count = 0
         self.captcha_blanco_flag = 0
+        self.captcha_bueno_count = 0
 
 
 def _verificar_timeout(start_time, timeout_seconds, coordinates):
@@ -257,7 +268,10 @@ def _procesar_numero(coordinates, estado):
     estado.numero_count += 1
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
-    print(f"✅ Número encontrado (vez #{estado.numero_count}) - cerrando")
+    print(f"✅ Número encontrado (vez #{estado.numero_count})")
+    
+    # Desactivar proxy inmediatamente al detectar número
+    _desactivar_proxy()
     
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
@@ -275,7 +289,9 @@ def _procesar_numero(coordinates, estado):
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
+            # Reactivar proxy antes de hacer clic en continue_button2_click
             click_coordinates(continue2_coords)
+            _activar_proxy()
             time.sleep(2)
     
     return True
@@ -294,7 +310,10 @@ def _procesar_captcha_rojo(coordinates, estado):
     estado.captcha_count += 1
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
-    print(f"✅ Captcha encontrado (vez #{estado.captcha_count}) - cerrando")
+    print(f"✅ Captcha encontrado (vez #{estado.captcha_count})")
+    
+    # Desactivar proxy inmediatamente al detectar captcha rojo
+    _desactivar_proxy()
     
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
@@ -312,14 +331,16 @@ def _procesar_captcha_rojo(coordinates, estado):
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
+            # Reactivar proxy antes de hacer clic en continue_button2_click
             click_coordinates(continue2_coords)
+            _activar_proxy()
             time.sleep(2)
     
     return True
 
 
 def _procesar_captcha_imposible(coordinates, estado):
-    """Procesa la detección de captcha imposible (incluye captcha_imposible y captcha_imposible_2)"""
+    """Procesa la detección de captcha imposible (incluye captcha_imposible, captcha_imposible_2 y captcha_imposible_3)"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
@@ -330,13 +351,20 @@ def _procesar_captcha_imposible(coordinates, estado):
     if not captcha_found:
         captcha_found = wait_for_creator_image("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.5, silent=True)
     
+    # Si no se encuentra la versión 2, intentar con la versión 3
+    if not captcha_found:
+        captcha_found = wait_for_creator_image("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    
     if not captcha_found:
         return None  # No hay captcha que procesar
     
     estado.captcha_count += 1
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
-    print(f"✅ Captcha imposible encontrado (vez #{estado.captcha_count}) - cerrando")
+    print(f"✅ Captcha imposible encontrado (vez #{estado.captcha_count})")
+    
+    # Desactivar proxy inmediatamente al detectar captcha imposible
+    _desactivar_proxy()
     
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
@@ -354,7 +382,10 @@ def _procesar_captcha_imposible(coordinates, estado):
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
+            # Reactivar proxy antes de hacer clic en continue_button2_click
+            
             click_coordinates(continue2_coords)
+            _activar_proxy()
             time.sleep(2)
     
     return True
@@ -418,6 +449,44 @@ def _procesar_exito_con_detalle(coordinates, email, password, filepath):
     return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name)
 
 
+def _procesar_captcha_bueno(coordinates, estado):
+    """Procesa la detección de captcha bueno - solo desactiva el proxy (máximo 2 veces)"""
+    from app.creator.computer_actions import wait_for_creator_image
+    import time
+    
+    # Verificar si ya se procesó el máximo de veces (2)
+    if hasattr(estado, 'captcha_bueno_count') and estado.captcha_bueno_count >= 2:
+        return None  # Ya se procesó el máximo de veces, no buscar más
+    
+    # Buscar variantes, pero con la misma configuración original (1 intento, 0.5s, sin tocar confidence)
+    variantes = ["captcha_bueno", "captcha_bueno_2", "captcha_bueno_4"]
+    captcha_bueno_found = None
+    for nombre in variantes:
+        if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.5, silent=True):
+            captcha_bueno_found = nombre
+            break
+    
+    if not captcha_bueno_found:
+        return None  # No hay captcha bueno que procesar
+    
+    # Incrementar contador
+    if not hasattr(estado, 'captcha_bueno_count'):
+        estado.captcha_bueno_count = 0
+    estado.captcha_bueno_count += 1
+    
+    # Solo mostrar mensaje en la primera detección
+    if estado.captcha_bueno_count == 1:
+        print(f"✅ Captcha bueno detectado (vez #1)")
+    
+    # Solo desactivar el proxy y continuar con el proceso normal
+    _desactivar_proxy()
+    
+    # Esperar un momento para que la imagen desaparezca de pantalla
+    time.sleep(2)
+    
+    return True  # Continuar con el proceso normal
+
+
 def _procesar_captcha_blanco(coordinates, estado):
     """Procesa la detección de captcha blanco con delay y doble verificación"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
@@ -439,14 +508,12 @@ def _procesar_captcha_blanco(coordinates, estado):
     print(f"✅ Captcha blanco detectado (vez #{estado.captcha_blanco_flag + 1})")
     
     # Esperar 6 segundos antes de la segunda verificación
-    print("⏳ Esperando 6 segundos para verificación...")
     time.sleep(6)
     
     # Segunda verificación después del delay
     captcha_blanco_confirmado = wait_for_creator_image("imagen_captcha_blanco", max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True)
     
     if not captcha_blanco_confirmado:
-        print("⚠️ Captcha blanco no confirmado después del delay - ignorando")
         return None
     
     # Captcha blanco confirmado
@@ -454,10 +521,10 @@ def _procesar_captcha_blanco(coordinates, estado):
     print(f"✅ Captcha blanco confirmado (vez #{estado.captcha_blanco_flag})")
     
     if estado.captcha_blanco_flag == 1:
-        print("📝 Primera detección - marcando bandera y continuando...")
+        # Desactivar proxy inmediatamente al detectar captcha blanco por primera vez
+        _desactivar_proxy()
         return True
     elif estado.captcha_blanco_flag == 2:
-        print("🔄 Segunda detección - cerrando captcha y continuando...")
         estado.captcha_count += 1
         estado.obstaculo_count += 1
         estado.ciclos_sin_imagen = 0
@@ -469,7 +536,11 @@ def _procesar_captcha_blanco(coordinates, estado):
             
             continue2_coords = coordinates.get("continue_button2_click")
             if continue2_coords:
+                # Reactivar proxy antes de hacer clic en continue_button2_click
+                print("🔄 Reactivando proxy antes de continue_button2_click")
+
                 click_coordinates(continue2_coords)
+                _activar_proxy()
                 time.sleep(2)
         return True
     elif estado.captcha_blanco_flag >= 3:
@@ -982,16 +1053,15 @@ def _llenar_formulario_registro(coordinates, email):
         return False, None
 
 
-    # Activar proxy antes de hacer clic en continue_button2_click
-    _activar_proxy()
-
-    
-    # Click en continue_button2_click
+    # Click en continue_button2_click (sin activar proxy prematuramente)
     continue2_coords = coordinates.get("continue_button2_click")
     if not continue2_coords:
         return False, None
     
     click_coordinates(continue2_coords)
+    
+    # Activar proxy después de hacer clic en continue_button2_click
+    _activar_proxy()
 
     
     # Guardar password para uso posterior
@@ -1067,25 +1137,22 @@ def _activar_proxy():
     
     if enable_proxy:
         try:
-           
-            print("🌐 Activando proxy...")
             proxy_controller = SafeProxyController()
             try:
                 # Solo activar el proxy sin verificaciones que puedan colgarse
                 success = proxy_controller.enable_proxy_only()
                 if success:
                     proxy_controller.refresh_internet_settings()
-                    print("✅ Proxy activado - continuando...")
+                    print("✅ Proxy activado")
                 else:
-                    print("⚠️ No se pudo activar proxy, continuando...")
+                    print("⚠️ No se pudo activar proxy")
                     
             finally:
                 proxy_controller.close()
         except Exception as e:
             print(f"❌ Error al activar proxy: {e}")
-            print("🔄 Continuando sin proxy...")
     else:
-        print("⚠️ Proxy deshabilitado en configuración")
+        pass
 
 
 def _desactivar_proxy():
@@ -1099,16 +1166,15 @@ def _desactivar_proxy():
     
     if enable_proxy:
         try:
-            print("🌐 Desactivando proxy...")
             proxy_controller = SafeProxyController()
             try:
                 success = proxy_controller.disable_proxy()
                 if success:
                     proxy_controller.refresh_internet_settings()
-                    print("✅ Proxy desactivado exitosamente")
+                    print("✅ Proxy desactivado")
                 else:
-                    print("⚠️ No se pudo desactivar proxy completamente")
-                time.sleep(1)  # Esperar un momento para que el proxy se desactive
+                    print("⚠️ No se pudo desactivar proxy")
+                time.sleep(0.5)  # Esperar un momento para que el proxy se desactive
             finally:
                 proxy_controller.close()
         except Exception as e:
@@ -1322,7 +1388,7 @@ def _determinar_emails_realmente_fallidos(emails_procesados):
         return []
 
 
-def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_fallidas=None, es_ciclo=False, ciclo_minutes=None):
+def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_fallidas=None, es_ciclo=False, ciclo_minutes=None, tiempo_inicio_ciclo=None):
     try:
         from app.confirmabot.hostinger_actions import send_email_with_file
         from app.database.database import get_creator_setting, get_all_emails, get_user_data
@@ -1334,7 +1400,7 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
         # Obtener credenciales de correo
         emails_data = get_all_emails()
         if not emails_data:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False
         
         # Buscar email con credenciales de Hostinger
         email_address = None
@@ -1346,11 +1412,11 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
                 break
         
         if not email_address or not email_password:
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False
         
         # Verificar archivo
         if not os.path.exists(filepath):
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            return False
         
         # Obtener email de destino
         settings = get_creator_setting()
@@ -1374,6 +1440,21 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
         total_emails_solicitados = emails_exitosos + emails_fallidos
         tasa_exito_real = (emails_exitosos / total_emails_solicitados * 100) if total_emails_solicitados > 0 else 0
         
+        # Calcular tiempo total del ciclo y estadísticas detalladas
+        tiempo_total_minutos = 0
+        promedio_minutos_por_cuenta = 0
+        tiempo_por_cuenta_procesada = 0
+        porcentaje_tiempo_por_cuenta = 0
+        
+        if tiempo_inicio_ciclo:
+            tiempo_total_segundos = (datetime.now() - tiempo_inicio_ciclo).total_seconds()
+            tiempo_total_minutos = round(tiempo_total_segundos / 60, 2)
+            
+            if emails_exitosos > 0:
+                promedio_minutos_por_cuenta = round(tiempo_total_minutos / emails_exitosos, 2)
+                tiempo_por_cuenta_procesada = round(tiempo_total_minutos / total_emails_solicitados, 2) if total_emails_solicitados > 0 else 0
+                porcentaje_tiempo_por_cuenta = round((promedio_minutos_por_cuenta / tiempo_total_minutos) * 100, 1) if tiempo_total_minutos > 0 else 0
+        
         # Calcular próxima ejecución si es ciclo
         proxima_ejecucion = ""
         if es_ciclo and ciclo_minutes:
@@ -1390,27 +1471,96 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
             - Cuentas que fallaron: {emails_fallidos}
             - Tasa de éxito real: {tasa_exito_real:.1f}%
             
+            ⏱️ ESTADÍSTICAS DE TIEMPO:
+            - Tiempo total del ciclo: {tiempo_total_minutos} minutos
+            - Promedio por cuenta exitosa: {promedio_minutos_por_cuenta} minutos/cuenta
+            - Tiempo promedio por cuenta procesada: {tiempo_por_cuenta_procesada} minutos/cuenta
+            - Porcentaje de tiempo por cuenta: {porcentaje_tiempo_por_cuenta}%
+            
+            
             {proxima_ejecucion}
             Saludos,
             ConfirmaBot
         """
         
-        # Enviar correo sin archivo adjunto
-        exito = _enviar_correo_sin_adjunto(
+        # Crear archivo de estadísticas detalladas temporal
+        archivo_estadisticas = _crear_archivo_estadisticas_detalladas(cuentas_fallidas, tiempo_total_minutos, promedio_minutos_por_cuenta, tiempo_por_cuenta_procesada, porcentaje_tiempo_por_cuenta)
+        
+        # Enviar correo con archivo adjunto
+        exito = send_email_with_file(
             email_address=email_address,
             password=email_password,
             to_email=email_destino,
             subject=asunto,
-            body=cuerpo
+            body=cuerpo,
+            attachment_path=archivo_estadisticas
         )
         
-        if exito:
-            print(f"📧 Reporte enviado: {emails_exitosos}/{total_emails_solicitados} cuentas")
+        # Eliminar archivo temporal después del envío
+        if archivo_estadisticas and os.path.exists(archivo_estadisticas):
+            try:
+                os.remove(archivo_estadisticas)
+            except Exception:
+                pass  # Ignorar errores al eliminar
         
         return exito
             
     except Exception as e:
         return False
+
+
+    
+
+def _crear_archivo_estadisticas_detalladas(cuentas_fallidas, tiempo_total_minutos, promedio_minutos_por_cuenta, tiempo_por_cuenta_procesada, porcentaje_tiempo_por_cuenta):
+    """Crea un archivo detallado con estadísticas del ciclo"""
+    from datetime import datetime
+    import os
+    
+    # Crear nombre del archivo
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archivo_path = f"estadisticas_ciclo_{timestamp}.txt"
+    
+    try:
+        with open(archivo_path, 'w', encoding='utf-8') as f:
+            f.write("=" * 60 + "\n")
+            f.write("REPORTE DETALLADO DE CICLO LINKEDIN CREATOR\n")
+            f.write("=" * 60 + "\n")
+            f.write(f"Fecha y hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
+            f.write(f"Tiempo total del ciclo: {tiempo_total_minutos} minutos\n")
+            f.write(f"Promedio por cuenta exitosa: {promedio_minutos_por_cuenta} minutos/cuenta\n")
+            f.write(f"Tiempo promedio por cuenta procesada: {tiempo_por_cuenta_procesada} minutos/cuenta\n")
+            f.write(f"Porcentaje de tiempo por cuenta: {porcentaje_tiempo_por_cuenta}%\n")
+            f.write("\n")
+            
+            if cuentas_fallidas:
+                f.write("ESTADÍSTICAS DE FALLOS DETALLADAS:\n")
+                f.write("-" * 40 + "\n")
+                
+                # Contar tipos de fallos
+                tipos_fallos = {}
+                for cuenta in cuentas_fallidas:
+                    motivo = cuenta.get('motivo_fallo', 'desconocido')
+                    tipos_fallos[motivo] = tipos_fallos.get(motivo, 0) + 1
+                
+                for motivo, cantidad in tipos_fallos.items():
+                    f.write(f"{motivo}: {cantidad} cuentas\n")
+                
+                f.write("\nDETALLES DE CUENTAS FALLIDAS:\n")
+                f.write("-" * 40 + "\n")
+                
+                for i, cuenta in enumerate(cuentas_fallidas, 1):
+                    f.write(f"{i}. Email: {cuenta.get('email', 'N/A')}\n")
+                    f.write(f"   Motivo: {cuenta.get('motivo_fallo', 'N/A')}\n")
+                    f.write(f"   Detalles: {cuenta.get('detalles', {})}\n")
+                    f.write("\n")
+            else:
+                f.write("No hubo fallos en este ciclo.\n")
+        
+        return archivo_path
+        
+    except Exception as e:
+        print(f"❌ Error al crear archivo de estadísticas: {e}")
+        return None
 
 
 def _enviar_correo_sin_adjunto(email_address: str, password: str, to_email: str, 
@@ -1850,8 +2000,11 @@ def _ejecutar_proceso_creator():
     # Procesar emails
     emails_exitosos = 0
     emails_procesados = []  # Lista para trackear todos los emails procesados
+    from datetime import datetime
+    tiempo_inicio_proceso = datetime.now()
     
     for i, email_id in enumerate(email_ids, 1):
+        print("#########################################################")
         _ejecutar_modo_avion()
         print(f"📧 {i}/{len(email_ids)}")
         
@@ -1898,7 +2051,7 @@ def _ejecutar_proceso_creator():
     else:
         print("✅ No hay emails realmente fallidos para reportar")
     
-    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_realmente_fallidas)
+    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_realmente_fallidas, False, None, tiempo_inicio_proceso)
     
     return True
 
@@ -1929,6 +2082,8 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     cuentas_creadas = 0
     emails_procesados = []  # Lista para trackear todos los emails procesados
     intento = 1
+    from datetime import datetime
+    tiempo_inicio_proceso = datetime.now()
     
     while cuentas_creadas < objetivo_cuentas and intento <= 10:
         print(f"📧 Intento {intento} - {cuentas_creadas}/{objetivo_cuentas}")
@@ -1966,6 +2121,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
             if cuentas_creadas >= objetivo_cuentas:
                 break
                 
+            print("#########################################################")
             _ejecutar_modo_avion()
             print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
             
@@ -2015,7 +2171,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     else:
         print("✅ No hay emails realmente fallidos para reportar")
     
-    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_realmente_fallidas, es_ciclo, ciclo_minutes)
+    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_realmente_fallidas, es_ciclo, ciclo_minutes, tiempo_inicio_proceso)
     
     return cuentas_creadas
 

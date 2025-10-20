@@ -88,7 +88,7 @@ class SafeProxyController:
                 print("⚠️ Timeout al activar proxy")
                 return False
                 
-            print("✅ Proxy activado (configuración preservada)")
+            pass
             return True
             
         except Exception as e:
@@ -118,7 +118,7 @@ class SafeProxyController:
                 print("⚠️ Timeout al desactivar proxy")
                 return False
                 
-            print("✅ Proxy desactivado")
+            pass
             return True
             
         except Exception as e:
@@ -148,19 +148,19 @@ class SafeProxyController:
                         "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"
                     )
                     
-                    print("🔄 Configuración de Internet refrescada")
+                    pass
                     
                 except Exception as e:
                     print(f"⚠️ Error en refresh: {e}")
             
-            # Ejecutar con timeout de 5 segundos
+            # Ejecutar con timeout de 0.5 segundos
             thread = threading.Thread(target=refresh_with_timeout)
             thread.daemon = True
             thread.start()
-            thread.join(timeout=5)
+            thread.join(timeout=0.5)
             
             if thread.is_alive():
-                print("⚠️ Timeout en refresh, continuando...")
+                pass
             
         except Exception as e:
             print(f"⚠️ No se pudo refrescar automáticamente: {e}")

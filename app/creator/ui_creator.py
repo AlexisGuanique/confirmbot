@@ -557,7 +557,11 @@ def create_new_window(parent_root):
         "add_location",
         "captcha_imposible",
         "captcha_imposible_2",
+        "captcha_imposible_3",
         "captcha_verification",
+        "captcha_bueno",
+        "captcha_bueno_2",
+        "captcha_bueno_4",
     ]
     
     # Crear encabezados de la tabla de imágenes
