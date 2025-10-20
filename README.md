@@ -28,7 +28,7 @@ pyinstaller --onefile --windowed --icon="favicon.ico" --name=ConfirmaBotHostinge
 
 **Versión DEBUG (con consola):**
 ```bash
-pyinstaller --onefile --icon="favicon.ico" --name=ConfirmaBotHostinger-Debug main.py
+pyinstaller --onefile --icon="favicon.ico" --name=TuPapaBot-Debug main.py
 ```
 
 ## Estructura de Carpetas

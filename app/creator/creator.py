@@ -115,9 +115,17 @@ def observador_unificado(coordinates, email, password, filepath):
     estado = ObservadorEstado()
     
     while True:
+        # Resetear flag de captcha bueno procesado en este ciclo
+        estado.captcha_bueno_procesado_en_ciclo = False
+        
         # Verificar timeout
         if _verificar_timeout(start_time, timeout_seconds, coordinates):
             return False, "timeout", {"tiempo_transcurrido": time.time() - start_time, "timeout_seconds": timeout_seconds}
+        
+        # Verificar captcha bueno PRIMERO (solo desactiva proxy)
+        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado)
+        if captcha_bueno_result is True:  # Procesado correctamente, continuar
+            continue
         
         # Verificar número
         numero_result = _procesar_numero(coordinates, estado)
@@ -138,11 +146,6 @@ def observador_unificado(coordinates, email, password, filepath):
         if captcha_imposible_result is False:  # Segundo obstáculo detectado
             return False, "captcha_imposible_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_imposible_result is True:  # Procesado correctamente, continuar
-            continue
-        
-        # Verificar captcha bueno (solo desactiva proxy)
-        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado)
-        if captcha_bueno_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar éxito
@@ -181,9 +184,17 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
     estado = ObservadorEstado()
     
     while True:
+        # Resetear flag de captcha bueno procesado en este ciclo
+        estado.captcha_bueno_procesado_en_ciclo = False
+        
         # Verificar timeout
         if _verificar_timeout(start_time, timeout_seconds, coordinates):
             return False, "timeout", {"tiempo_transcurrido": time.time() - start_time, "timeout_seconds": timeout_seconds}
+        
+        # Verificar captcha bueno PRIMERO (solo desactiva proxy)
+        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado)
+        if captcha_bueno_result is True:  # Procesado correctamente, continuar
+            continue
         
         # Verificar número
         numero_result = _procesar_numero(coordinates, estado)
@@ -204,11 +215,6 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
         if captcha_imposible_result is False:  # Segundo obstáculo detectado
             return False, "captcha_imposible_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_imposible_result is True:  # Procesado correctamente, continuar
-            continue
-        
-        # Verificar captcha bueno (solo desactiva proxy)
-        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado)
-        if captcha_bueno_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar éxito
@@ -236,6 +242,7 @@ class ObservadorEstado:
         self.obstaculo_count = 0
         self.captcha_blanco_flag = 0
         self.captcha_bueno_count = 0
+        self.captcha_bueno_procesado_en_ciclo = False
 
 
 def _verificar_timeout(start_time, timeout_seconds, coordinates):
@@ -458,13 +465,22 @@ def _procesar_captcha_bueno(coordinates, estado):
     if hasattr(estado, 'captcha_bueno_count') and estado.captcha_bueno_count >= 2:
         return None  # Ya se procesó el máximo de veces, no buscar más
     
-    # Buscar variantes, pero con la misma configuración original (1 intento, 0.5s, sin tocar confidence)
+    # Verificar si ya se procesó en este ciclo para evitar múltiples detecciones
+    if hasattr(estado, 'captcha_bueno_procesado_en_ciclo') and estado.captcha_bueno_procesado_en_ciclo:
+        return None  # Ya se procesó en este ciclo
+    
+    # Buscar variantes con verificación doble para evitar falsos positivos
     variantes = ["captcha_bueno", "captcha_bueno_2", "captcha_bueno_4"]
     captcha_bueno_found = None
+    
     for nombre in variantes:
-        if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.5, silent=True):
-            captcha_bueno_found = nombre
-            break
+        # Primera verificación rápida
+        if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.3, silent=True):
+            # Segunda verificación para confirmar que realmente está presente
+            time.sleep(0.2)  # Pequeña pausa entre verificaciones
+            if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.1, silent=True):
+                captcha_bueno_found = nombre
+                break  # Salir del bucle al encontrar la primera variante
     
     if not captcha_bueno_found:
         return None  # No hay captcha bueno que procesar
@@ -474,11 +490,14 @@ def _procesar_captcha_bueno(coordinates, estado):
         estado.captcha_bueno_count = 0
     estado.captcha_bueno_count += 1
     
+    # Marcar como procesado en este ciclo
+    estado.captcha_bueno_procesado_en_ciclo = True
+    
     # Solo mostrar mensaje en la primera detección
     if estado.captcha_bueno_count == 1:
         print(f"✅ Captcha bueno detectado (vez #1)")
     
-    # Solo desactivar el proxy y continuar con el proceso normal
+    # Solo desactivar el proxy UNA VEZ por detección (no por cada variante)
     _desactivar_proxy()
     
     # Esperar un momento para que la imagen desaparezca de pantalla
