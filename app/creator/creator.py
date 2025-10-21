@@ -243,6 +243,7 @@ class ObservadorEstado:
         self.captcha_blanco_flag = 0
         self.captcha_bueno_count = 0
         self.captcha_bueno_procesado_en_ciclo = False
+        self.captcha_blanco_ultima_deteccion_tiempo = None
 
 
 def _verificar_timeout(start_time, timeout_seconds, coordinates):
@@ -507,12 +508,20 @@ def _procesar_captcha_bueno(coordinates, estado):
 
 
 def _procesar_captcha_blanco(coordinates, estado):
-    """Procesa la detección de captcha blanco con delay y doble verificación"""
+    """Procesa la detección de captcha blanco con delay y doble verificación (incluye captcha_blanco_2)"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
-    # Primera detección de captcha blanco
-    captcha_blanco_found = wait_for_creator_image("imagen_captcha_blanco", max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True)
+    # Buscar ambas variantes de captcha blanco
+    variantes_captcha_blanco = ["imagen_captcha_blanco", "captcha_blanco_2"]
+    captcha_blanco_found = None
+    captcha_blanco_tipo = None
+    
+    for nombre in variantes_captcha_blanco:
+        if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True):
+            captcha_blanco_found = nombre
+            captcha_blanco_tipo = nombre
+            break
     
     if not captcha_blanco_found:
         return None  # No hay captcha blanco que procesar
@@ -524,46 +533,53 @@ def _procesar_captcha_blanco(coordinates, estado):
         print("⚠️ Captcha en proceso de carga detectado - ignorando detección de captcha blanco")
         return None
     
-    print(f"✅ Captcha blanco detectado (vez #{estado.captcha_blanco_flag + 1})")
+    # Verificar si ya pasaron 6 segundos desde la última detección procesada
+    tiempo_actual = time.time()
+    if hasattr(estado, 'captcha_blanco_ultima_deteccion_tiempo') and estado.captcha_blanco_ultima_deteccion_tiempo is not None:
+        tiempo_transcurrido = tiempo_actual - estado.captcha_blanco_ultima_deteccion_tiempo
+        if tiempo_transcurrido < 7:
+            return None  # Aún no han pasado 6 segundos
     
-    # Esperar 6 segundos antes de la segunda verificación
-    time.sleep(6)
-    
-    # Segunda verificación después del delay
-    captcha_blanco_confirmado = wait_for_creator_image("imagen_captcha_blanco", max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True)
-    
-    if not captcha_blanco_confirmado:
-        return None
-    
-    # Captcha blanco confirmado
+    # Incrementar contador
     estado.captcha_blanco_flag += 1
-    print(f"✅ Captcha blanco confirmado (vez #{estado.captcha_blanco_flag})")
     
     if estado.captcha_blanco_flag == 1:
-        # Desactivar proxy inmediatamente al detectar captcha blanco por primera vez
-        _desactivar_proxy()
+        # Primera detección: solo marcar bandera y tiempo, no hacer nada
+        estado.captcha_blanco_ultima_deteccion_tiempo = time.time()
         return True
     elif estado.captcha_blanco_flag == 2:
+        # Segunda detección: desactivar proxy, cerrar captcha, continue
+        print("✅ Captcha blanco encontrado (vez #2) - procesando...")
         estado.captcha_count += 1
         estado.obstaculo_count += 1
         estado.ciclos_sin_imagen = 0
         
-        close_captcha_blanco_coords = coordinates.get("white_captcha_click")
-        if close_captcha_blanco_coords:
-            click_coordinates(close_captcha_blanco_coords)
+        # Desactivar proxy
+        _desactivar_proxy()
+        
+        # Cerrar captcha blanco
+        close_captcha_coords = coordinates.get("close_captcha_click")
+        if close_captcha_coords:
+            click_coordinates(close_captcha_coords)
             time.sleep(1)
             
+            # Hacer clic en continue
             continue2_coords = coordinates.get("continue_button2_click")
             if continue2_coords:
-                # Reactivar proxy antes de hacer clic en continue_button2_click
-                print("🔄 Reactivando proxy antes de continue_button2_click")
-
-                click_coordinates(continue2_coords)
+                click_coordinates(continue2_coords)                
+                # Reactivar proxy después de hacer clic en continue
                 _activar_proxy()
-                time.sleep(2)
+        
+        # Actualizar tiempo de última detección
+        estado.captcha_blanco_ultima_deteccion_tiempo = time.time()
         return True
-    elif estado.captcha_blanco_flag >= 3:
-        print("❌ Tercera detección de captcha blanco - finalizando proceso")
+    elif estado.captcha_blanco_flag == 3:
+        # Tercera detección: esperar 10 segundos nuevamente
+        estado.captcha_blanco_ultima_deteccion_tiempo = time.time()
+        return True
+    elif estado.captcha_blanco_flag >= 4:
+        # Cuarta detección: cerrar ventana y finalizar proceso
+        print("❌ Captcha blanco encontrado (vez #4) - finalizando proceso")
         _desactivar_proxy()
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
@@ -1863,6 +1879,10 @@ def _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas):
                 response_data = response.json()
                 saved_count = response_data.get('saved_count', 0)
                 total_processed = response_data.get('total_processed', 0)
+                
+                # Si el servidor no devuelve saved_count, usar el número de emails enviados
+                if saved_count == 0 and len(emails_fallidos) > 0:
+                    saved_count = len(emails_fallidos)
                 
                 print(f"💾 Emails fallidos guardados en servidor: {saved_count}")
                 return True

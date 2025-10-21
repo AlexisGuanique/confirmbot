@@ -1,0 +1,10 @@
+============================================================
+REPORTE DETALLADO DE CICLO LINKEDIN CREATOR
+============================================================
+Fecha y hora: 20/10/2025 23:30:26
+Tiempo total del ciclo: 4.45 minutos
+Promedio por cuenta exitosa: 0.89 minutos/cuenta
+Tiempo promedio por cuenta procesada: 0.89 minutos/cuenta
+Porcentaje de tiempo por cuenta: 20.0%
+
+No hubo fallos en este ciclo.
