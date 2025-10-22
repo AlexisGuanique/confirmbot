@@ -1118,11 +1118,12 @@ def _llenar_formulario_registro(coordinates, email):
     continue2_coords = coordinates.get("continue_button2_click")
     if not continue2_coords:
         return False, None
-    
-    click_coordinates(continue2_coords)
-    
     # Activar proxy después de hacer clic en continue_button2_click
     _activar_proxy()
+    click_coordinates(continue2_coords)
+    time.sleep(0.5)
+    
+
 
     
     # Guardar password para uso posterior

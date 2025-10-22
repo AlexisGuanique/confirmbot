@@ -1,0 +1,19 @@
+============================================================
+REPORTE DETALLADO DE CICLO LINKEDIN CREATOR
+============================================================
+Fecha y hora: 22/10/2025 19:13:17
+Tiempo total del ciclo: 5.03 minutos
+Promedio por cuenta exitosa: 2.52 minutos/cuenta
+Tiempo promedio por cuenta procesada: 1.68 minutos/cuenta
+Porcentaje de tiempo por cuenta: 50.1%
+
+ESTADÍSTICAS DE FALLOS DETALLADAS:
+----------------------------------------
+timeout: 1 cuentas
+
+DETALLES DE CUENTAS FALLIDAS:
+----------------------------------------
+1. Email: @small13ufxu.33mail.com
+   Motivo: timeout
+   Detalles: {'tiempo_transcurrido': 123.33102798461914, 'timeout_seconds': 120}
+
