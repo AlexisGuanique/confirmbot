@@ -151,6 +151,14 @@ def observador_unificado(coordinates, email, password, filepath):
         # Verificar éxito
         exito_result = _procesar_exito(coordinates, email, password, filepath)
         if exito_result is not None:
+            # Si es un fallo de cookie, cerrar ventana antes de retornar
+            if isinstance(exito_result, tuple) and len(exito_result) >= 2:
+                if exito_result[0] is False and exito_result[1] in ["cookie_vacia", "cookie_invalida", "cookie_duplicada", "max_intentos_cookie"]:
+                    print("❌ Fallo en obtención de cookie - cerrando ventana")
+                    close_window_coords = coordinates.get("close_window")
+                    if close_window_coords:
+                        click_coordinates(close_window_coords)
+                        time.sleep(1)
             return exito_result
         
         # Verificar captcha blanco (solo si no hay éxito)
@@ -220,6 +228,14 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
         # Verificar éxito
         exito_result = _procesar_exito_con_detalle(coordinates, email, password, filepath)
         if exito_result is not None:
+            # Si es un fallo de cookie, cerrar ventana antes de retornar
+            if isinstance(exito_result, tuple) and len(exito_result) >= 2:
+                if exito_result[0] is False and exito_result[1] in ["cookie_vacia", "cookie_invalida", "cookie_duplicada", "max_intentos_cookie"]:
+                    print("❌ Fallo en obtención de cookie - cerrando ventana")
+                    close_window_coords = coordinates.get("close_window")
+                    if close_window_coords:
+                        click_coordinates(close_window_coords)
+                        time.sleep(1)
             return exito_result
         
         # Verificar captcha blanco (solo si no hay éxito)
@@ -597,7 +613,7 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath):
     import time
     import pyperclip
     
-    max_intentos = 3
+    max_intentos = 4
     for intento in range(1, max_intentos + 1):
         # Limpiar portapapeles
         pyperclip.copy("")
@@ -645,7 +661,6 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath):
                 time.sleep(1)
                 continue
             else:
-                print("❌ Cookie duplicada después de todos los intentos")
                 return False, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
         
         # Guardar cookie
@@ -665,6 +680,12 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath):
         except Exception as e:
             return False, "error_escritura_archivo", {"error": str(e)}
     
+    # Cerrar ventana cuando se alcanza el máximo de intentos sin obtener cookie válida
+    print("❌ Máximo de intentos alcanzado sin obtener cookie válida - cerrando ventana")
+    close_window_coords = coordinates.get("close_window")
+    if close_window_coords:
+        click_coordinates(close_window_coords)
+        time.sleep(1)
     return False, "max_intentos_cookie", {"max_intentos": max_intentos}
 
 
@@ -675,7 +696,7 @@ def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath
     import time
     import pyperclip
     
-    max_intentos = 3
+    max_intentos = 4
     for intento in range(1, max_intentos + 1):
         # Limpiar portapapeles
         pyperclip.copy("")
@@ -723,7 +744,6 @@ def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath
                 time.sleep(1)
                 continue
             else:
-                print("❌ Cookie duplicada después de todos los intentos")
                 return False, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}
         
         # Guardar cookie
@@ -744,6 +764,12 @@ def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath
         except Exception as e:
             return False, "error_escritura_archivo", {"error": str(e)}
     
+    # Cerrar ventana cuando se alcanza el máximo de intentos sin obtener cookie válida
+    print("❌ Máximo de intentos alcanzado sin obtener cookie válida - cerrando ventana")
+    close_window_coords = coordinates.get("close_window")
+    if close_window_coords:
+        click_coordinates(close_window_coords)
+        time.sleep(1)
     return False, "max_intentos_cookie", {"max_intentos": max_intentos}
 
 
