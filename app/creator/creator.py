@@ -109,7 +109,7 @@ def observador_unificado(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 120
+    timeout_seconds = 150
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -186,7 +186,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 120
+    timeout_seconds = 150
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -269,7 +269,7 @@ def _verificar_timeout(start_time, timeout_seconds, coordinates):
     
     elapsed_time = time.time() - start_time
     if elapsed_time > timeout_seconds:
-        print("⏰ Timeout de 120 segundos - no se encontraron imágenes, cerrando ventana")
+        print("⏰ Timeout de 150 segundos - no se encontraron imágenes, cerrando ventana")
         _desactivar_proxy()
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
@@ -553,8 +553,8 @@ def _procesar_captcha_blanco(coordinates, estado):
     tiempo_actual = time.time()
     if hasattr(estado, 'captcha_blanco_ultima_deteccion_tiempo') and estado.captcha_blanco_ultima_deteccion_tiempo is not None:
         tiempo_transcurrido = tiempo_actual - estado.captcha_blanco_ultima_deteccion_tiempo
-        if tiempo_transcurrido < 12:
-            return None  # Aún no han pasado 12 segundos
+        if tiempo_transcurrido < 15:
+            return None  # Aún no han pasado 15 segundos
     
     # Incrementar contador
     estado.captcha_blanco_flag += 1
