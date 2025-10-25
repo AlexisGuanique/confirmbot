@@ -322,7 +322,7 @@ def _procesar_numero(coordinates, estado):
 
 
 def _procesar_captcha_rojo(coordinates, estado):
-    """Procesa la detección de captcha rojo"""
+    """Procesa la detección de captcha rojo - termina el proceso inmediatamente"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
@@ -334,33 +334,19 @@ def _procesar_captcha_rojo(coordinates, estado):
     estado.captcha_count += 1
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
-    print(f"✅ Captcha encontrado (vez #{estado.captcha_count})")
+    print(f"✅ Captcha rojo encontrado - terminando proceso inmediatamente")
     
     # Desactivar proxy inmediatamente al detectar captcha rojo
     _desactivar_proxy()
     
-    if estado.obstaculo_count >= 2:
-        print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        _desactivar_proxy()
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return False  # Terminar el proceso
-    
-    close_captcha_coords = coordinates.get("close_captcha_click")
-    if close_captcha_coords:
-        click_coordinates(close_captcha_coords)
+    # Cerrar ventana directamente al detectar captcha rojo
+    print("🔄 Cerrando ventana por captcha rojo")
+    close_window_coords = coordinates.get("close_window")
+    if close_window_coords:
+        click_coordinates(close_window_coords)
         time.sleep(1)
-        
-        continue2_coords = coordinates.get("continue_button2_click")
-        if continue2_coords:
-            # Reactivar proxy antes de hacer clic en continue_button2_click
-            click_coordinates(continue2_coords)
-            _activar_proxy()
-            time.sleep(2)
     
-    return True
+    return False  # Terminar el proceso inmediatamente
 
 
 def _procesar_captcha_imposible(coordinates, estado):
@@ -1050,16 +1036,9 @@ def _llenar_formulario_registro(coordinates, email):
     pyperclip.copy("")
     time.sleep(0.2)
     
-    # Generar prefijo aleatorio para el email si viene solo el dominio
-    if email.startswith('@'):
-        # Generar prefijo aleatorio y concatenar con el dominio
-        prefix = generate_email_prefix()
-        full_email = f"{prefix}{email}"
-        print(f"📧 Email generado: {full_email} (dominio: {email})")
-    else:
-        # Si ya viene completo, usar tal como está
-        full_email = email
-        print(f"📧 Email completo recibido: {full_email}")
+    # Usar el email exactamente como viene de la base de datos
+    full_email = email
+    print(f"📧 Email usado tal como viene de la base de datos: {full_email}")
     
     # Escribir email completo con verificación
     if not _escribir_y_verificar_campo(full_email, "email"):

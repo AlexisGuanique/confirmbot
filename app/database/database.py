@@ -344,11 +344,44 @@ def create_database():
             '''
             CREATE TABLE IF NOT EXISTS creator_email (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             '''
         )
+        
+        # Migrar tabla existente para quitar restricción UNIQUE si existe
+        try:
+            # Verificar si la tabla tiene restricción UNIQUE
+            cursor.execute("PRAGMA table_info(creator_email)")
+            columns = cursor.fetchall()
+            
+            # Si la tabla existe, recrearla sin UNIQUE
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='creator_email'")
+            if cursor.fetchone():
+                # Crear tabla temporal con la nueva estructura
+                cursor.execute('''
+                    CREATE TABLE creator_email_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+                
+                # Copiar datos existentes
+                cursor.execute('''
+                    INSERT INTO creator_email_new (id, email, created_at)
+                    SELECT id, email, created_at FROM creator_email
+                ''')
+                
+                # Eliminar tabla antigua y renombrar la nueva
+                cursor.execute("DROP TABLE creator_email")
+                cursor.execute("ALTER TABLE creator_email_new RENAME TO creator_email")
+                
+                print("✅ Tabla creator_email migrada para permitir emails duplicados")
+        except Exception as e:
+            print(f"⚠️ Error en migración de tabla creator_email: {e}")
+            # Si hay error, continuar con la tabla existente
 
         # 🔹 Tabla para rastrear el progreso de emails del creator
         cursor.execute(
@@ -1026,7 +1059,7 @@ def clear_scheduled_time():
 #! FUNCIONES DE CREATOR_EMAIL
 def save_creator_email(email):
     """
-    Guarda un email en la tabla creator_email
+    Guarda un email en la tabla creator_email (permite duplicados)
     
     Args:
         email (str): Email a guardar (formato: holamundo@hola.com)
@@ -1048,9 +1081,6 @@ def save_creator_email(email):
         print(f"✅ Email guardado: {email}")
         return True
         
-    except sqlite3.IntegrityError:
-        print(f"⚠️ El email {email} ya existe en la base de datos")
-        return False
     except Exception as e:
         print(f"❌ Error al guardar email: {e}")
         return False
@@ -1215,20 +1245,18 @@ def load_emails_from_file(file_path):
                 'invalid_emails': len(invalid_emails)
             }
         
-        # Guardar emails válidos en la base de datos
+        # Guardar emails válidos en la base de datos (permite duplicados)
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
         saved_count = 0
-        duplicate_count = 0
         
         for email in valid_emails:
             try:
                 cursor.execute("INSERT INTO creator_email (email) VALUES (?)", (email,))
                 saved_count += 1
-            except sqlite3.IntegrityError:
-                duplicate_count += 1
-                print(f"⚠️ Email duplicado: {email}")
+            except Exception as e:
+                print(f"⚠️ Error al guardar email {email}: {e}")
         
         conn.commit()
         conn.close()
@@ -1239,7 +1267,7 @@ def load_emails_from_file(file_path):
             'total_lines': len(lines),
             'valid_emails': len(valid_emails),
             'saved_emails': saved_count,
-            'duplicate_emails': duplicate_count,
+            'duplicate_emails': 0,  # Ya no se manejan duplicados como error
             'invalid_emails': len(invalid_emails)
         }
         
@@ -1700,7 +1728,7 @@ def save_emails_from_server(emails_data: list) -> bool:
         # Contar emails por status
         status_counts = {}
         
-        # Insertar nuevos emails
+        # Insertar nuevos emails (permite duplicados)
         for email_data in emails_data:
             email = email_data['email']
             created_at = email_data['created_at']
@@ -1710,12 +1738,15 @@ def save_emails_from_server(emails_data: list) -> bool:
             # Contar por status
             status_counts[status] = status_counts.get(status, 0) + 1
             
-            cursor.execute('''
-                INSERT INTO creator_email (email, created_at)
-                VALUES (?, ?)
-            ''', (email, created_at))
-            
-            print(f"📧 Email guardado: {email} | Status: {status} | Usos: {usage_count}")
+            try:
+                cursor.execute('''
+                    INSERT INTO creator_email (email, created_at)
+                    VALUES (?, ?)
+                ''', (email, created_at))
+                
+                print(f"📧 Email guardado: {email} | Status: {status} | Usos: {usage_count}")
+            except Exception as e:
+                print(f"⚠️ Error al guardar email {email}: {e}")
         
         conn.commit()
         conn.close()
@@ -1838,8 +1869,7 @@ def check_email_exists(email: str) -> bool:
 def append_emails_from_server(emails_data: list) -> bool:
     """
     Agrega los emails obtenidos del servidor a la base de datos local.
-    Si un email ya existe, lo elimina y lo reemplaza con la versión del servidor
-    (ya que si el servidor lo envía, significa que aún tiene usos disponibles)
+    Permite emails duplicados (múltiples instancias del mismo email).
     
     Args:
         emails_data (list): Lista de emails del servidor con formato:
@@ -1855,8 +1885,7 @@ def append_emails_from_server(emails_data: list) -> bool:
         
         # Contar emails por status
         status_counts = {}
-        emails_nuevos = 0
-        emails_actualizados = 0
+        emails_agregados = 0
         
         # Procesar cada email del servidor
         for email_data in emails_data:
@@ -1868,37 +1897,27 @@ def append_emails_from_server(emails_data: list) -> bool:
             # Contar por status
             status_counts[status] = status_counts.get(status, 0) + 1
             
-            # Verificar si el email ya existe
-            if check_email_exists(email):
-                # Eliminar el email existente y agregar el del servidor
-                cursor.execute("DELETE FROM creator_email WHERE email = ?", (email,))
-                emails_actualizados += 1
-                print(f"🔄 Email actualizado: {email} | Status: {status} | Usos: {usage_count}")
-            else:
-                emails_nuevos += 1
-                print(f"📧 Email nuevo: {email} | Status: {status} | Usos: {usage_count}")
-            
-            # Insertar el email del servidor
-            cursor.execute('''
-                INSERT INTO creator_email (email, created_at)
-                VALUES (?, ?)
-            ''', (email, created_at))
+            try:
+                # Insertar el email del servidor (permite duplicados)
+                cursor.execute('''
+                    INSERT INTO creator_email (email, created_at)
+                    VALUES (?, ?)
+                ''', (email, created_at))
+                
+                emails_agregados += 1
+                print(f"📧 Email agregado: {email} | Status: {status} | Usos: {usage_count}")
+            except Exception as e:
+                print(f"⚠️ Error al agregar email {email}: {e}")
         
         conn.commit()
         conn.close()
-        
-        # Si se actualizaron emails, reiniciar el progreso para que estén disponibles
-        if emails_actualizados > 0:
-            print("🔄 Emails actualizados detectados - reiniciando progreso para disponibilidad")
-            reset_creator_email_progress()
         
         # Mostrar resumen por status
         print(f"📊 Resumen de emails procesados:")
         for status, count in status_counts.items():
             print(f"   - {status}: {count} emails")
         
-        print(f"📧 Emails nuevos agregados: {emails_nuevos}")
-        print(f"🔄 Emails actualizados: {emails_actualizados}")
+        print(f"📧 Emails agregados: {emails_agregados}")
         print(f"✅ Procesados {len(emails_data)} emails del servidor")
         return True
         
