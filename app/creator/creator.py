@@ -109,7 +109,7 @@ def observador_unificado(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 150
+    timeout_seconds = 90
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -186,7 +186,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 150
+    timeout_seconds = 90
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -269,7 +269,7 @@ def _verificar_timeout(start_time, timeout_seconds, coordinates):
     
     elapsed_time = time.time() - start_time
     if elapsed_time > timeout_seconds:
-        print("⏰ Timeout de 150 segundos - no se encontraron imágenes, cerrando ventana")
+        print("⏰ Timeout de 90 segundos - no se encontraron imágenes, cerrando ventana")
         _desactivar_proxy()
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
@@ -322,7 +322,7 @@ def _procesar_numero(coordinates, estado):
 
 
 def _procesar_captcha_rojo(coordinates, estado):
-    """Procesa la detección de captcha rojo"""
+    """Procesa la detección de captcha rojo - termina inmediatamente"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
@@ -334,33 +334,18 @@ def _procesar_captcha_rojo(coordinates, estado):
     estado.captcha_count += 1
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
-    print(f"✅ Captcha encontrado (vez #{estado.captcha_count})")
+    print(f"✅ Captcha rojo encontrado - cerrando ventana inmediatamente")
     
     # Desactivar proxy inmediatamente al detectar captcha rojo
     _desactivar_proxy()
     
-    if estado.obstaculo_count >= 2:
-        print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        _desactivar_proxy()
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return False  # Terminar el proceso
-    
-    close_captcha_coords = coordinates.get("close_captcha_click")
-    if close_captcha_coords:
-        click_coordinates(close_captcha_coords)
+    # Cerrar ventana directamente (como en la segunda verificación)
+    close_window_coords = coordinates.get("close_window")
+    if close_window_coords:
+        click_coordinates(close_window_coords)
         time.sleep(1)
-        
-        continue2_coords = coordinates.get("continue_button2_click")
-        if continue2_coords:
-            # Reactivar proxy antes de hacer clic en continue_button2_click
-            click_coordinates(continue2_coords)
-            _activar_proxy()
-            time.sleep(2)
     
-    return True
+    return False  # Terminar el proceso inmediatamente
 
 
 def _procesar_captcha_imposible(coordinates, estado):
