@@ -567,9 +567,11 @@ def _procesar_captcha_blanco(coordinates, estado):
             # Hacer clic en continue
             continue2_coords = coordinates.get("continue_button2_click")
             if continue2_coords:
+
                 click_coordinates(continue2_coords)                
                 # Reactivar proxy después de hacer clic en continue
                 _activar_proxy()
+                time.sleep(2)
         
         # Actualizar tiempo de última detección
         estado.captcha_blanco_ultima_deteccion_tiempo = time.time()
@@ -886,17 +888,41 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
 
 
 def _click_brave(coordinates):
-    """Hace clic en Brave"""
-    from app.creator.computer_actions import click_coordinates
+    """Hace clic en Brave con validación de imagen"""
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
     brave_coords = coordinates.get("brave_click")
     if not brave_coords:
         return False
     
-    click_coordinates(brave_coords, double_click=True)
-    time.sleep(2)
-    return True
+    max_intentos = 3
+    
+    for intento in range(1, max_intentos + 1):
+        # Hacer doble clic
+        click_coordinates(brave_coords, double_click=True)
+        time.sleep(2)
+        
+        # Validar que la imagen de Brave apareció
+        brave_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True)
+        
+        # Si NO encuentra la imagen en el primer intento, significa que hizo el clic bien
+        # (Brave ya está abierto/no está en la pantalla de inicio)
+        if not brave_image_found:
+            print(f"✅ Brave validado en el intento {intento} - clic realizado correctamente")
+            return True
+        
+        # Si encuentra la imagen, significa que NO hizo el clic bien
+        # (Brave todavía está en la pantalla de inicio)
+        if intento < max_intentos:
+            print(f"⚠️ Brave todavía en pantalla de inicio, reintentando clic... ({intento}/{max_intentos})")
+            time.sleep(1)
+        else:
+            # Después de 3 intentos y siempre encuentra la imagen, algo está mal
+            print("❌ No se pudo abrir Brave correctamente después de 3 intentos")
+            return False
+    
+    return False
 
 
 def _click_linkedin_fav(coordinates):
@@ -1105,8 +1131,9 @@ def _llenar_formulario_registro(coordinates, email):
         return False, None
     # Activar proxy después de hacer clic en continue_button2_click
     _activar_proxy()
-    click_coordinates(continue2_coords)
     time.sleep(0.5)
+    click_coordinates(continue2_coords)
+    time.sleep(3)
     
 
 
@@ -1436,6 +1463,8 @@ def _determinar_emails_realmente_fallidos(emails_procesados):
 
 
 def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_fallidas=None, es_ciclo=False, ciclo_minutes=None, tiempo_inicio_ciclo=None):
+    print("📧 Iniciando envío de correo de informe...")
+    
     try:
         from app.confirmabot.hostinger_actions import send_email_with_file
         from app.database.database import get_creator_setting, get_all_emails, get_user_data
@@ -1444,10 +1473,14 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
         from datetime import datetime, timedelta
         import json
         
-        # Obtener credenciales de correo
+        # Verificar archivo
+        if not os.path.exists(filepath):
+            return False
+        
+        # Intentar obtener credenciales de correo (opcional)
         emails_data = get_all_emails()
         if not emails_data:
-            return False
+            return True  # No hay emails configurados, omitir envío
         
         # Buscar email con credenciales de Hostinger
         email_address = None
@@ -1459,21 +1492,14 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
                 break
         
         if not email_address or not email_password:
-            return False
-        
-        # Verificar archivo
-        if not os.path.exists(filepath):
-            return False
+            return True  # No hay credenciales, omitir envío
         
         # Obtener email de destino
         settings = get_creator_setting()
         email_destino = settings.get('notification_email') if settings else None
         
         if not email_destino:
-            return True  # No hay email configurado, continuar
-        
-        # Guardar cuentas en base de datos del servidor primero
-        cuentas_guardadas = _guardar_cuentas_en_servidor(filepath)
+            return True  # No hay email de destino configurado, continuar
         
         # Obtener conteo total de cuentas en el servidor
         total_cuentas_servidor = _obtener_conteo_cuentas_servidor()
@@ -1550,9 +1576,15 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
             except Exception:
                 pass  # Ignorar errores al eliminar
         
+        if exito:
+            print("✅ Correo enviado con éxito")
+        else:
+            print("❌ Error al enviar correo")
+        
         return exito
             
     except Exception as e:
+        print(f"❌ Error inesperado al enviar correo: {str(e)}")
         return False
 
 
@@ -1773,32 +1805,31 @@ def _guardar_cuentas_en_servidor(filepath):
     """
     Guarda las cuentas creadas en la base de datos del servidor
     """
+    print("📤 Iniciando guardado de cuentas en servidor...")
+    
     try:
         from app.database.database import get_user_data
         from app.utils.http_utils import post
         import json
         
-        
         # Obtener datos del usuario logueado
         user_data = get_user_data()
         if not user_data:
-            print("❌ No se encontraron datos del usuario logueado")
+            print("❌ Error: No se encontraron datos del usuario logueado")
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
         
         user_id = user_data.get('id')
         access_token = user_data.get('access_token')
         
         if not user_id or not access_token:
-            print("❌ Faltan datos del usuario (ID o access_token)")
+            print("❌ Error: Faltan datos del usuario (ID o access_token)")
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
-        
         
         # Leer y parsear el archivo de cuentas
         accounts = _leer_cuentas_del_archivo(filepath)
         if not accounts:
-            print("❌ No se encontraron cuentas en el archivo")
+            print("❌ Error: No se encontraron cuentas en el archivo")
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
-        
         
         # Preparar datos para el servidor
         payload = {
@@ -1814,7 +1845,6 @@ def _guardar_cuentas_en_servidor(filepath):
             'Content-Type': 'application/json'
         }
         
-        
         # Enviar petición al servidor
         response = post(url, body=payload, headers=headers)
         
@@ -1823,20 +1853,21 @@ def _guardar_cuentas_en_servidor(filepath):
                 response_data = response.json()
                 saved_count = response_data.get('saved_count', 0)
                 duplicate_count = response_data.get('duplicate_count', 0)
-                total_processed = response_data.get('total_processed', 0)
                 
-                
-                print(f"💾 Cuentas guardadas en servidor: {saved_count} nuevas, {duplicate_count} duplicadas")
+                if saved_count > 0 or duplicate_count > 0:
+                    print(f"✅ Cuentas guardadas en servidor: {saved_count} nuevas, {duplicate_count} duplicadas")
+                else:
+                    print("⚠️ No se guardaron cuentas en el servidor")
                 return True
-            except json.JSONDecodeError:
-                print("❌ Error al procesar respuesta del servidor")
+            except json.JSONDecodeError as json_err:
+                print(f"❌ Error al procesar respuesta del servidor: {json_err}")
                 return False, "numero_segundo_obstaculo", {"numero_count": 0, "obstaculo_count": 0}
         else:
-            print("❌ Error al conectar con el servidor")
+            print("❌ Error: No se pudo conectar con el servidor")
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
             
     except Exception as e:
-        print(f"❌ Error al guardar cuentas en servidor: {e}")
+        print(f"❌ Error inesperado al guardar cuentas: {str(e)}")
         return False
 
 
@@ -2102,6 +2133,11 @@ def _ejecutar_proceso_creator():
     else:
         print("✅ No hay emails realmente fallidos para reportar")
     
+    # Guardar cuentas en servidor (INDEPENDIENTE del email)
+    if emails_exitosos > 0:
+        _guardar_cuentas_en_servidor(filepath)
+    
+    # Enviar correo de informe (opcional)
     _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_realmente_fallidas, False, None, tiempo_inicio_proceso)
     
     return True
@@ -2222,6 +2258,11 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     else:
         print("✅ No hay emails realmente fallidos para reportar")
     
+    # Guardar cuentas en servidor (INDEPENDIENTE del email)
+    if cuentas_creadas > 0:
+        _guardar_cuentas_en_servidor(filepath)
+    
+    # Enviar correo de informe (opcional)
     _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_realmente_fallidas, es_ciclo, ciclo_minutes, tiempo_inicio_proceso)
     
     return cuentas_creadas

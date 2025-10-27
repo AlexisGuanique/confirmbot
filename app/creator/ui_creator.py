@@ -382,8 +382,40 @@ def create_new_window(parent_root):
         coord_label.pack(pady=10)
 
         def capturar():
-            coord_raw = get_mouse_coordinate_on_keypress("c")  # formato "123x456"
-            coordenada_capturada = coord_raw
+            import pyautogui
+            import keyboard
+            import threading
+            import time
+            
+            # Bandera para controlar el loop
+            capturando = [True]
+            
+            # Función para actualizar coordenadas en tiempo real
+            def actualizar_coordenadas():
+                try:
+                    while capturando[0]:
+                        x, y = pyautogui.position()
+                        coord_text = f"X: {x}, Y: {y}"
+                        try:
+                            if popup.winfo_exists():
+                                coord_label.configure(text=f"Movimiento detectado: {coord_text}")
+                        except:
+                            pass
+                        time.sleep(0.1)  # Actualizar cada 0.1 segundos
+                except:
+                    pass
+            
+            # Iniciar thread para actualizar coordenadas
+            update_thread = threading.Thread(target=actualizar_coordenadas, daemon=True)
+            update_thread.start()
+            
+            # Esperar a que presionen la tecla 'c'
+            keyboard.wait('c')
+            capturando[0] = False  # Detener actualización
+            
+            # Obtener coordenada final
+            x, y = pyautogui.position()
+            coordenada_capturada = f"{x}x{y}"
             
             # Verificar que el popup aún existe antes de actualizar
             try:
@@ -563,6 +595,7 @@ def create_new_window(parent_root):
         "captcha_bueno_2",
         "captcha_bueno_4",
         "captcha_blanco_2",
+        "brave_image",
     ]
     
     # Crear encabezados de la tabla de imágenes
