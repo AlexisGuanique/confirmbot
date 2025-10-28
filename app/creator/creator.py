@@ -134,6 +134,13 @@ def observador_unificado(coordinates, email, password, filepath):
         elif numero_result is True:  # Procesado correctamente, continuar
             continue
         
+        # Verificar captcha error
+        captcha_error_result = _procesar_captcha_error(coordinates, estado)
+        if captcha_error_result is False:  # Segundo obstáculo detectado
+            return False, "captcha_error_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
+        elif captcha_error_result is True:  # Procesado correctamente, continuar
+            continue
+        
         # Verificar captcha rojo
         captcha_result = _procesar_captcha_rojo(coordinates, estado)
         if captcha_result is False:  # Segundo obstáculo detectado
@@ -209,6 +216,13 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
         if numero_result is False:  # Segundo obstáculo detectado
             return False, "numero_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
         elif numero_result is True:  # Procesado correctamente, continuar
+            continue
+        
+        # Verificar captcha error
+        captcha_error_result = _procesar_captcha_error(coordinates, estado)
+        if captcha_error_result is False:  # Segundo obstáculo detectado
+            return False, "captcha_error_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
+        elif captcha_error_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar captcha rojo
@@ -309,6 +323,49 @@ def _procesar_numero(coordinates, estado):
     close_number_coords = coordinates.get("close_number_click")
     if close_number_coords:
         click_coordinates(close_number_coords)
+        time.sleep(1)
+        
+        continue2_coords = coordinates.get("continue_button2_click")
+        if continue2_coords:
+            # Reactivar proxy antes de hacer clic en continue_button2_click
+            click_coordinates(continue2_coords)
+            _activar_proxy()
+            time.sleep(2)
+    
+    return True
+
+
+def _procesar_captcha_error(coordinates, estado):
+    """Procesa la detección de captcha error"""
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    import time
+    
+    captcha_error_found = wait_for_creator_image("captcha_error", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    
+    if not captcha_error_found:
+        return None  # No hay captcha error que procesar
+    
+    estado.numero_count += 1  # Usar el mismo contador para obstáculos
+    estado.obstaculo_count += 1
+    estado.ciclos_sin_imagen = 0
+    print(f"✅ Captcha error encontrado (vez #{estado.numero_count})")
+    
+    # Desactivar proxy inmediatamente al detectar captcha error
+    _desactivar_proxy()
+    
+    if estado.obstaculo_count >= 2:
+        print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
+        _desactivar_proxy()
+        close_window_coords = coordinates.get("close_window")
+        if close_window_coords:
+            click_coordinates(close_window_coords)
+            time.sleep(1)
+        return False  # Terminar el proceso
+    
+    # Si es la primera vez, cerrar el captcha error y continuar
+    close_captcha_coords = coordinates.get("close_captcha_click")
+    if close_captcha_coords:
+        click_coordinates(close_captcha_coords)
         time.sleep(1)
         
         continue2_coords = coordinates.get("continue_button2_click")

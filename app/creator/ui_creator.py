@@ -596,6 +596,7 @@ def create_new_window(parent_root):
         "captcha_bueno_4",
         "captcha_blanco_2",
         "brave_image",
+        "captcha_error",
     ]
     
     # Crear encabezados de la tabla de imágenes
