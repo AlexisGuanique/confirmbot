@@ -331,7 +331,9 @@ def create_new_window(parent_root):
         "Click guardar cookie portapapeles",
         "Click cerrar ventana",
         "Click botón Agree opcional",
-        "Click captcha blanco"
+        "Click captcha blanco",
+        "Click cerrar captcha error",
+        "Click cerrar proxy error"
     ]
     
     # Mapeo de nombres a campos de la base de datos
@@ -348,7 +350,9 @@ def create_new_window(parent_root):
         "Click cerrar número": "close_number_click",
         "Click icono cookie editor": "cookie_editor_icon_click",
         "Click guardar cookie portapapeles": "save_cookie_clipboard_click",
-        "Click cerrar ventana": "close_window"
+        "Click cerrar ventana": "close_window",
+        "Click cerrar captcha error": "close_captcha_error_click",
+        "Click cerrar proxy error": "close_proxy_error_click"
     }
     
     # Obtener coordenadas guardadas
@@ -597,6 +601,7 @@ def create_new_window(parent_root):
         "captcha_blanco_2",
         "brave_image",
         "captcha_error",
+        "proxy_error",
     ]
     
     # Crear encabezados de la tabla de imágenes

@@ -141,6 +141,13 @@ def observador_unificado(coordinates, email, password, filepath):
         elif captcha_error_result is True:  # Procesado correctamente, continuar
             continue
         
+        # Verificar proxy error (loop hasta que desaparezca)
+        proxy_error_result = _procesar_proxy_error(coordinates, estado)
+        if proxy_error_result is True:  # Procesado o alcanzado límite, continuar
+            continue
+        elif proxy_error_result is None:  # No hay proxy error, continuar ciclo
+            pass  # Continuar con las demás verificaciones
+        
         # Verificar captcha rojo
         captcha_result = _procesar_captcha_rojo(coordinates, estado)
         if captcha_result is False:  # Segundo obstáculo detectado
@@ -224,6 +231,13 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
             return False, "captcha_error_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_error_result is True:  # Procesado correctamente, continuar
             continue
+        
+        # Verificar proxy error (loop hasta que desaparezca)
+        proxy_error_result = _procesar_proxy_error(coordinates, estado)
+        if proxy_error_result is True:  # Procesado o alcanzado límite, continuar
+            continue
+        elif proxy_error_result is None:  # No hay proxy error, continuar ciclo
+            pass  # Continuar con las demás verificaciones
         
         # Verificar captcha rojo
         captcha_result = _procesar_captcha_rojo(coordinates, estado)
@@ -363,10 +377,12 @@ def _procesar_captcha_error(coordinates, estado):
         return False  # Terminar el proceso
     
     # Si es la primera vez, cerrar el captcha error y continuar
-    close_captcha_coords = coordinates.get("close_captcha_click")
-    if close_captcha_coords:
-        click_coordinates(close_captcha_coords)
+    close_captcha_error_coords = coordinates.get("close_captcha_error_click")
+    if close_captcha_error_coords:
+        print(f"📍 Haciendo clic en coordenada de captcha error: {close_captcha_error_coords}")
+        click_coordinates(close_captcha_error_coords)
         time.sleep(1)
+        print(f"✅ Clic realizado en captcha error")
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
@@ -374,6 +390,116 @@ def _procesar_captcha_error(coordinates, estado):
             click_coordinates(continue2_coords)
             _activar_proxy()
             time.sleep(2)
+    else:
+        print(f"⚠️ No se encontraron coordenadas de close_captcha_error_click - por favor configúralas")
+    
+    return True
+
+
+def _verificar_y_cerrar_proxy_error(coordinates, start_time=None, timeout_seconds=90):
+    """Función auxiliar para verificar y cerrar proxy error en cualquier momento del proceso"""
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    import time
+    
+    close_proxy_error_coords = coordinates.get("close_proxy_error_click")
+    if not close_proxy_error_coords:
+        return False
+    
+    max_intentos = 10
+    
+    for intento in range(1, max_intentos + 1):
+        # Verificar timeout si se proporciona
+        if start_time is not None:
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= timeout_seconds:
+                print(f"⏰ Timeout alcanzado mientras se procesaba proxy error")
+                return True
+        
+        # PRIMERO: Verificar si la imagen está presente
+        proxy_error_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if not proxy_error_found:
+            # La imagen ya no está presente
+            if intento > 1:
+                print(f"✅ Proxy error resuelto después de {intento - 1} clics")
+            return True
+        
+        # Proxy error aún presente, hacer clic para cerrarlo
+        if intento == 1:
+            print(f"✅ Proxy error detectado en proceso - haciendo clic para cerrar")
+        
+        print(f"📍 Intento {intento}/{max_intentos} - Haciendo clic en coordenada: {close_proxy_error_coords}")
+        click_coordinates(close_proxy_error_coords)
+        time.sleep(1)  # Esperar a que se procese el clic
+        
+        # DESPUÉS DEL CLIC: Verificar que la imagen efectivamente desapareció
+        time.sleep(0.5)  # Esperar adicional para que se procese
+        proxy_error_still_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.3, silent=True)
+        
+        if not proxy_error_still_found:
+            # La imagen desapareció después del clic
+            print(f"✅ Proxy error resuelto - imagen desapareció después del clic {intento}")
+            return True
+        
+        # Si la imagen sigue presente, continuar con el siguiente intento
+        print(f"⚠️ Imagen de proxy error aún presente después del clic {intento}, continuando...")
+        
+        if intento >= max_intentos:
+            print(f"⚠️ Proxy error persistió después de {max_intentos} intentos, continuando...")
+            return True
+    
+    return True
+
+
+def _procesar_proxy_error(coordinates, estado):
+    """Procesa la detección de proxy error - loop continuo hasta que desaparezca"""
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    import time
+    
+    # Intentar verificar y cerrar proxy error con loop hasta que desaparezca
+    close_proxy_error_coords = coordinates.get("close_proxy_error_click")
+    if not close_proxy_error_coords:
+        return None
+    
+    max_intentos = 10
+    
+    for intento in range(1, max_intentos + 1):
+        # PRIMERO: Verificar si la imagen está presente
+        proxy_error_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        
+        if not proxy_error_found:
+            # La imagen ya no está presente - VERIFICACIÓN COMPLETA
+            if intento > 1:
+                print(f"✅ Proxy error resuelto después de {intento - 1} clics")
+                estado.ciclos_sin_imagen = 0
+            return None  # No hay proxy error que procesar
+        
+        # Proxy error presente, hacer clic
+        if intento == 1:
+            estado.ciclos_sin_imagen = 0
+            print(f"✅ Proxy error detectado - haciendo clic para cerrar")
+        
+        print(f"📍 Intento {intento}/{max_intentos} - Haciendo clic en coordenada: {close_proxy_error_coords}")
+        click_coordinates(close_proxy_error_coords)
+        time.sleep(1)  # Esperar a que se procese el clic
+        
+        # DESPUÉS DEL CLIC: Verificar que la imagen efectivamente desapareció
+        time.sleep(0.5)  # Esperar adicional para que se procese
+        proxy_error_still_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.3, silent=True)
+        
+        if not proxy_error_still_found:
+            # La imagen desapareció después del clic
+            print(f"✅ Proxy error resuelto - imagen desapareció después del clic {intento}")
+            estado.ciclos_sin_imagen = 0
+            return None  # Error resuelto, continuar
+        
+        # Si la imagen sigue presente, continuar con el siguiente intento
+        print(f"⚠️ Imagen de proxy error aún presente después del clic {intento}, continuando...")
+        
+        if intento >= max_intentos:
+            print(f"⚠️ Proxy error persistió después de {max_intentos} intentos, continuando observación...")
+            estado.ciclos_sin_imagen = 0
+            return True
     
     return True
 
@@ -882,10 +1008,16 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total):
         _cerrar_ventana(coordinates)
         return False
     
+    # Verificar proxy error después de cargar LinkedIn
+    _verificar_y_cerrar_proxy_error(coordinates)
+    
     # Paso 4: Llenar formulario de registro
     formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email)
     if not formulario_ok:
         return False
+    
+    # Verificar proxy error después de llenar formulario
+    _verificar_y_cerrar_proxy_error(coordinates)
     
     # Paso 5: Observar y crear cuenta
     cuenta_creada = observador_unificado(coordinates, full_email, _get_password_usado(), filepath)
@@ -928,10 +1060,16 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         _cerrar_ventana(coordinates)
         return False, "error_carga_linkedin", {}
     
+    # Verificar proxy error después de cargar LinkedIn
+    _verificar_y_cerrar_proxy_error(coordinates)
+    
     # Paso 4: Llenar formulario de registro
     formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email)
     if not formulario_ok:
         return False, "error_llenar_formulario", {}
+    
+    # Verificar proxy error después de llenar formulario
+    _verificar_y_cerrar_proxy_error(coordinates)
     
     # Paso 5: Observar y crear cuenta con detalle
     exito, motivo_fallo, detalles = observador_unificado_con_detalle(coordinates, full_email, _get_password_usado(), filepath)
@@ -967,6 +1105,8 @@ def _click_brave(coordinates):
         # (Brave ya está abierto/no está en la pantalla de inicio)
         if not brave_image_found:
             print(f"✅ Brave validado en el intento {intento} - clic realizado correctamente")
+            # Verificar proxy error después de abrir Brave
+            _verificar_y_cerrar_proxy_error(coordinates)
             return True
         
         # Si encuentra la imagen, significa que NO hizo el clic bien
@@ -993,6 +1133,10 @@ def _click_linkedin_fav(coordinates):
     
     click_coordinates(linkedin_coords)
     time.sleep(3)
+    
+    # Verificar proxy error después de abrir LinkedIn
+    _verificar_y_cerrar_proxy_error(coordinates)
+    
     return True
 
 
@@ -1133,6 +1277,9 @@ def _llenar_formulario_registro(coordinates, email):
     if not _escribir_y_verificar_campo(full_email, "email"):
         return False, None
     
+    # Verificar proxy error
+    _verificar_y_cerrar_proxy_error(coordinates)
+    
     # Ir al campo de contraseña
     press_key("tab")
     time.sleep(0.5)
@@ -1158,6 +1305,9 @@ def _llenar_formulario_registro(coordinates, email):
         click_coordinates(continue_coords)
     
     time.sleep(2)
+    
+    # Verificar proxy error antes de continuar
+    _verificar_y_cerrar_proxy_error(coordinates)
     
     # Click en name_input_click
     name_coords = coordinates.get("name_input_click")
