@@ -155,6 +155,13 @@ def observador_unificado(coordinates, email, password, filepath):
         elif captcha_result is True:  # Procesado correctamente, continuar
             continue
         
+        # Verificar formato nuevo
+        formato_nuevo_result = _procesar_formato_nuevo(coordinates, estado)
+        if formato_nuevo_result is False:  # Formato nuevo detectado - terminar inmediatamente
+            return False, "formato_nuevo_detectado", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
+        elif formato_nuevo_result is True:  # Procesado correctamente, continuar
+            continue
+        
         # Verificar captcha imposible
         captcha_imposible_result = _procesar_captcha_imposible(coordinates, estado)
         if captcha_imposible_result is False:  # Segundo obstáculo detectado
@@ -244,6 +251,13 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
         if captcha_result is False:  # Segundo obstáculo detectado
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_result is True:  # Procesado correctamente, continuar
+            continue
+        
+        # Verificar formato nuevo
+        formato_nuevo_result = _procesar_formato_nuevo(coordinates, estado)
+        if formato_nuevo_result is False:  # Formato nuevo detectado - terminar inmediatamente
+            return False, "formato_nuevo_detectado", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
+        elif formato_nuevo_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar captcha imposible
@@ -502,6 +516,33 @@ def _procesar_proxy_error(coordinates, estado):
             return True
     
     return True
+
+
+def _procesar_formato_nuevo(coordinates, estado):
+    """Procesa la detección de formato nuevo - termina inmediatamente"""
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    import time
+    
+    formato_nuevo_found = wait_for_creator_image("formato_nuevo", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    
+    if not formato_nuevo_found:
+        return None  # No hay formato nuevo que procesar
+    
+    estado.captcha_count += 1
+    estado.obstaculo_count += 1
+    estado.ciclos_sin_imagen = 0
+    print(f"✅ Formato nuevo encontrado - cerrando ventana inmediatamente")
+    
+    # Desactivar proxy inmediatamente al detectar formato nuevo
+    _desactivar_proxy()
+    
+    # Cerrar ventana directamente
+    close_window_coords = coordinates.get("close_window")
+    if close_window_coords:
+        click_coordinates(close_window_coords)
+        time.sleep(1)
+    
+    return False  # Terminar el proceso inmediatamente
 
 
 def _procesar_captcha_rojo(coordinates, estado):
