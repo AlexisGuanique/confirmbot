@@ -1230,7 +1230,7 @@ def _verificar_carga_linkedin(coordinates=None):
     
     print(f"🔍 Iniciando observador para verificación de LinkedIn")
     
-    max_attempts_per_cycle = 20
+    max_attempts_per_cycle = 6
     max_reintentos = 3
     delay_between_attempts = 1
     confidence = 0.99  # 99% de precisión - solo acepta imágenes prácticamente idénticas

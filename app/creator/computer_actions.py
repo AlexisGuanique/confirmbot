@@ -200,18 +200,18 @@ def wait_for_creator_image(image_name, max_attempts=90, delay_between_attempts=1
 
 def generate_random_name():
     """
-    Genera un nombre aleatorio de 2 palabras usando faker
+    Genera un nombre aleatorio de 2 palabras usando faker - nombres en inglés (Estados Unidos)
     """
-    fake = Faker('es_ES')  # Usar español de España para nombres más comunes
+    fake = Faker('en_US')  # Usar inglés de Estados Unidos para nombres
     first_name = fake.first_name()
     second_name = fake.first_name()
     return f"{first_name} {second_name}"
 
 def generate_random_lastname():
     """
-    Genera un apellido aleatorio de 2 palabras usando faker
+    Genera un apellido aleatorio de 2 palabras usando faker - apellidos en inglés (Estados Unidos)
     """
-    fake = Faker('es_ES')  # Usar español de España para apellidos más comunes
+    fake = Faker('en_US')  # Usar inglés de Estados Unidos para apellidos
     first_lastname = fake.last_name()
     second_lastname = fake.last_name()
     return f"{first_lastname} {second_lastname}"
