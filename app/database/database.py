@@ -272,7 +272,8 @@ def create_database():
                 google_credentials_file TEXT,
                 cycle_time_minutes INTEGER DEFAULT 60,
                 time_config_type TEXT DEFAULT 'scheduled',
-                accounts_per_cycle INTEGER DEFAULT 1
+                accounts_per_cycle INTEGER DEFAULT 1,
+                isInVps INTEGER DEFAULT 0
             )
             '''
         )
@@ -337,6 +338,13 @@ def create_database():
         try:
             cursor.execute("ALTER TABLE creator_setting ADD COLUMN accounts_per_cycle INTEGER DEFAULT 1")
             print("✅ Columna accounts_per_cycle agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN isInVps INTEGER DEFAULT 0")
+            print("✅ Columna isInVps agregada a creator_setting")
         except sqlite3.OperationalError:
             # La columna ya existe, no hacer nada
             pass
@@ -934,7 +942,7 @@ def get_creator_coordinates(*field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None):
+def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None):
     """
     Guarda o actualiza la configuración del creator
     
@@ -947,6 +955,7 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         cycle_time_minutes (int): Tiempo en minutos para el ciclo (default: 60)
         time_config_type (str): Tipo de configuración ('scheduled' o 'cycle')
         accounts_per_cycle (int): Cantidad de cuentas a crear por ciclo (default: 1)
+        isInVps (bool): Si está ejecutándose en VPS (True) o máquina física (False) (opcional)
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -955,15 +964,18 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
+        # Convertir boolean a integer para SQLite (True = 1, False = 0)
+        isInVps_int = 1 if isInVps is True else (0 if isInVps is False else None)
+        
         # Insertar o actualizar (UPSERT)
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle))
+            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps_int))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}")
+        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, isInVps={isInVps}")
         return True
         
     except Exception as e:
@@ -976,16 +988,21 @@ def get_creator_setting():
     Obtiene la configuración del creator
     
     Returns:
-        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type y accounts_per_cycle, o None si no existe
+        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle e isInVps, o None si no existe
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle FROM creator_setting WHERE id = 1")
+        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps FROM creator_setting WHERE id = 1")
         row = cursor.fetchone()
         conn.close()
         
         if row:
+            # Convertir integer a boolean para isInVps (None si no está configurado)
+            isInVps_bool = None
+            if row[8] is not None:
+                isInVps_bool = bool(row[8])
+            
             return {
                 'user_agent': row[0],
                 'accounts_to_create': row[1],
@@ -994,7 +1011,8 @@ def get_creator_setting():
                 'notification_email': row[4],
                 'cycle_time_minutes': row[5],  # Mantener el valor real, incluso si es None
                 'time_config_type': row[6] if row[6] is not None else 'manual',  # Cambiar default a 'manual'
-                'accounts_per_cycle': row[7]  # Mantener el valor real, incluso si es None
+                'accounts_per_cycle': row[7],  # Mantener el valor real, incluso si es None
+                'isInVps': isInVps_bool  # Boolean o None
             }
         return None
         

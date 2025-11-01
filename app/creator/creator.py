@@ -148,11 +148,11 @@ def observador_unificado(coordinates, email, password, filepath):
         elif proxy_error_result is None:  # No hay proxy error, continuar ciclo
             pass  # Continuar con las demás verificaciones
         
-        # Verificar captcha rojo
+        # Verificar captcha rojo (VPS: cierra inmediatamente, Máquina física: dos verificaciones)
         captcha_result = _procesar_captcha_rojo(coordinates, estado)
-        if captcha_result is False:  # Segundo obstáculo detectado
+        if captcha_result is False:  # VPS: primera detección o Máquina física: segunda detección
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
-        elif captcha_result is True:  # Procesado correctamente, continuar
+        elif captcha_result is True:  # Máquina física: primera detección procesada, continuar
             continue
         
         # Verificar formato nuevo
@@ -246,11 +246,11 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
         elif proxy_error_result is None:  # No hay proxy error, continuar ciclo
             pass  # Continuar con las demás verificaciones
         
-        # Verificar captcha rojo
+        # Verificar captcha rojo (VPS: cierra inmediatamente, Máquina física: dos verificaciones)
         captcha_result = _procesar_captcha_rojo(coordinates, estado)
-        if captcha_result is False:  # Segundo obstáculo detectado
+        if captcha_result is False:  # VPS: primera detección o Máquina física: segunda detección
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
-        elif captcha_result is True:  # Procesado correctamente, continuar
+        elif captcha_result is True:  # Máquina física: primera detección procesada, continuar
             continue
         
         # Verificar formato nuevo
@@ -546,8 +546,9 @@ def _procesar_formato_nuevo(coordinates, estado):
 
 
 def _procesar_captcha_rojo(coordinates, estado):
-    """Procesa la detección de captcha rojo - termina inmediatamente"""
+    """Procesa la detección de captcha rojo - comportamiento según tipo de máquina"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    from app.database.database import get_creator_setting
     import time
     
     captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.5, silent=True)
@@ -555,21 +556,54 @@ def _procesar_captcha_rojo(coordinates, estado):
     if not captcha_found:
         return None  # No hay captcha que procesar
     
+    # Obtener configuración para determinar tipo de máquina
+    settings = get_creator_setting()
+    isInVps = settings.get('isInVps') if settings else None
+    
     estado.captcha_count += 1
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
-    print(f"✅ Captcha rojo encontrado - cerrando ventana inmediatamente")
     
     # Desactivar proxy inmediatamente al detectar captcha rojo
     _desactivar_proxy()
     
-    # Cerrar ventana directamente (como en la segunda verificación)
-    close_window_coords = coordinates.get("close_window")
-    if close_window_coords:
-        click_coordinates(close_window_coords)
-        time.sleep(1)
+    # Comportamiento según tipo de máquina
+    if isInVps is True:
+        # VPS: Cerrar inmediatamente (comportamiento original)
+        print(f"✅ Captcha rojo encontrado (VPS) - cerrando ventana inmediatamente")
+        close_window_coords = coordinates.get("close_window")
+        if close_window_coords:
+            click_coordinates(close_window_coords)
+            time.sleep(1)
+        return False  # Terminar el proceso inmediatamente
     
-    return False  # Terminar el proceso inmediatamente
+    else:
+        # Máquina física: Comportamiento como _procesar_numero (dos verificaciones)
+        print(f"✅ Captcha rojo encontrado (Máquina física) - vez #{estado.captcha_count}")
+        
+        if estado.obstaculo_count >= 2:
+            # Segunda detección - cerrar ventana
+            print("🔄 Segundo captcha rojo detectado - cerrando ventana directamente")
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False  # Terminar el proceso
+        
+        # Primera detección - cerrar captcha y continuar
+        close_captcha_coords = coordinates.get("close_captcha_click")
+        if close_captcha_coords:
+            click_coordinates(close_captcha_coords)
+            time.sleep(1)
+            
+            continue2_coords = coordinates.get("continue_button2_click")
+            if continue2_coords:
+                # Reactivar proxy antes de hacer clic en continue_button2_click
+                click_coordinates(continue2_coords)
+                _activar_proxy()
+                time.sleep(2)
+        
+        return True  # Continuar el proceso
 
 
 def _procesar_captcha_imposible(coordinates, estado):

@@ -127,6 +127,70 @@ def create_new_window(parent_root):
     if current_settings and current_settings.get('notification_email'):
         notification_email_entry.insert(0, current_settings['notification_email'])
     
+    # === CHECKBOXES DE TIPO DE MÁQUINA ===
+    # Frame para los checkboxes
+    machine_type_frame = ctk.CTkFrame(inputs_frame, fg_color="transparent")
+    machine_type_frame.pack(fill="x", pady=(5, 15))
+    
+    # Label para la sección
+    machine_type_label = ctk.CTkLabel(
+        machine_type_frame,
+        text="🖥️ Tipo de Máquina:",
+        font=("Arial", 12, "bold"),
+        text_color="black"
+    )
+    machine_type_label.pack(anchor="w", pady=(0, 10))
+    
+    # Frame para los checkboxes lado a lado
+    checkboxes_container = ctk.CTkFrame(machine_type_frame, fg_color="transparent")
+    checkboxes_container.pack(fill="x")
+    
+    # Variables para los checkboxes (mutuamente exclusivos)
+    vps_var = ctk.IntVar(value=0)
+    fisica_var = ctk.IntVar(value=0)
+    
+    # Obtener valor actual de isInVps
+    current_isInVps = current_settings.get('isInVps') if current_settings else None
+    if current_isInVps is True:
+        vps_var.set(1)
+    elif current_isInVps is False:
+        fisica_var.set(1)
+    
+    # Función para manejar la exclusividad de los checkboxes
+    def on_vps_checkbox_change():
+        """Hace que los checkboxes sean mutuamente exclusivos - VPS"""
+        if vps_var.get() == 1:
+            # Si se selecciona VPS, deseleccionar Máquina Física
+            fisica_var.set(0)
+    
+    def on_fisica_checkbox_change():
+        """Hace que los checkboxes sean mutuamente exclusivos - Máquina Física"""
+        if fisica_var.get() == 1:
+            # Si se selecciona Máquina Física, deseleccionar VPS
+            vps_var.set(0)
+    
+    # Checkbox "Es en VPS"
+    vps_checkbox = ctk.CTkCheckBox(
+        checkboxes_container,
+        text="Es en VPS",
+        font=("Arial", 11),
+        text_color="black",
+        variable=vps_var,
+        command=on_vps_checkbox_change
+    )
+    vps_checkbox.pack(side="left", padx=(0, 20))
+    
+    # Checkbox "Es en Máquina Física"
+    fisica_checkbox = ctk.CTkCheckBox(
+        checkboxes_container,
+        text="Es en Máquina Física",
+        font=("Arial", 11),
+        text_color="black",
+        variable=fisica_var,
+        command=on_fisica_checkbox_change
+    )
+    fisica_checkbox.pack(side="left")
+    
     # ================= CONFIGURACIÓN DE TIEMPO =================
     
     def open_time_config_window():
@@ -152,6 +216,13 @@ def create_new_window(parent_root):
         user_agent = user_agent_entry.get().strip()
         notification_email = notification_email_entry.get().strip()
         
+        # Obtener valor de tipo de máquina
+        isInVps = None
+        if vps_var.get() == 1:
+            isInVps = True
+        elif fisica_var.get() == 1:
+            isInVps = False
+        
         if not user_agent:
             messagebox.showwarning("Advertencia", "Por favor ingresa un User Agent válido.")
             return
@@ -176,11 +247,15 @@ def create_new_window(parent_root):
             notification_email=notification_email if notification_email else None,
             cycle_time_minutes=current_settings.get('cycle_time_minutes') if current_settings else 60,
             time_config_type=current_settings.get('time_config_type') if current_settings else 'scheduled',
-            accounts_per_cycle=current_settings.get('accounts_per_cycle') if current_settings else 1
+            accounts_per_cycle=current_settings.get('accounts_per_cycle') if current_settings else 1,
+            isInVps=isInVps
         ):
             success_msg = f"✅ Configuración guardada correctamente.\n\nUser Agent: {user_agent}"
             if notification_email:
                 success_msg += f"\nEmail de notificación: {notification_email}"
+            if isInVps is not None:
+                machine_type_text = "VPS" if isInVps else "Máquina Física"
+                success_msg += f"\nTipo de Máquina: {machine_type_text}"
             success_msg += f"\n\n💡 Para configurar el tiempo de ejecución, usa el botón '⏰ Configurar Tiempo'"
             messagebox.showinfo("Éxito", success_msg)
         else:
@@ -1118,7 +1193,8 @@ def create_time_config_window(parent_root):
             notification_email=current_settings.get('notification_email', ''),
             cycle_time_minutes=int(cycle_minutes) if cycle_enabled and cycle_minutes != "" else None,
             time_config_type=config_type,
-            accounts_per_cycle=int(accounts_per_cycle) if cycle_enabled and accounts_per_cycle else None
+            accounts_per_cycle=int(accounts_per_cycle) if cycle_enabled and accounts_per_cycle else None,
+            isInVps=current_settings.get('isInVps') if current_settings else None
         )
         
         if success:
@@ -1155,7 +1231,8 @@ def create_time_config_window(parent_root):
             notification_email=current_settings.get('notification_email', ''),
             cycle_time_minutes=None,
             time_config_type='manual',
-            accounts_per_cycle=None
+            accounts_per_cycle=None,
+            isInVps=current_settings.get('isInVps') if current_settings else None
         )
         
         if success:
