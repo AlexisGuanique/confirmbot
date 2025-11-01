@@ -109,7 +109,7 @@ def observador_unificado(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 90
+    timeout_seconds = 120
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -207,7 +207,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 90
+    timeout_seconds = 120
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -311,7 +311,7 @@ def _verificar_timeout(start_time, timeout_seconds, coordinates):
     
     elapsed_time = time.time() - start_time
     if elapsed_time > timeout_seconds:
-        print("⏰ Timeout de 90 segundos - no se encontraron imágenes, cerrando ventana")
+        print("⏰ Timeout de 120 segundos - no se encontraron imágenes, cerrando ventana")
         _desactivar_proxy()
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
@@ -1043,7 +1043,7 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total):
         return False
     
     # Paso 3: Verificar carga de LinkedIn
-    if not _verificar_carga_linkedin():
+    if not _verificar_carga_linkedin(coordinates):
         print("❌ LinkedIn no cargó correctamente - cerrando ventana")
         _desactivar_proxy()
         _cerrar_ventana(coordinates)
@@ -1095,7 +1095,7 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         return False, "error_click_linkedin_fav", {}
     
     # Paso 3: Verificar carga de LinkedIn
-    if not _verificar_carga_linkedin():
+    if not _verificar_carga_linkedin(coordinates):
         print("❌ LinkedIn no cargó correctamente - cerrando ventana")
         _desactivar_proxy()
         _cerrar_ventana(coordinates)
@@ -1181,14 +1181,96 @@ def _click_linkedin_fav(coordinates):
     return True
 
 
-def _verificar_carga_linkedin():
-    """Verifica que LinkedIn haya cargado correctamente"""
-    from app.creator.computer_actions import wait_for_creator_image
+def _verificar_carga_linkedin(coordinates=None):
+    """Verifica que LinkedIn haya cargado correctamente con matching 100% exacto - busca tres imágenes posibles"""
+    from app.creator.computer_actions import find_creator_image, click_coordinates, wait_for_creator_image
+    from app.database.database import get_creator_coordinates
+    import time
     
-    verification_image = wait_for_creator_image("imagen_de_verificacion_de_exito_carga_linkedin", max_attempts=90, delay_between_attempts=1)
-    if not verification_image:
-        return False
-    return True
+    # Lista de imágenes posibles para verificar carga de LinkedIn
+    linkedin_verification_images = [
+        "imagen_de_verificacion_de_exito_carga_linkedin",
+        "imagen_de_verificacion_de_exito_carga_linkedin_2",
+        "imagen_de_verificacion_de_exito_carga_linkedin_3"
+    ]
+    
+    print(f"🔍 Iniciando observador para verificación de LinkedIn")
+    
+    max_attempts_per_cycle = 20
+    max_reintentos = 3
+    delay_between_attempts = 1
+    confidence = 0.99  # 99% de precisión - solo acepta imágenes prácticamente idénticas
+    
+    # Obtener coordenadas necesarias para reinicio si no se proporcionaron
+    if not coordinates:
+        coordinates = get_creator_coordinates()
+        if not coordinates:
+            print("❌ No se pudieron obtener las coordenadas")
+            return False
+    
+    for reintento in range(1, max_reintentos + 1):
+        # Buscar imágenes en cada ciclo hasta encontrar una o llegar al límite
+        for attempt in range(1, max_attempts_per_cycle + 1):
+            # Intentar buscar cada imagen en este ciclo
+            for image_name in linkedin_verification_images:
+                verification_image = find_creator_image(image_name, confidence=confidence)
+                if verification_image:
+                    print(f"✅ ¡Imagen encontrada en el intento {attempt}! Usando: {image_name}")
+                    return True
+            
+            # Si no se encontró ninguna imagen en este ciclo, esperar antes del siguiente
+            if attempt < max_attempts_per_cycle:
+                time.sleep(delay_between_attempts)
+        
+        # Si llegamos aquí, no se encontró ninguna imagen después de max_attempts_per_cycle intentos
+        print(f"⚠️ No se encontró imagen después de {max_attempts_per_cycle} intentos")
+        
+        # Si no es el último reintento, reiniciar el proceso
+        if reintento < max_reintentos:
+            print(f"🔄 Reiniciando proceso (reintento {reintento}/{max_reintentos})...")
+            
+            # 1. Cerrar ventana
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                print(f"🔄 Cerrando ventana...")
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            
+            # 2. Doble clic en Brave con validación
+            brave_coords = coordinates.get("brave_click")
+            if brave_coords:
+                print(f"🔄 Haciendo doble clic en Brave...")
+                click_coordinates(brave_coords, double_click=True)
+                time.sleep(2)
+                
+                # Validar que la imagen de Brave NO apareció (significa que Brave se abrió correctamente)
+                brave_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True)
+                if brave_image_found:
+                    print(f"⚠️ Brave todavía en pantalla de inicio, reintentando clic...")
+                    click_coordinates(brave_coords, double_click=True)
+                    time.sleep(2)
+                    brave_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True)
+                    if brave_image_found:
+                        print(f"❌ No se pudo abrir Brave correctamente")
+                        return False
+                print(f"✅ Brave validado - clic realizado correctamente")
+            
+            # 3. Clic en LinkedIn fav
+            linkedin_coords = coordinates.get("linkedin_fav_click")
+            if linkedin_coords:
+                print(f"🔄 Haciendo clic en LinkedIn fav...")
+                click_coordinates(linkedin_coords)
+                time.sleep(3)
+            
+            # 4. Continuar buscando imágenes en el siguiente reintento
+            print(f"🔄 Continuando búsqueda de imágenes...")
+            time.sleep(1)
+        else:
+            # Último reintento completado sin éxito
+            print(f"❌ No se encontró ninguna imagen de verificación de LinkedIn después de {max_reintentos} reintentos")
+            return False
+    
+    return False
 
 
 def _escribir_y_verificar_campo(texto, tipo_campo="campo", max_intentos=3):
@@ -1379,9 +1461,9 @@ def _llenar_formulario_registro(coordinates, email):
         return False, None
     # Activar proxy después de hacer clic en continue_button2_click
     _activar_proxy()
-    time.sleep(0.5)
+    time.sleep(1)
     click_coordinates(continue2_coords)
-    time.sleep(3)
+    time.sleep(10)
     
 
 
@@ -2249,7 +2331,8 @@ def execute_creator():
     cycle_time_minutes = settings.get('cycle_time_minutes', 60)
     
     has_scheduled = scheduled_time and scheduled_time.strip()
-    has_cycle = cycle_time_minutes and cycle_time_minutes > 0
+    # El ciclo se considera habilitado aunque los minutos sean 0
+    has_cycle = settings.get('time_config_type') in ['cycle', 'both']
     
     # Determinar modo de ejecución
     if has_scheduled and has_cycle:

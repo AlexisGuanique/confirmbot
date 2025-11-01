@@ -583,6 +583,8 @@ def create_new_window(parent_root):
     # Definir las imágenes
     images_list = [
         "Imagen de verificación de éxito carga LinkedIn",
+        "Imagen de verificación de éxito carga LinkedIn 2",
+        "Imagen de verificación de éxito carga LinkedIn 3",
         "Checkbox recuerdame",
         "Imagen captcha rojo",
         "Imagen captcha blanco",
@@ -1073,13 +1075,13 @@ def create_time_config_window(parent_root):
         
         # Validar ciclo si está habilitado
         if cycle_enabled:
-            if not cycle_minutes:
+            if cycle_minutes == "":
                 messagebox.showerror("Error", "❌ Debe ingresar el tiempo del ciclo cuando está habilitado")
                 return
             try:
                 minutes = int(cycle_minutes)
-                if minutes < 1 or minutes > 1440:  # Entre 1 minuto y 24 horas
-                    messagebox.showerror("Error", "❌ El tiempo del ciclo debe estar entre 1 y 1440 minutos")
+                if minutes < 0 or minutes > 1440:  # Entre 0 y 24 horas
+                    messagebox.showerror("Error", "❌ El tiempo del ciclo debe estar entre 0 y 1440 minutos")
                     return
             except ValueError:
                 messagebox.showerror("Error", "❌ Ingrese un número válido de minutos")
@@ -1114,7 +1116,7 @@ def create_time_config_window(parent_root):
             scheduled_time=scheduled_time if scheduled_enabled else None,
             timezone=timezone if scheduled_enabled else None,
             notification_email=current_settings.get('notification_email', ''),
-            cycle_time_minutes=int(cycle_minutes) if cycle_enabled and cycle_minutes else None,
+            cycle_time_minutes=int(cycle_minutes) if cycle_enabled and cycle_minutes != "" else None,
             time_config_type=config_type,
             accounts_per_cycle=int(accounts_per_cycle) if cycle_enabled and accounts_per_cycle else None
         )
