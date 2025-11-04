@@ -21,7 +21,7 @@ def create_new_window(parent_root):
             if not user_data:
                 return None
                 
-            url = f"http://35.209.237.44/api/emails/count/{user_data['id']}"
+            url = f"http://34.29.59.97/api/emails/count/{user_data['id']}"
             headers = {"Content-Type": "application/json"}
             body = {"access_token": user_data['access_token']}
             

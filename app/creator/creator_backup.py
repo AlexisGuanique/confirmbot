@@ -1418,7 +1418,7 @@ def _obtener_conteo_cuentas_servidor():
         }
         
         # URL del servidor
-        url = f"http://35.209.237.44/api/accounts/count/{user_id}"
+        url = f"http://34.29.59.97/api/accounts/count/{user_id}"
         
         # Headers
         headers = {
@@ -1481,7 +1481,7 @@ def _guardar_cuentas_en_servidor(filepath):
         }
         
         # URL del servidor
-        url = f"http://35.209.237.44/api/accounts/save/{user_id}"
+        url = f"http://34.29.59.97/api/accounts/save/{user_id}"
         
         # Headers
         headers = {
@@ -1548,7 +1548,7 @@ def _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas):
         }
         
         # URL del servidor para emails fallidos
-        url = f"http://35.209.237.44/api/emails/save/{user_id}"
+        url = f"http://34.29.59.97/api/emails/save/{user_id}"
         
         # Headers
         headers = {

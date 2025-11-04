@@ -1610,7 +1610,7 @@ def fetch_emails_from_server(count: int) -> list:
         access_token = user_data['access_token']
         
         # Construir URL con el ID del usuario
-        url = f"http://35.209.237.44/api/emails/next/{user_id}"
+        url = f"http://34.29.59.97/api/emails/next/{user_id}"
         headers = {
             "Content-Type": "application/json"
         }

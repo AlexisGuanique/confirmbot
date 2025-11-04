@@ -84,7 +84,7 @@ def cargar_emails_desde_archivo(archivo_txt, user_id=None, access_token=None):
         print(f"🌐 Enviando a la base de datos...")
         
         # Preparar datos para la API
-        url = f"http://35.209.237.44/api/emails/save/{user_id}"
+        url = f"http://34.29.59.97/api/emails/save/{user_id}"
         headers = {
             'Content-Type': 'application/json'
         }

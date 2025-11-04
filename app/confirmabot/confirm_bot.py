@@ -192,7 +192,7 @@ def _enviar_emails_a_base_datos(emails_verificados, total_emails, emails_exitoso
             return False
         
         # Preparar datos para la API
-        url = f"http://35.209.237.44/api/emails/save/{user_id}"
+        url = f"http://34.29.59.97/api/emails/save/{user_id}"
         headers = {
             'Content-Type': 'application/json'
         }
@@ -241,7 +241,7 @@ def _obtener_total_emails_base_datos():
             return 0
         
         # Preparar datos para la API
-        url = f"http://35.209.237.44/api/emails/count/{user_id}"
+        url = f"http://34.29.59.97/api/emails/count/{user_id}"
         headers = {
             'Content-Type': 'application/json'
         }
