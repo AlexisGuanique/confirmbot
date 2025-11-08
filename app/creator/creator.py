@@ -1109,16 +1109,23 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
     """
     Procesa un email individual en el proceso de creación de cuenta LinkedIn con información detallada
     Retorna: (exito: bool, motivo_fallo: str, detalles: dict)
+    
+    Args:
+        email_id: Puede ser un ID de email (int) o un email directamente (str) cuando is33mail es false
     """
     from app.database.database import get_creator_email_by_id
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname
     import time
     
-    # Obtener el email por ID
-    current_email = get_creator_email_by_id(email_id)
-    if not current_email:
-        print(f"⚠️ Email ID {email_id} no encontrado")
-        return False, "email_no_encontrado", {"email_id": email_id}
+    # Si email_id es un string, usarlo directamente (modo domain)
+    if isinstance(email_id, str):
+        current_email = email_id
+    else:
+        # Obtener el email por ID
+        current_email = get_creator_email_by_id(email_id)
+        if not current_email:
+            print(f"⚠️ Email ID {email_id} no encontrado")
+            return False, "email_no_encontrado", {"email_id": email_id}
     
     # Paso 1: Click en Brave
     if not _click_brave(coordinates):
@@ -1402,7 +1409,8 @@ def _verificar_campo_pegado(texto_esperado, tipo_campo="campo"):
 
 def _llenar_formulario_registro(coordinates, email):
     """Llena el formulario de registro de LinkedIn"""
-    from app.creator.computer_actions import click_coordinates, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname, wait_for_creator_image, generate_email_prefix
+    from app.creator.computer_actions import click_coordinates, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname, wait_for_creator_image, generate_email_prefix, generate_email_with_domain_format
+    from app.database.database import get_creator_setting
     import time
     import pyperclip
     
@@ -1419,12 +1427,21 @@ def _llenar_formulario_registro(coordinates, email):
     pyperclip.copy("")
     time.sleep(0.2)
     
-    # Generar prefijo aleatorio para el email si viene solo el dominio
+    # Generar email según configuración
     if email.startswith('@'):
-        # Generar prefijo aleatorio y concatenar con el dominio
-        prefix = generate_email_prefix()
-        full_email = f"{prefix}{email}"
-        print(f"📧 Email generado: {full_email} (dominio: {email})")
+        # Obtener configuración para verificar is33mail
+        settings = get_creator_setting()
+        is33mail = settings.get('is33mail', True) if settings else True
+        
+        if not is33mail:
+            # Usar formato específico para dominio personalizado
+            full_email = generate_email_with_domain_format(email)
+            print(f"📧 Email generado con formato personalizado: {full_email} (dominio: {email})")
+        else:
+            # Generar prefijo aleatorio y concatenar con el dominio (modo 33mail)
+            prefix = generate_email_prefix()
+            full_email = f"{prefix}{email}"
+            print(f"📧 Email generado: {full_email} (dominio: {email})")
     else:
         # Si ya viene completo, usar tal como está
         full_email = email
@@ -2400,39 +2417,61 @@ def _ejecutar_proceso_creator():
     
     settings = get_creator_setting()
     time_config_type = settings.get('time_config_type', 'manual')
+    is33mail = settings.get('is33mail', True)
+    domain = settings.get('domain', '')
     
-    # Obtener emails según configuración
-    if time_config_type in ['cycle', 'both']:
-        accounts_per_cycle = settings.get('accounts_per_cycle', 1)
-        email_ids = get_next_creator_emails(accounts_per_cycle)
-        print(f"🔄 Procesando {accounts_per_cycle} cuentas")
-    else:
-        print("🌐 Obteniendo emails del servidor...")
-        resultado = fetch_and_save_emails_for_cycle(100)
+    # Si is33mail es false, usar domain directamente
+    if not is33mail:
+        if not domain:
+            print("❌ Domain no configurado")
+            return False
         
-        if resultado == "NO_EMAILS_AVAILABLE":
-            print("📭 No hay más emails disponibles en el servidor")
-            # Mostrar messagebox y detener el bot
-            import tkinter as tk
-            from tkinter import messagebox
-            root = tk.Tk()
-            root.withdraw()
-            messagebox.showwarning(
-                "Sin Emails Disponibles", 
-                "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
-            )
-            root.destroy()
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
-        elif not resultado:
-            print("❌ Error al obtener emails")
-            return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+        # Preparar el dominio con @ al inicio si no lo tiene
+        domain_email = domain if domain.startswith('@') else f"@{domain}"
+        
+        # Obtener cantidad de cuentas a crear
+        if time_config_type in ['cycle', 'both']:
+            accounts_per_cycle = settings.get('accounts_per_cycle', 1)
+            email_ids = [domain_email] * accounts_per_cycle
+            print(f"🔄 Procesando {accounts_per_cycle} cuentas usando domain: {domain_email}")
+        else:
+            accounts_to_create = settings.get('accounts_to_create', 1)
+            email_ids = [domain_email] * accounts_to_create
+            print(f"🔄 Procesando {accounts_to_create} cuentas usando domain: {domain_email}")
+    else:
+        # Obtener emails según configuración (modo normal con 33mail)
+        if time_config_type in ['cycle', 'both']:
+            accounts_per_cycle = settings.get('accounts_per_cycle', 1)
+            email_ids = get_next_creator_emails(accounts_per_cycle)
+            print(f"🔄 Procesando {accounts_per_cycle} cuentas")
+        else:
+            print("🌐 Obteniendo emails del servidor...")
+            resultado = fetch_and_save_emails_for_cycle(100)
             
-        email_ids = get_all_available_creator_emails()
-        print(f"🔄 Procesando {len(email_ids)} cuentas")
+            if resultado == "NO_EMAILS_AVAILABLE":
+                print("📭 No hay más emails disponibles en el servidor")
+                # Mostrar messagebox y detener el bot
+                import tkinter as tk
+                from tkinter import messagebox
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showwarning(
+                    "Sin Emails Disponibles", 
+                    "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
+                )
+                root.destroy()
+                return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+            elif not resultado:
+                print("❌ Error al obtener emails")
+                return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
+                
+            email_ids = get_all_available_creator_emails()
+            print(f"🔄 Procesando {len(email_ids)} cuentas")
     
     if not email_ids:
         print("❌ Sin emails disponibles")
-        reset_creator_email_progress()
+        if is33mail:
+            reset_creator_email_progress()
         return False
     
     coordinates = get_creator_coordinates()
@@ -2456,15 +2495,19 @@ def _ejecutar_proceso_creator():
         print(f"📧 {i}/{len(email_ids)}")
         
         # Obtener email antes de procesarlo
-        from app.database.database import get_creator_email_by_id
-        current_email = get_creator_email_by_id(email_id)
+        if is33mail:
+            from app.database.database import get_creator_email_by_id
+            current_email = get_creator_email_by_id(email_id)
+        else:
+            # En modo domain, email_id es el email directamente
+            current_email = email_id
         
         exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, i, len(email_ids))
         
         # Trackear el resultado del procesamiento
         email_resultado = {
             "email_id": email_id,
-            "email": current_email if current_email else f"email_id_{email_id}",
+            "email": current_email if current_email else (email_id if isinstance(email_id, str) else f"email_id_{email_id}"),
             "exito": exito,
             "motivo_fallo": motivo_fallo,
             "detalles": detalles,
@@ -2478,7 +2521,9 @@ def _ejecutar_proceso_creator():
         else:
             print(f"❌ Falló - {motivo_fallo}")
         
-        update_creator_email_progress(email_id, emails_exitosos)
+        # Solo actualizar progreso si estamos usando 33mail
+        if is33mail:
+            update_creator_email_progress(email_id, emails_exitosos)
         if i < len(email_ids):
             time.sleep(1)
     
@@ -2514,13 +2559,17 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     """
     from app.database.database import (
         get_creator_coordinates, get_all_available_creator_emails_for_objective,
-        update_creator_email_progress, fetch_and_append_emails_for_cycle
+        update_creator_email_progress, fetch_and_append_emails_for_cycle, get_creator_setting
     )
     import time
     import tkinter as tk
     from tkinter import messagebox
     
     print(f"🎯 Objetivo: {objetivo_cuentas} cuentas")
+    
+    settings = get_creator_setting()
+    is33mail = settings.get('is33mail', True)
+    domain = settings.get('domain', '')
     
     coordinates = get_creator_coordinates()
     if not coordinates:
@@ -2537,75 +2586,129 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     from datetime import datetime
     tiempo_inicio_proceso = datetime.now()
     
-    while cuentas_creadas < objetivo_cuentas and intento <= 10:
-        print(f"📧 Intento {intento} - {cuentas_creadas}/{objetivo_cuentas}")
+    # Si is33mail es false, usar domain directamente
+    if not is33mail:
+        if not domain:
+            print("❌ Domain no configurado")
+            return 0
         
-        # Obtener emails disponibles
-        email_ids = get_all_available_creator_emails_for_objective()
+        # Preparar el dominio con @ al inicio si no lo tiene
+        domain_email = domain if domain.startswith('@') else f"@{domain}"
         
-        # Si no hay emails, solicitar más
-        if not email_ids:
-            faltantes = objetivo_cuentas - cuentas_creadas
-            print(f"📭 Solicitando {faltantes} emails...")
-            resultado = fetch_and_append_emails_for_cycle(faltantes)
+        # Procesar directamente con el dominio
+        while cuentas_creadas < objetivo_cuentas and intento <= 10:
+            print(f"📧 Intento {intento} - {cuentas_creadas}/{objetivo_cuentas}")
             
-            if resultado == "NO_EMAILS_AVAILABLE":
-                print("📭 No hay más emails disponibles en el servidor")
-                # Mostrar messagebox y detener el bot
-                root = tk.Tk()
-                root.withdraw()  # Ocultar ventana principal
-                messagebox.showwarning(
-                    "Sin Emails Disponibles", 
-                    "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
-                )
-                root.destroy()
-                break
-            elif not resultado:
-                print("❌ Error al obtener emails")
-                break
+            # Usar el dominio directamente
+            email_ids = [domain_email] * (objetivo_cuentas - cuentas_creadas)
+            
+            # Procesar emails
+            for i, email_id in enumerate(email_ids, 1):
+                if cuentas_creadas >= objetivo_cuentas:
+                    break
+                    
+                print("#########################################################")
+                _ejecutar_modo_avion()
+                print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
                 
+                # En modo domain, email_id es el email directamente
+                current_email = email_id
+                
+                exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
+                
+                # Trackear el resultado del procesamiento
+                email_resultado = {
+                    "email_id": email_id,
+                    "email": current_email,
+                    "exito": exito,
+                    "motivo_fallo": motivo_fallo,
+                    "detalles": detalles,
+                    "contador": cuentas_creadas + 1,
+                    "intento": intento
+                }
+                emails_procesados.append(email_resultado)
+                
+                if exito:
+                    cuentas_creadas += 1
+                    print(f"✅ Cuenta {cuentas_creadas}")
+                else:
+                    print(f"❌ Falló - {motivo_fallo}")
+                
+                if i < len(email_ids):
+                    time.sleep(1)
+            
+            intento += 1
+    else:
+        # Modo normal con 33mail
+        while cuentas_creadas < objetivo_cuentas and intento <= 10:
+            print(f"📧 Intento {intento} - {cuentas_creadas}/{objetivo_cuentas}")
+            
+            # Obtener emails disponibles
             email_ids = get_all_available_creator_emails_for_objective()
+            
+            # Si no hay emails, solicitar más
             if not email_ids:
-                break
-        
-        # Procesar emails
-        for i, email_id in enumerate(email_ids, 1):
-            if cuentas_creadas >= objetivo_cuentas:
-                break
+                faltantes = objetivo_cuentas - cuentas_creadas
+                print(f"📭 Solicitando {faltantes} emails...")
+                resultado = fetch_and_append_emails_for_cycle(faltantes)
                 
-            print("#########################################################")
-            _ejecutar_modo_avion()
-            print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
-            
-            # Obtener email antes de procesarlo
-            from app.database.database import get_creator_email_by_id
-            current_email = get_creator_email_by_id(email_id)
-            
-            exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
-            
-            # Trackear el resultado del procesamiento
-            email_resultado = {
-                "email_id": email_id,
-                "email": current_email if current_email else f"email_id_{email_id}",
-                "exito": exito,
-                "motivo_fallo": motivo_fallo,
-                "detalles": detalles,
-                "contador": cuentas_creadas + 1,
-                "intento": intento
-            }
-            emails_procesados.append(email_resultado)
-            
-            if exito:
-                cuentas_creadas += 1
-                print(f"✅ Cuenta {cuentas_creadas}")
-            else:
-                print(f"❌ Falló - {motivo_fallo}")
-            
-            update_creator_email_progress(email_id, cuentas_creadas)
-            if i < len(email_ids):
-                time.sleep(1)
+                if resultado == "NO_EMAILS_AVAILABLE":
+                    print("📭 No hay más emails disponibles en el servidor")
+                    # Mostrar messagebox y detener el bot
+                    root = tk.Tk()
+                    root.withdraw()  # Ocultar ventana principal
+                    messagebox.showwarning(
+                        "Sin Emails Disponibles", 
+                        "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
+                    )
+                    root.destroy()
+                    break
+                elif not resultado:
+                    print("❌ Error al obtener emails")
+                    break
+                    
+                email_ids = get_all_available_creator_emails_for_objective()
+                if not email_ids:
+                    break
         
-        intento += 1
+            # Procesar emails
+            for i, email_id in enumerate(email_ids, 1):
+                if cuentas_creadas >= objetivo_cuentas:
+                    break
+                    
+                print("#########################################################")
+                _ejecutar_modo_avion()
+                print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
+                
+                # Obtener email antes de procesarlo
+                from app.database.database import get_creator_email_by_id
+                current_email = get_creator_email_by_id(email_id)
+                
+                exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
+                
+                # Trackear el resultado del procesamiento
+                email_resultado = {
+                    "email_id": email_id,
+                    "email": current_email if current_email else f"email_id_{email_id}",
+                    "exito": exito,
+                    "motivo_fallo": motivo_fallo,
+                    "detalles": detalles,
+                    "contador": cuentas_creadas + 1,
+                    "intento": intento
+                }
+                emails_procesados.append(email_resultado)
+                
+                if exito:
+                    cuentas_creadas += 1
+                    print(f"✅ Cuenta {cuentas_creadas}")
+                else:
+                    print(f"❌ Falló - {motivo_fallo}")
+                
+                update_creator_email_progress(email_id, cuentas_creadas)
+                if i < len(email_ids):
+                    time.sleep(1)
+            
+            intento += 1
     
     print(f"🎉 Completado: {cuentas_creadas}/{objetivo_cuentas}")
     _actualizar_encabezado_con_exitos(filepath, objetivo_cuentas, cuentas_creadas)
@@ -2646,6 +2749,8 @@ def _ejecutar_creator_en_ciclo():
     settings = get_creator_setting()
     cycle_minutes = settings.get('cycle_time_minutes', 60)
     accounts_per_cycle = settings.get('accounts_per_cycle', 1)
+    is33mail = settings.get('is33mail', True)
+    domain = settings.get('domain', '')
     
     print(f"🔄 Ciclo: {cycle_minutes}min - Objetivo: {accounts_per_cycle} cuentas")
     print("💡 Ctrl+C para detener")
@@ -2660,34 +2765,42 @@ def _ejecutar_creator_en_ciclo():
             # Enviar notificación de inicio de ciclo
             _enviar_notificacion_inicio_ciclo(ciclo, accounts_per_cycle, cycle_minutes)
             
-            # Limpiar emails del ciclo anterior
-            if ciclo > 1:
-                print("🧹 Limpiando emails...")
-                delete_all_creator_emails()
-                reset_creator_email_progress()
-            
-            # Obtener emails del servidor
-            print(f"🌐 Obteniendo {accounts_per_cycle} emails...")
-            resultado = fetch_and_save_emails_for_cycle(accounts_per_cycle)
-            
-            if resultado == "NO_EMAILS_AVAILABLE":
-                print("📭 No hay más emails disponibles en el servidor")
-                # Mostrar messagebox y detener el bot
-                import tkinter as tk
-                from tkinter import messagebox
-                root = tk.Tk()
-                root.withdraw()
-                messagebox.showwarning(
-                    "Sin Emails Disponibles", 
-                    "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
-                )
-                root.destroy()
-                break
-            elif not resultado:
-                print(f"❌ Error - Esperando {cycle_minutes}min...")
-                time.sleep(cycle_minutes * 60)
-                ciclo += 1
-                continue
+            # Si is33mail es false, no solicitar emails del servidor
+            if is33mail:
+                # Limpiar emails del ciclo anterior
+                if ciclo > 1:
+                    print("🧹 Limpiando emails...")
+                    delete_all_creator_emails()
+                    reset_creator_email_progress()
+                
+                # Obtener emails del servidor
+                print(f"🌐 Obteniendo {accounts_per_cycle} emails...")
+                resultado = fetch_and_save_emails_for_cycle(accounts_per_cycle)
+                
+                if resultado == "NO_EMAILS_AVAILABLE":
+                    print("📭 No hay más emails disponibles en el servidor")
+                    # Mostrar messagebox y detener el bot
+                    import tkinter as tk
+                    from tkinter import messagebox
+                    root = tk.Tk()
+                    root.withdraw()
+                    messagebox.showwarning(
+                        "Sin Emails Disponibles", 
+                        "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
+                    )
+                    root.destroy()
+                    break
+                elif not resultado:
+                    print(f"❌ Error - Esperando {cycle_minutes}min...")
+                    time.sleep(cycle_minutes * 60)
+                    ciclo += 1
+                    continue
+            else:
+                # Verificar que el dominio esté configurado
+                if not domain:
+                    print("❌ Domain no configurado")
+                    break
+                print(f"🌐 Usando domain: {domain}")
             
             # Ejecutar proceso de creación
             cuentas_creadas = _ejecutar_proceso_creator_con_objetivo(accounts_per_cycle, es_ciclo=True, ciclo_minutes=cycle_minutes)

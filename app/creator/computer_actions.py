@@ -272,6 +272,50 @@ def generate_email_prefix():
     
     return prefix
 
+def generate_email_with_domain_format(domain):
+    """
+    Genera un email con formato específico: nombre1apellido1numero1nombre2apellido2.puntoletrasnumeros@dominio
+    
+    Ejemplo: fernandaganavarro3886perez.b9i5@gmail.com
+    
+    Args:
+        domain: Dominio del email (con o sin @ al inicio)
+    
+    Returns:
+        str: Email completo con el formato especificado
+    """
+    import random
+    import string
+    
+    # Asegurar que el dominio tenga @ al inicio
+    if not domain.startswith('@'):
+        domain = f"@{domain}"
+    
+    # Generar nombres y apellidos usando Faker
+    fake = Faker('en_US')
+    
+    # Primera parte: nombre1 + apellido1 + número (4 dígitos)
+    nombre1 = fake.first_name().lower()
+    apellido1 = fake.last_name().lower()
+    numero1 = ''.join([str(random.randint(0, 9)) for _ in range(4)])
+    parte1 = f"{nombre1}{apellido1}{numero1}"
+    
+    # Segunda parte: nombre2/apellido2 (puede ser nombre o apellido)
+    # Usar aleatoriamente un nombre o apellido
+    if random.choice([True, False]):
+        parte2 = fake.first_name().lower()
+    else:
+        parte2 = fake.last_name().lower()
+    
+    # Tercera parte: punto + combinación de letras y números (4 caracteres)
+    caracteres = string.ascii_lowercase + string.digits
+    parte3 = ''.join(random.choice(caracteres) for _ in range(4))
+    
+    # Combinar todo: parte1 + parte2 + . + parte3 + dominio
+    email = f"{parte1}{parte2}.{parte3}{domain}"
+    
+    return email
+
 def get_clipboard_content():
     """
     Obtiene el contenido del portapapeles

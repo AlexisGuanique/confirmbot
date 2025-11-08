@@ -210,6 +210,75 @@ def create_new_window(parent_root):
     )
     time_config_button.pack(side="left", padx=(0, 10), pady=(5, 15))
     
+    # === CHECKBOX Y INPUT DE 33MAIL ===
+    # Frame para la configuración de 33mail
+    mail33_frame = ctk.CTkFrame(inputs_frame, fg_color="transparent")
+    mail33_frame.pack(fill="x", pady=(5, 15))
+    
+    # Variable para el checkbox de 33mail (por defecto marcado = True)
+    mail33_var = ctk.IntVar(value=1)
+    
+    # Obtener valor actual de is33mail (si es None, usar True por defecto)
+    current_is33mail = current_settings.get('is33mail') if current_settings else True
+    if current_is33mail is True:
+        mail33_var.set(1)
+    elif current_is33mail is False:
+        mail33_var.set(0)
+    else:
+        # Si es None, usar True por defecto
+        mail33_var.set(1)
+    
+    # Checkbox "Es con 33mail"
+    mail33_checkbox = ctk.CTkCheckBox(
+        mail33_frame,
+        text="Es con 33mail",
+        font=("Arial", 11),
+        text_color="black",
+        variable=mail33_var
+    )
+    mail33_checkbox.pack(anchor="w", pady=(0, 10))
+    
+    # Frame para el input de dominio (solo visible si el checkbox está DESMARCADO)
+    domain_input_frame = ctk.CTkFrame(mail33_frame, fg_color="transparent")
+    
+    # Label para el dominio
+    domain_label = ctk.CTkLabel(
+        domain_input_frame,
+        text="Dominio (distinto a 33mail):",
+        font=("Arial", 11),
+        text_color="black"
+    )
+    domain_label.pack(anchor="w", pady=(0, 5))
+    
+    # Input para el dominio
+    domain_entry = ctk.CTkEntry(
+        domain_input_frame,
+        placeholder_text="ejemplo: @gmail.com",
+        font=("Arial", 11),
+        height=35
+    )
+    domain_entry.pack(fill="x", pady=(0, 0))
+    
+    # Insertar valor actual si existe
+    current_domain = current_settings.get('domain') if current_settings else None
+    if current_domain:
+        domain_entry.insert(0, current_domain)
+    
+    # Función para mostrar/ocultar el input de dominio según el checkbox
+    def toggle_domain_input():
+        if mail33_var.get() == 0:
+            # Si está desmarcado, mostrar el input para dominio distinto
+            domain_input_frame.pack(fill="x", pady=(0, 0))
+        else:
+            # Si está marcado, ocultar el input (usa 33mail por defecto)
+            domain_input_frame.pack_forget()
+    
+    # Configurar el comando del checkbox
+    mail33_checkbox.configure(command=toggle_domain_input)
+    
+    # Mostrar el input solo si el checkbox está desmarcado al cargar
+    if mail33_var.get() == 0:
+        domain_input_frame.pack(fill="x", pady=(0, 0))
     
     # Función para guardar configuración completa
     def save_creator_settings():
@@ -222,6 +291,20 @@ def create_new_window(parent_root):
             isInVps = True
         elif fisica_var.get() == 1:
             isInVps = False
+        
+        # Obtener valor de 33mail y dominio
+        is33mail = True if mail33_var.get() == 1 else False
+        
+        # Si está marcado (33mail), dominio es None. Si está desmarcado, dominio es obligatorio
+        if mail33_var.get() == 1:
+            # Usa 33mail por defecto, no necesita dominio
+            domain = None
+        else:
+            # Está desmarcado, necesita un dominio distinto
+            domain = domain_entry.get().strip()
+            if not domain:
+                messagebox.showwarning("Advertencia", "Por favor ingresa un dominio cuando 'Es con 33mail' está desmarcado.")
+                return
         
         if not user_agent:
             messagebox.showwarning("Advertencia", "Por favor ingresa un User Agent válido.")
@@ -248,7 +331,9 @@ def create_new_window(parent_root):
             cycle_time_minutes=current_settings.get('cycle_time_minutes') if current_settings else 60,
             time_config_type=current_settings.get('time_config_type') if current_settings else 'scheduled',
             accounts_per_cycle=current_settings.get('accounts_per_cycle') if current_settings else 1,
-            isInVps=isInVps
+            isInVps=isInVps,
+            is33mail=is33mail,
+            domain=domain
         ):
             success_msg = f"✅ Configuración guardada correctamente.\n\nUser Agent: {user_agent}"
             if notification_email:
@@ -256,6 +341,10 @@ def create_new_window(parent_root):
             if isInVps is not None:
                 machine_type_text = "VPS" if isInVps else "Máquina Física"
                 success_msg += f"\nTipo de Máquina: {machine_type_text}"
+            mail33_text = "Sí" if is33mail else "No"
+            success_msg += f"\nEs con 33mail: {mail33_text}"
+            if not is33mail and domain:
+                success_msg += f"\nDominio: {domain}"
             success_msg += f"\n\n💡 Para configurar el tiempo de ejecución, usa el botón '⏰ Configurar Tiempo'"
             messagebox.showinfo("Éxito", success_msg)
         else:
@@ -1194,7 +1283,9 @@ def create_time_config_window(parent_root):
             cycle_time_minutes=int(cycle_minutes) if cycle_enabled and cycle_minutes != "" else None,
             time_config_type=config_type,
             accounts_per_cycle=int(accounts_per_cycle) if cycle_enabled and accounts_per_cycle else None,
-            isInVps=current_settings.get('isInVps') if current_settings else None
+            isInVps=current_settings.get('isInVps') if current_settings else None,
+            is33mail=current_settings.get('is33mail') if current_settings else None,
+            domain=current_settings.get('domain') if current_settings else None
         )
         
         if success:
@@ -1232,7 +1323,9 @@ def create_time_config_window(parent_root):
             cycle_time_minutes=None,
             time_config_type='manual',
             accounts_per_cycle=None,
-            isInVps=current_settings.get('isInVps') if current_settings else None
+            isInVps=current_settings.get('isInVps') if current_settings else None,
+            is33mail=current_settings.get('is33mail') if current_settings else None,
+            domain=current_settings.get('domain') if current_settings else None
         )
         
         if success:

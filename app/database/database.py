@@ -273,7 +273,9 @@ def create_database():
                 cycle_time_minutes INTEGER DEFAULT 60,
                 time_config_type TEXT DEFAULT 'scheduled',
                 accounts_per_cycle INTEGER DEFAULT 1,
-                isInVps INTEGER DEFAULT 0
+                isInVps INTEGER DEFAULT 0,
+                is33mail INTEGER DEFAULT 1,
+                domain TEXT
             )
             '''
         )
@@ -345,6 +347,20 @@ def create_database():
         try:
             cursor.execute("ALTER TABLE creator_setting ADD COLUMN isInVps INTEGER DEFAULT 0")
             print("✅ Columna isInVps agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN is33mail INTEGER DEFAULT 1")
+            print("✅ Columna is33mail agregada a creator_setting")
+        except sqlite3.OperationalError:
+            # La columna ya existe, no hacer nada
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE creator_setting ADD COLUMN domain TEXT")
+            print("✅ Columna domain agregada a creator_setting")
         except sqlite3.OperationalError:
             # La columna ya existe, no hacer nada
             pass
@@ -942,7 +958,7 @@ def get_creator_coordinates(*field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None):
+def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None, is33mail=None, domain=None):
     """
     Guarda o actualiza la configuración del creator
     
@@ -956,6 +972,8 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         time_config_type (str): Tipo de configuración ('scheduled' o 'cycle')
         accounts_per_cycle (int): Cantidad de cuentas a crear por ciclo (default: 1)
         isInVps (bool): Si está ejecutándose en VPS (True) o máquina física (False) (opcional)
+        is33mail (bool): Si se usa 33mail (True) o no (False) (opcional)
+        domain (str): Dominio a utilizar (opcional)
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -966,16 +984,17 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         
         # Convertir boolean a integer para SQLite (True = 1, False = 0)
         isInVps_int = 1 if isInVps is True else (0 if isInVps is False else None)
+        is33mail_int = 1 if is33mail is True else (0 if is33mail is False else None)
         
         # Insertar o actualizar (UPSERT)
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps_int))
+            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail, domain)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps_int, is33mail_int, domain))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, isInVps={isInVps}")
+        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, isInVps={isInVps}, is33mail={is33mail}, domain={domain}")
         return True
         
     except Exception as e:
@@ -988,12 +1007,12 @@ def get_creator_setting():
     Obtiene la configuración del creator
     
     Returns:
-        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle e isInVps, o None si no existe
+        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail y domain, o None si no existe
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps FROM creator_setting WHERE id = 1")
+        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail, domain FROM creator_setting WHERE id = 1")
         row = cursor.fetchone()
         conn.close()
         
@@ -1002,6 +1021,11 @@ def get_creator_setting():
             isInVps_bool = None
             if row[8] is not None:
                 isInVps_bool = bool(row[8])
+            
+            # Convertir integer a boolean para is33mail (None si no está configurado)
+            is33mail_bool = None
+            if row[9] is not None:
+                is33mail_bool = bool(row[9])
             
             return {
                 'user_agent': row[0],
@@ -1012,7 +1036,9 @@ def get_creator_setting():
                 'cycle_time_minutes': row[5],  # Mantener el valor real, incluso si es None
                 'time_config_type': row[6] if row[6] is not None else 'manual',  # Cambiar default a 'manual'
                 'accounts_per_cycle': row[7],  # Mantener el valor real, incluso si es None
-                'isInVps': isInVps_bool  # Boolean o None
+                'isInVps': isInVps_bool,  # Boolean o None
+                'is33mail': is33mail_bool,  # Boolean o None
+                'domain': row[10]  # String o None
             }
         return None
         
@@ -1390,25 +1416,34 @@ def get_next_creator_emails(limit):
     try:
         # Obtener progreso actual
         progress = get_creator_email_progress()
-        if not progress:
-            # Si no hay progreso, empezar desde el principio
-            offset = 0
-        else:
-            # Usar el último email usado como offset
-            offset = progress['last_used_email_id']
-            
-            # Verificar si los emails han cambiado (recargados)
-            if detect_emails_changed():
-                print("🔄 Emails recargados detectados - reiniciando progreso")
-                reset_creator_email_progress()
-                offset = 0
         
-        # Obtener emails con offset
-        email_ids = get_creator_emails_with_offset(limit, offset)
+        # Verificar si los emails han cambiado (recargados)
+        if progress and detect_emails_changed():
+            print("🔄 Emails recargados detectados - reiniciando progreso")
+            reset_creator_email_progress()
+            progress = None
+        
+        # Obtener emails restantes
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        if not progress or progress['last_used_email_id'] == 0:
+            # Si no hay progreso o el último usado es 0, obtener los primeros emails
+            cursor.execute("SELECT id FROM creator_email ORDER BY id ASC LIMIT ?", (limit,))
+        else:
+            # Obtener emails con ID mayor al último usado
+            cursor.execute("SELECT id FROM creator_email WHERE id > ? ORDER BY id ASC LIMIT ?", (progress['last_used_email_id'], limit))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        email_ids = [row[0] for row in rows]
         
         # NO reiniciar automáticamente - si no hay más emails, retornar lista vacía
         if not email_ids:
             print("📧 No hay más emails disponibles para procesar")
+        else:
+            print(f"📧 Obtenidos {len(email_ids)} emails disponibles para procesar")
         
         return email_ids
         
@@ -1427,23 +1462,24 @@ def get_all_available_creator_emails():
     try:
         # Obtener progreso actual
         progress = get_creator_email_progress()
-        if not progress:
-            # Si no hay progreso, empezar desde el principio
-            offset = 0
-        else:
-            # Usar el último email usado como offset
-            offset = progress['last_used_email_id']
-            
-            # Verificar si los emails han cambiado (recargados)
-            if detect_emails_changed():
-                print("🔄 Emails recargados detectados - reiniciando progreso")
-                reset_creator_email_progress()
-                offset = 0
         
-        # Obtener todos los emails restantes con offset
+        # Verificar si los emails han cambiado (recargados)
+        if progress and detect_emails_changed():
+            print("🔄 Emails recargados detectados - reiniciando progreso")
+            reset_creator_email_progress()
+            progress = None
+        
+        # Obtener todos los emails restantes
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM creator_email ORDER BY created_at ASC LIMIT -1 OFFSET ?", (offset,))
+        
+        if not progress or progress['last_used_email_id'] == 0:
+            # Si no hay progreso o el último usado es 0, obtener todos los emails
+            cursor.execute("SELECT id FROM creator_email ORDER BY id ASC")
+        else:
+            # Obtener emails con ID mayor al último usado
+            cursor.execute("SELECT id FROM creator_email WHERE id > ? ORDER BY id ASC", (progress['last_used_email_id'],))
+        
         rows = cursor.fetchall()
         conn.close()
         
@@ -1472,17 +1508,18 @@ def get_all_available_creator_emails_for_objective():
     try:
         # Obtener progreso actual
         progress = get_creator_email_progress()
-        if not progress:
-            # Si no hay progreso, empezar desde el principio
-            offset = 0
-        else:
-            # Usar el último email usado como offset
-            offset = progress['last_used_email_id']
         
-        # Obtener todos los emails restantes con offset
+        # Obtener todos los emails restantes
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM creator_email ORDER BY created_at ASC LIMIT -1 OFFSET ?", (offset,))
+        
+        if not progress or progress['last_used_email_id'] == 0:
+            # Si no hay progreso o el último usado es 0, obtener todos los emails
+            cursor.execute("SELECT id FROM creator_email ORDER BY id ASC")
+        else:
+            # Obtener emails con ID mayor al último usado
+            cursor.execute("SELECT id FROM creator_email WHERE id > ? ORDER BY id ASC", (progress['last_used_email_id'],))
+        
         rows = cursor.fetchall()
         conn.close()
         
