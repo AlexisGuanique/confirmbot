@@ -10,8 +10,124 @@ def create_new_window(parent_root):
     from app.database.database import get_creator_coordinates, save_creator_coordinates, save_creator_setting, get_creator_setting, load_emails_from_file, get_creator_email_count, clear_scheduled_time, get_user_data
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
     from app.creator.image_config import view_image, load_image, get_image_path
+    from app.creator.computer_actions import find_creator_image, wait_for_spinner
     from app.utils.http_utils import post
     from tkinter import filedialog
+    
+    # Función para dibujar un borde rojo alrededor de la imagen encontrada
+    def draw_red_border_around_image(box, duration=3000):
+        """
+        Dibuja un borde rojo alrededor de una imagen encontrada en la pantalla.
+        
+        Args:
+            box: Objeto Box de pyautogui con (left, top, width, height)
+            duration: Duración en milisegundos que se mostrará el borde (default: 3000ms)
+        """
+        try:
+            import tkinter as tk
+            
+            # Obtener la ventana raíz de tkinter (necesario para Toplevel)
+            root = tk._default_root
+            if root is None:
+                # Si no hay raíz, crear una temporal
+                root = tk.Tk()
+                root.withdraw()  # Ocultar la ventana raíz
+            
+            # Crear ventana transparente
+            overlay = tk.Toplevel(root)
+            overlay.overrideredirect(True)  # Sin barra de título
+            overlay.attributes('-topmost', True)  # Siempre al frente
+            
+            # Configurar posición y tamaño
+            border_width = 4  # Grosor del borde en píxeles
+            x = box.left - border_width
+            y = box.top - border_width
+            width = box.width + (border_width * 2)
+            height = box.height + (border_width * 2)
+            
+            overlay.geometry(f"{width}x{height}+{x}+{y}")
+            
+            # Intentar hacer la ventana transparente (puede no funcionar en todos los sistemas)
+            try:
+                # En Windows, usar colorkey para transparencia
+                overlay.attributes('-transparentcolor', 'black')
+                overlay.configure(bg='black')
+            except:
+                try:
+                    # Intentar con alpha
+                    overlay.attributes('-alpha', 0.0)
+                    overlay.configure(bg='black')
+                except:
+                    overlay.configure(bg='black')
+            
+            # Crear canvas para dibujar el borde
+            canvas = tk.Canvas(
+                overlay,
+                width=width,
+                height=height,
+                highlightthickness=0,
+                bg='black'
+            )
+            canvas.pack(fill=tk.BOTH, expand=True)
+            
+            # Dibujar rectángulo rojo (borde) - dibujar 4 líneas para crear un borde visible
+            # Línea superior
+            canvas.create_line(
+                border_width, border_width,
+                width - border_width, border_width,
+                fill='red', width=border_width
+            )
+            # Línea inferior
+            canvas.create_line(
+                border_width, height - border_width,
+                width - border_width, height - border_width,
+                fill='red', width=border_width
+            )
+            # Línea izquierda
+            canvas.create_line(
+                border_width, border_width,
+                border_width, height - border_width,
+                fill='red', width=border_width
+            )
+            # Línea derecha
+            canvas.create_line(
+                width - border_width, border_width,
+                width - border_width, height - border_width,
+                fill='red', width=border_width
+            )
+            
+            # Actualizar la ventana para asegurar que se muestre
+            overlay.update()
+            
+            # Cerrar la ventana después de la duración especificada
+            def close_overlay():
+                try:
+                    overlay.destroy()
+                except:
+                    pass
+            
+            overlay.after(duration, close_overlay)
+            
+            # Cerrar al hacer clic
+            def on_click(event):
+                close_overlay()
+            
+            canvas.bind('<Button-1>', on_click)
+            overlay.bind('<Button-1>', on_click)
+            
+            # Actualizar periódicamente para mantener la ventana visible
+            def keep_alive():
+                try:
+                    overlay.update()
+                    if overlay.winfo_exists():
+                        overlay.after(100, keep_alive)
+                except:
+                    pass
+            
+            keep_alive()
+            
+        except Exception as e:
+            print(f"Error al dibujar borde: {e}")
     
     # Función para obtener el conteo de emails globales del servidor
     def get_global_email_count():
@@ -776,9 +892,9 @@ def create_new_window(parent_root):
     images_header_frame.pack(fill="x")
     
     # Encabezados de imágenes
-    images_headers = ["Imagen", "Vista Previa", "Acción"]
-    images_header_widths = [400, 150, 150]
-    images_header_alignments = ["w", "center", "center"]  # Solo "Vista Previa" y "Acción" centrados
+    images_headers = ["Imagen", "Vista Previa", "Cargar", "Observar"]
+    images_header_widths = [350, 120, 120, 120]
+    images_header_alignments = ["w", "center", "center", "center"]  # Solo "Vista Previa" y acciones centrados
     
     for i, (header, width, alignment) in enumerate(zip(images_headers, images_header_widths, images_header_alignments)):
         header_label = ctk.CTkLabel(
@@ -793,7 +909,7 @@ def create_new_window(parent_root):
         header_label.grid(row=0, column=i, padx=5, pady=10, sticky=sticky_value)
     
     # Configurar columnas del header de imágenes
-    for i in range(3):
+    for i in range(4):
         images_header_frame.grid_columnconfigure(i, weight=1)
     
     # Crear filas de datos de imágenes
@@ -807,7 +923,7 @@ def create_new_window(parent_root):
             text=image_name,
             font=("Arial", 12),
             text_color="black",
-            width=400,
+            width=350,
             anchor="w"
         )
         name_label.grid(row=0, column=0, padx=5, pady=8, sticky="w")
@@ -823,57 +939,234 @@ def create_new_window(parent_root):
             fg_color="#17a2b8" if has_image else "#6c757d",
             text_color="white",
             font=("Arial", 11),
-            width=120,
+            width=100,
             height=30,
             state="normal" if has_image else "disabled"
         )
         view_button.grid(row=0, column=1, padx=5, pady=8)
         
         # Función para ver imagen con referencia correcta al botón
-        def create_view_function(img_name, button_ref):
+        def create_view_function(img_name, view_button_ref, observe_button_ref):
             def view_image_func():
                 image_path = get_image_path(img_name)
                 if image_path:
-                    # Callback para actualizar el botón cuando se elimine la imagen
-                    def update_button_after_delete():
-                        button_ref.configure(
+                    # Callback para actualizar los botones cuando se elimine la imagen
+                    def update_buttons_after_delete():
+                        view_button_ref.configure(
                             fg_color="#6c757d",
                             state="disabled"
                         )
-                    view_image(image_path, update_button_after_delete)
+                        observe_button_ref.configure(
+                            fg_color="#6c757d",
+                            state="disabled"
+                        )
+                    view_image(image_path, update_buttons_after_delete)
                 else:
                     messagebox.showwarning("Imagen no encontrada", f"No se encontró la imagen: {img_name}\n\nPrimero carga la imagen usando el botón 'Cargar Imagen'.")
             return view_image_func
         
         # Función para cargar imagen con referencia correcta al botón
-        def create_load_function(img_name, button_ref):
+        def create_load_function(img_name, view_button_ref, observe_button_ref):
             def load_image_func():
                 result = load_image(img_name)
                 if result:
-                    # Actualizar solo el botón "Ver Imagen" sin refrescar toda la ventana
-                    button_ref.configure(
+                    # Actualizar los botones "Ver Imagen" y "Observar" sin refrescar toda la ventana
+                    view_button_ref.configure(
                         fg_color="#17a2b8",
+                        state="normal"
+                    )
+                    observe_button_ref.configure(
+                        fg_color="#28a745",
                         state="normal"
                     )
             return load_image_func
         
+        # Función para observar imagen (verificar si está visible en pantalla)
+        def create_observe_function(img_name):
+            def observe_image_func():
+                # Verificar primero si la imagen existe
+                image_path = get_image_path(img_name)
+                if not image_path:
+                    messagebox.showwarning(
+                        "Imagen no encontrada", 
+                        f"No se encontró la imagen: {img_name}\n\nPrimero carga la imagen usando el botón 'Cargar Imagen'."
+                    )
+                    return
+                
+                # Detectar si es un captcha_imposible (tiene spinner rotando)
+                is_spinner_image = (
+                    img_name.lower() == "captcha_imposible" or 
+                    img_name.lower() == "captcha_imposible_2" or 
+                    img_name.lower() == "captcha_imposible_3"
+                )
+                
+                if is_spinner_image:
+                    # Usar wait_for_spinner para imágenes con spinner
+                    # Probar diferentes niveles de confidence para spinners
+                    spinner_configs = [
+                        {"confidence": 0.5, "name": "Confianza 0.5 (Recomendado para spinners)"},
+                        {"confidence": 0.4, "name": "Confianza 0.4 (Más permisivo)"},
+                        {"confidence": 0.6, "name": "Confianza 0.6 (Más estricto)"},
+                    ]
+                    
+                    results = []
+                    location = None
+                    successful_config = None
+                    
+                    for config in spinner_configs:
+                        test_location = wait_for_spinner(
+                            img_name,
+                            max_attempts=3,  # Pocos intentos para prueba rápida
+                            delay_between_attempts=0.1,
+                            confidence=config["confidence"],
+                            silent=True
+                        )
+                        if test_location:
+                            location = test_location
+                            successful_config = config
+                            results.append(f"✅ {config['name']}: SPINNER ENCONTRADO")
+                            break
+                        else:
+                            results.append(f"❌ {config['name']}: Spinner no encontrado")
+                    
+                    if location:
+                        # Obtener el box para dibujar el borde
+                        box = find_creator_image(img_name, confidence=0.5, return_box=True, grayscale=True)
+                        if box:
+                            # Dibujar borde rojo alrededor del spinner
+                            new_window.after(100, lambda: draw_red_border_around_image(box, duration=3000))
+                        
+                        all_results = "\n".join(results)
+                        messagebox.showinfo(
+                            "✅ Spinner Detectado",
+                            f"El spinner de '{img_name}' está visible en la pantalla.\n\n"
+                            f"Ubicación encontrada: ({location.x}, {location.y})\n"
+                            f"{'Área: ' + str(box.width) + 'x' + str(box.height) + ' píxeles' if box else ''}\n\n"
+                            f"Configuración exitosa: {successful_config['name']}\n\n"
+                            f"Resultados de todas las pruebas:\n{all_results}\n\n"
+                            f"💡 Se ha dibujado un borde rojo alrededor del spinner.\n"
+                            f"🔄 El spinner está rotando, por eso se usa confidence bajo (0.5)."
+                        )
+                    else:
+                        all_results = "\n".join(results)
+                        messagebox.showwarning(
+                            "❌ Spinner No Visible",
+                            f"El spinner de '{img_name}' NO está visible en la pantalla actualmente.\n\n"
+                            f"Se probaron {len(spinner_configs)} configuraciones diferentes:\n\n"
+                            f"{all_results}\n\n"
+                            f"💡 Recordatorio: Esta imagen tiene un spinner rotando.\n"
+                            f"Posibles soluciones:\n"
+                            f"• Asegúrate de que el spinner esté visible y rotando\n"
+                            f"• Verifica que no esté oculta por otras ventanas\n"
+                            f"• El confidence bajo (0.5) permite detectar el spinner en diferentes posiciones\n"
+                            f"• Si no se detecta, intenta reducir aún más el confidence (0.4 o 0.3)"
+                        )
+                else:
+                    # Usar método normal para imágenes sin spinner
+                    # Probar diferentes configuraciones para diagnosticar problemas
+                    # Empezar con configuraciones más estrictas para evitar falsos positivos
+                    configs_to_try = [
+                        {"confidence": 0.9, "grayscale": True, "name": "Confianza 0.9, Escala de grises"},
+                        {"confidence": 0.8, "grayscale": True, "name": "Confianza 0.8, Escala de grises"},
+                        {"confidence": 0.7, "grayscale": True, "name": "Confianza 0.7, Escala de grises"},
+                        {"confidence": 0.9, "grayscale": False, "name": "Confianza 0.9, Color completo"},
+                        {"confidence": 0.8, "grayscale": False, "name": "Confianza 0.8, Color completo"},
+                        {"confidence": 0.7, "grayscale": False, "name": "Confianza 0.7, Color completo"},
+                    ]
+                    
+                    results = []
+                    box = None
+                    location = None
+                    successful_config = None
+                    
+                    for config in configs_to_try:
+                        test_box = find_creator_image(
+                            img_name, 
+                            confidence=config["confidence"], 
+                            return_box=True,
+                            grayscale=config["grayscale"]
+                        )
+                        if test_box:
+                            box = test_box
+                            location = find_creator_image(
+                                img_name, 
+                                confidence=config["confidence"], 
+                                return_box=False,
+                                grayscale=config["grayscale"]
+                            )
+                            successful_config = config
+                            results.append(f"✅ {config['name']}: ENCONTRADA")
+                            break
+                        else:
+                            results.append(f"❌ {config['name']}: No encontrada")
+                    
+                    if box and location:
+                        # Dibujar borde rojo alrededor de la imagen
+                        # Usar after para ejecutar después de mostrar el mensaje
+                        new_window.after(100, lambda: draw_red_border_around_image(box, duration=3000))
+                        
+                        # Crear mensaje con información detallada
+                        config_info = f"\n\nConfiguración exitosa: {successful_config['name']}"
+                        all_results = "\n".join(results)
+                        
+                        messagebox.showinfo(
+                            "✅ Imagen Visible",
+                            f"La imagen '{img_name}' está visible en la pantalla.\n\n"
+                            f"Ubicación encontrada: ({location.x}, {location.y})\n"
+                            f"Área: {box.width}x{box.height} píxeles"
+                            f"{config_info}\n\n"
+                            f"Resultados de todas las pruebas:\n{all_results}\n\n"
+                            f"Se ha dibujado un borde rojo alrededor de la imagen.\n"
+                            f"La aplicación puede detectar correctamente esta imagen."
+                        )
+                    else:
+                        # Mostrar resultados de todas las pruebas fallidas
+                        all_results = "\n".join(results)
+                        messagebox.showwarning(
+                            "❌ Imagen No Visible",
+                            f"La imagen '{img_name}' NO está visible en la pantalla actualmente.\n\n"
+                            f"Se probaron {len(configs_to_try)} configuraciones diferentes:\n\n"
+                            f"{all_results}\n\n"
+                            f"Posibles soluciones:\n"
+                            f"• Asegúrate de que la imagen esté completamente visible\n"
+                            f"• Verifica que no esté oculta por otras ventanas\n"
+                            f"• La imagen debe coincidir exactamente con la que cargaste\n"
+                            f"• En VPS, puede haber diferencias de renderizado - intenta capturar la imagen directamente desde el VPS\n"
+                            f"• Considera reducir el confidence o desactivar grayscale en el código"
+                        )
+            return observe_image_func
+        
+        # Botón para observar imagen
+        observe_button = ctk.CTkButton(
+            row_frame,
+            text="Observar",
+            command=create_observe_function(image_name),
+            fg_color="#28a745" if has_image else "#6c757d",
+            text_color="white",
+            font=("Arial", 11),
+            width=100,
+            height=30,
+            state="normal" if has_image else "disabled"
+        )
+        observe_button.grid(row=0, column=3, padx=5, pady=8)
+        
         # Asignar comandos a los botones con las referencias correctas
-        view_button.configure(command=create_view_function(image_name, view_button))
+        view_button.configure(command=create_view_function(image_name, view_button, observe_button))
         
         load_button = ctk.CTkButton(
             row_frame,
             text="Cargar Imagen",
-            command=create_load_function(image_name, view_button),
+            command=create_load_function(image_name, view_button, observe_button),
             fg_color="#007ACC",
             text_color="white",
             font=("Arial", 11),
-            width=120,
+            width=100,
             height=30
         )
         load_button.grid(row=0, column=2, padx=5, pady=8)
         
         # Configurar columnas de la fila de imágenes
-        for j in range(3):
+        for j in range(4):
             row_frame.grid_columnconfigure(j, weight=1)
     
     return new_window

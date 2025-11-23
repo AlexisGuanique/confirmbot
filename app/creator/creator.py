@@ -106,10 +106,11 @@ def observador_unificado(coordinates, email, password, filepath):
     import json
     
     print("👁️ Observando número, captcha rojo, captcha blanco o éxito...")
+    time.sleep(5)
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 120
+    timeout_seconds = 150
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -204,10 +205,11 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
     import json
     
     print("👁️ Observando número, captcha rojo, captcha blanco o éxito...")
+    time.sleep(5)
     
     # Configuración del observador
     start_time = time.time()
-    timeout_seconds = 120
+    timeout_seconds = 150
     
     # Estado del observador
     estado = ObservadorEstado()
@@ -311,7 +313,7 @@ def _verificar_timeout(start_time, timeout_seconds, coordinates):
     
     elapsed_time = time.time() - start_time
     if elapsed_time > timeout_seconds:
-        print("⏰ Timeout de 120 segundos - no se encontraron imágenes, cerrando ventana")
+        print("⏰ Timeout de 150 segundos - no se encontraron imágenes, cerrando ventana")
         _desactivar_proxy()
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
@@ -608,19 +610,19 @@ def _procesar_captcha_rojo(coordinates, estado):
 
 def _procesar_captcha_imposible(coordinates, estado):
     """Procesa la detección de captcha imposible (incluye captcha_imposible, captcha_imposible_2 y captcha_imposible_3)"""
-    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    from app.creator.computer_actions import click_coordinates, wait_for_spinner
     import time
     
-    # Detectar captcha imposible (versión 1)
-    captcha_found = wait_for_creator_image("captcha_imposible", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    # Detectar captcha imposible (versión 1) usando wait_for_spinner porque tiene un spinner rotando
+    captcha_found = wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True)
     
     # Si no se encuentra la versión 1, intentar con la versión 2
     if not captcha_found:
-        captcha_found = wait_for_creator_image("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        captcha_found = wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True)
     
     # Si no se encuentra la versión 2, intentar con la versión 3
     if not captcha_found:
-        captcha_found = wait_for_creator_image("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        captcha_found = wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True)
     
     if not captcha_found:
         return None  # No hay captcha que procesar
@@ -634,13 +636,37 @@ def _procesar_captcha_imposible(coordinates, estado):
     _desactivar_proxy()
     
     if estado.obstaculo_count >= 2:
-        print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        _desactivar_proxy()
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return False  # Terminar el proceso
+        print("🔄 Segundo obstáculo detectado - verificando confirmación antes de cerrar...")
+        print("⏳ Esperando 8 segundos para verificar si el spinner persiste...")
+        
+        # Esperar un poco para ver si el captcha se convierte en captcha bueno
+        time.sleep(8)
+        
+        # Verificar de nuevo si el spinner sigue presente
+        captcha_still_found = False
+        
+        # Verificar las tres variantes del captcha imposible
+        if wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True):
+            captcha_still_found = True
+        elif wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True):
+            captcha_still_found = True
+        elif wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True):
+            captcha_still_found = True
+        
+        if captcha_still_found:
+            print("✅ Spinner de captcha imposible confirmado - procediendo a cerrar ventana")
+            _desactivar_proxy()
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False  # Terminar el proceso
+        else:
+            print("⚠️ Spinner ya no está presente - puede que se haya convertido en captcha bueno")
+            print("🔄 Continuando el proceso en lugar de cerrar la ventana")
+            # No cerrar la ventana, continuar con el proceso normal
+            # Esto permite que el captcha bueno sea procesado si aparece
+            return True  # Continuar el proceso
     
     close_captcha_coords = coordinates.get("close_captcha_click")
     if close_captcha_coords:

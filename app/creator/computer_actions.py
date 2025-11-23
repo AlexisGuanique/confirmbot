@@ -50,21 +50,68 @@ def find_image(image_path, confidence=0.7, silent=False):
         pass
     return None
 
-def find_creator_image(image_name, confidence=0.7):
-    """Busca una imagen del creator por su nombre."""
+def find_creator_image(image_name, confidence=0.8, return_box=False, grayscale=True, region=None):
+    """
+    Busca una imagen del creator por su nombre.
+    
+    Args:
+        image_name: Nombre de la imagen
+        confidence: Nivel de confianza (0-1). Valores más altos = más estricto (default: 0.8)
+        return_box: Si es True, devuelve el Box completo en lugar del centro
+        grayscale: Si es True, convierte a escala de grises antes de comparar (default: True)
+        region: Tupla (left, top, width, height) para limitar la búsqueda a una región específica
+    
+    Returns:
+        Point (x, y) si return_box=False, o Box (left, top, width, height) si return_box=True
+    """
     image_path = get_image_path(image_name)
-    if image_path:
-        return find_image(image_path, confidence)
-    return None
+    if not image_path:
+        return None
+    
+    # Usar la ruta absoluta directamente sin get_resource_path
+    try:
+        if not os.path.exists(image_path):
+            return None
+
+        # Asegurar que confidence esté en un rango válido y sea razonable
+        confidence = max(0.5, min(0.99, confidence))  # Entre 0.5 y 0.99
+
+        # Preparar parámetros para pyautogui
+        kwargs = {
+            'confidence': confidence,
+            'grayscale': grayscale
+        }
+        
+        # Agregar región si se especifica
+        if region:
+            kwargs['region'] = region
+
+        if return_box:
+            # Devolver el área completa de la imagen
+            box = pyautogui.locateOnScreen(image_path, **kwargs)
+            return box
+        else:
+            # Devolver solo el centro
+            location = pyautogui.locateCenterOnScreen(image_path, **kwargs)
+            return location
+    except pyautogui.ImageNotFoundException:
+        # Imagen no encontrada - esto es normal, no es un error
+        return None
+    except Exception as e:
+        # Log del error para debugging (solo si es un error real)
+        error_type = type(e).__name__
+        if "ImageNotFoundException" not in error_type and "NotFound" not in error_type:
+            print(f"⚠️ Error al buscar imagen '{image_name}': {e}")
+        return None
 
 def image_exists(image_path, confidence=0.7):
     """Verifica si una imagen existe en la pantalla."""
     location = find_image(image_path, confidence)
     return location is not None
 
-def creator_image_exists(image_name, confidence=0.7):
+def creator_image_exists(image_name, confidence=0.8):
     """Verifica si una imagen del creator existe en la pantalla."""
-    location = find_creator_image(image_name, confidence)
+    location = find_creator_image(image_name, confidence=confidence)
     return location is not None
 
 def click_coordinates(coordinates, double_click=False, button='left'):
@@ -188,7 +235,7 @@ def wait_for_image(image_path, max_attempts=90, delay_between_attempts=1, confid
         print(f"❌ No se encontró la imagen después de {max_attempts} intentos")
     return None
 
-def wait_for_creator_image(image_name, max_attempts=90, delay_between_attempts=1, confidence=0.7, silent=False):
+def wait_for_creator_image(image_name, max_attempts=90, delay_between_attempts=1, confidence=0.8, silent=False, grayscale=True, region=None):
 
     image_path = get_image_path(image_name)
     if not image_path:
@@ -196,7 +243,33 @@ def wait_for_creator_image(image_name, max_attempts=90, delay_between_attempts=1
             print(f"❌ No se encontró la imagen del creator: {image_name}")
         return None
     
-    return wait_for_image(image_path, max_attempts, delay_between_attempts, confidence, silent)
+    # Asegurar que confidence sea razonable (mínimo 0.7 para evitar falsos positivos)
+    if confidence < 0.7:
+        confidence = 0.7
+    
+    # Usar find_creator_image directamente para tener control sobre grayscale
+    for attempt in range(1, max_attempts + 1):
+        location = find_creator_image(image_name, confidence=confidence, return_box=False, grayscale=grayscale, region=region)
+        if location:
+            # Validación adicional: verificar una segunda vez para evitar falsos positivos
+            # Solo si max_attempts es 1 (búsqueda rápida), hacer doble verificación
+            if max_attempts == 1:
+                time.sleep(0.1)  # Pequeña pausa
+                location2 = find_creator_image(image_name, confidence=confidence, return_box=False, grayscale=grayscale, region=region)
+                if not location2:
+                    # Si la segunda verificación falla, probablemente fue un falso positivo
+                    continue
+            
+            if not silent:
+                print(f"✅ ¡Imagen '{image_name}' encontrada en el intento {attempt}!")
+            return location
+        
+        if attempt < max_attempts:
+            time.sleep(delay_between_attempts)
+    
+    if not silent:
+        print(f"❌ No se encontró la imagen '{image_name}' después de {max_attempts} intentos")
+    return None
 
 def generate_random_name():
     """
@@ -326,3 +399,49 @@ def get_clipboard_content():
     except Exception as e:
         print(f"❌ Error obteniendo contenido del portapapeles: {e}")
         return ""
+
+def wait_for_spinner(image_name, max_attempts=90, delay_between_attempts=0.2, confidence=0.5, silent=False):
+    """
+    Detecta un spinner de carga que está en constante rotación.
+    Usa un confidence bajo por defecto (0.5) para detectar el spinner aunque no sea idéntico
+    a la imagen de referencia, ya que está rotando constantemente.
+    
+    Args:
+        image_name: Nombre de la imagen del spinner
+        max_attempts: Número máximo de intentos
+        delay_between_attempts: Tiempo entre intentos (más corto para spinners, default: 0.2s)
+        confidence: Nivel de confianza (default: 0.5 - bajo para detectar variaciones)
+        silent: Si es True, no imprime mensajes
+    
+    Returns:
+        Point (x, y) si encuentra el spinner, None si no
+    """
+    image_path = get_image_path(image_name)
+    if not image_path:
+        if not silent:
+            print(f"❌ No se encontró la imagen del spinner: {image_name}")
+        return None
+    
+    # Usar confidence bajo para detectar el spinner aunque esté en diferentes posiciones de rotación
+    # Hacer múltiples intentos rápidos para "atrapar" el spinner en alguna de sus posiciones
+    for attempt in range(1, max_attempts + 1):
+        # Hacer varios intentos rápidos seguidos para aumentar las chances de detectarlo
+        for quick_attempt in range(5):  # 5 intentos rápidos por ciclo
+            location = find_creator_image(
+                image_name,
+                confidence=confidence,
+                return_box=False,
+                grayscale=True
+            )
+            if location:
+                if not silent:
+                    print(f"✅ Spinner '{image_name}' encontrado en el intento {attempt} (quick {quick_attempt + 1})")
+                return location
+            time.sleep(0.03)  # Muy corto entre intentos rápidos (30ms)
+        
+        if attempt < max_attempts:
+            time.sleep(delay_between_attempts)
+    
+    if not silent:
+        print(f"❌ No se encontró el spinner '{image_name}' después de {max_attempts} intentos")
+    return None
