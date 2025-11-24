@@ -22,6 +22,8 @@ def create_database():
 
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas para esta conexión
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
         # 🔹 Crear tabla de versiones de migración
@@ -144,11 +146,23 @@ def create_database():
             '''
         )
 
-        # 🔹 Tabla para almacenar coordenadas de clicks del creator
+        # 🔹 Tabla para navegadores
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS browsers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                isActive INTEGER NOT NULL DEFAULT 1
+            )
+            '''
+        )
+        
+        # 🔹 Tabla para almacenar coordenadas de clicks del creator (ahora asociada a navegadores)
         cursor.execute(
             '''
             CREATE TABLE IF NOT EXISTS creator_coordinates (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                browser_id INTEGER NOT NULL,
                 brave_click TEXT NOT NULL,
                 linkedin_fav_click TEXT NOT NULL,
                 email_input_click TEXT NOT NULL,
@@ -161,81 +175,39 @@ def create_database():
                 save_cookie_clipboard_click TEXT NOT NULL,
                 close_window TEXT NOT NULL,
                 continue_button_click_optional TEXT NOT NULL,
-                white_captcha_click TEXT NOT NULL
+                white_captcha_click TEXT NOT NULL,
+                close_captcha_error_click TEXT NOT NULL,
+                close_proxy_error_click TEXT NOT NULL,
+                FOREIGN KEY (browser_id) REFERENCES browsers(id) ON DELETE CASCADE,
+                UNIQUE(browser_id)
             )
             '''
         )
         
-        # Migrar tabla existente si no tiene la columna close_window
-        try:
-            cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN close_window TEXT NOT NULL DEFAULT ''")
-            print("✅ Columna close_window agregada a creator_coordinates")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-        
-        # Migrar tabla existente si no tiene la columna continue_button_click_optional
-        try:
-            cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN continue_button_click_optional TEXT")
-            print("✅ Columna continue_button_click_optional agregada a creator_coordinates")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-        
-        # Migrar tabla existente si no tiene la columna white_captcha_click
-        try:
-            cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN white_captcha_click TEXT NOT NULL DEFAULT ''")
-            print("✅ Columna white_captcha_click agregada a creator_coordinates")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-        
-        # Migrar tabla existente si no tiene la columna close_captcha_error_click
-        try:
-            cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN close_captcha_error_click TEXT NOT NULL DEFAULT ''")
-            print("✅ Columna close_captcha_error_click agregada a creator_coordinates")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-        
-        # Migrar tabla existente si no tiene la columna close_proxy_error_click
-        try:
-            cursor.execute("ALTER TABLE creator_coordinates ADD COLUMN close_proxy_error_click TEXT NOT NULL DEFAULT ''")
-            print("✅ Columna close_proxy_error_click agregada a creator_coordinates")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-        
-        # 🔄 MIGRACIÓN ESPECIAL: Verificar y corregir estructura de creator_coordinates
-        print("🔄 Verificando estructura de creator_coordinates...")
+        # 🔄 MIGRACIÓN: Agregar browser_id a creator_coordinates si no existe
+        print("🔄 Verificando migración de creator_coordinates para múltiples navegadores...")
         cursor.execute("PRAGMA table_info(creator_coordinates)")
         creator_columns = [col[1] for col in cursor.fetchall()]
         
-        expected_creator_columns = [
-            'id', 'brave_click', 'linkedin_fav_click', 'email_input_click',
-            'continue_button_click', 'name_input_click', 'continue_button2_click',
-            'close_captcha_click', 'close_number_click', 'cookie_editor_icon_click',
-            'save_cookie_clipboard_click', 'close_window', 'continue_button_click_optional',
-            'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click'
-        ]
-        
-        # Verificar si faltan columnas y agregarlas sin borrar datos
-        missing_columns = set(expected_creator_columns) - set(creator_columns)
-        if missing_columns:
-            print(f"🔄 Agregando columnas faltantes: {missing_columns}")
-            for col in missing_columns:
-                try:
-                    cursor.execute(f"ALTER TABLE creator_coordinates ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
-                    print(f"✅ Columna {col} agregada a creator_coordinates")
-                except sqlite3.OperationalError:
-                    pass  # La columna ya existe
-        
-        # Si la tabla NO existe, crearla
-        if len(creator_columns) == 0:
-            print("🔄 Tabla creator_coordinates no existe, creándola...")
+        # Si la tabla existe pero no tiene browser_id, necesitamos migrar
+        if creator_columns and 'browser_id' not in creator_columns:
+            print("🔄 Migrando creator_coordinates para soportar múltiples navegadores...")
+            
+            # Crear navegador por defecto si no existe
+            cursor.execute("SELECT id FROM browsers LIMIT 1")
+            default_browser = cursor.fetchone()
+            if not default_browser:
+                cursor.execute("INSERT INTO browsers (name, isActive) VALUES (?, ?)", ("Navegador Principal", 1))
+                cursor.execute("SELECT id FROM browsers WHERE name = ?", ("Navegador Principal",))
+                default_browser_id = cursor.fetchone()[0]
+            else:
+                default_browser_id = default_browser[0]
+            
+            # Crear tabla temporal con la nueva estructura
             cursor.execute('''
-                CREATE TABLE creator_coordinates (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                CREATE TABLE creator_coordinates_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    browser_id INTEGER NOT NULL,
                     brave_click TEXT NOT NULL,
                     linkedin_fav_click TEXT NOT NULL,
                     email_input_click TEXT NOT NULL,
@@ -250,18 +222,84 @@ def create_database():
                     continue_button_click_optional TEXT NOT NULL,
                     white_captcha_click TEXT NOT NULL,
                     close_captcha_error_click TEXT NOT NULL,
-                    close_proxy_error_click TEXT NOT NULL
+                    close_proxy_error_click TEXT NOT NULL,
+                    FOREIGN KEY (browser_id) REFERENCES browsers(id) ON DELETE CASCADE,
+                    UNIQUE(browser_id)
                 )
             ''')
-            print("✅ Tabla creator_coordinates creada")
-        else:
-            print("✅ Tabla creator_coordinates ya existe y tiene las columnas necesarias")
+            
+            # Copiar datos existentes a la nueva tabla
+            cursor.execute("SELECT * FROM creator_coordinates")
+            old_data = cursor.fetchone()
+            if old_data:
+                # Mapear columnas antiguas a nuevas
+                cursor.execute('''
+                    INSERT INTO creator_coordinates_new (
+                        browser_id, brave_click, linkedin_fav_click, email_input_click,
+                        continue_button_click, name_input_click, continue_button2_click,
+                        close_captcha_click, close_number_click, cookie_editor_icon_click,
+                        save_cookie_clipboard_click, close_window, continue_button_click_optional,
+                        white_captcha_click, close_captcha_error_click, close_proxy_error_click
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    default_browser_id,
+                    old_data[1] if len(old_data) > 1 else '',
+                    old_data[2] if len(old_data) > 2 else '',
+                    old_data[3] if len(old_data) > 3 else '',
+                    old_data[4] if len(old_data) > 4 else '',
+                    old_data[5] if len(old_data) > 5 else '',
+                    old_data[6] if len(old_data) > 6 else '',
+                    old_data[7] if len(old_data) > 7 else '',
+                    old_data[8] if len(old_data) > 8 else '',
+                    old_data[9] if len(old_data) > 9 else '',
+                    old_data[10] if len(old_data) > 10 else '',
+                    old_data[11] if len(old_data) > 11 else '',
+                    old_data[12] if len(old_data) > 12 else '',
+                    old_data[13] if len(old_data) > 13 else '',
+                    old_data[14] if len(old_data) > 14 else '',
+                    old_data[15] if len(old_data) > 15 else ''
+                ))
+            
+            # Eliminar tabla antigua y renombrar la nueva
+            cursor.execute("DROP TABLE creator_coordinates")
+            cursor.execute("ALTER TABLE creator_coordinates_new RENAME TO creator_coordinates")
+            print("✅ Migración de creator_coordinates completada")
+        
+        # Verificar columnas faltantes en creator_coordinates
+        cursor.execute("PRAGMA table_info(creator_coordinates)")
+        creator_columns = [col[1] for col in cursor.fetchall()]
+        
+        expected_creator_columns = [
+            'id', 'browser_id', 'brave_click', 'linkedin_fav_click', 'email_input_click',
+            'continue_button_click', 'name_input_click', 'continue_button2_click',
+            'close_captcha_click', 'close_number_click', 'cookie_editor_icon_click',
+            'save_cookie_clipboard_click', 'close_window', 'continue_button_click_optional',
+            'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click'
+        ]
+        
+        # Agregar columnas faltantes
+        missing_columns = set(expected_creator_columns) - set(creator_columns)
+        if missing_columns:
+            print(f"🔄 Agregando columnas faltantes a creator_coordinates: {missing_columns}")
+            for col in missing_columns:
+                if col != 'browser_id':  # browser_id ya se maneja en la migración
+                    try:
+                        if col in ['close_window', 'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click']:
+                            cursor.execute(f"ALTER TABLE creator_coordinates ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+                        elif col == 'continue_button_click_optional':
+                            cursor.execute(f"ALTER TABLE creator_coordinates ADD COLUMN {col} TEXT")
+                        print(f"✅ Columna {col} agregada a creator_coordinates")
+                    except sqlite3.OperationalError:
+                        pass  # La columna ya existe
+        
+        print("✅ Verificación de creator_coordinates completada")
 
-        # 🔹 Tabla para configuración del creator
+        # 🔹 Tabla para configuración del creator (ahora asociada a navegadores)
         cursor.execute(
             '''
             CREATE TABLE IF NOT EXISTS creator_setting (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                browser_id INTEGER NOT NULL,
                 user_agent TEXT NOT NULL,
                 accounts_to_create INTEGER NOT NULL DEFAULT 1,
                 scheduled_time TEXT,
@@ -275,95 +313,130 @@ def create_database():
                 accounts_per_cycle INTEGER DEFAULT 1,
                 isInVps INTEGER DEFAULT 0,
                 is33mail INTEGER DEFAULT 1,
-                domain TEXT
+                domain TEXT,
+                FOREIGN KEY (browser_id) REFERENCES browsers(id) ON DELETE CASCADE,
+                UNIQUE(browser_id)
             )
             '''
         )
         
-        # Agregar columnas de hora programada si no existen
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN scheduled_time TEXT")
-            print("✅ Columna scheduled_time agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
+        # 🔹 Tabla para imágenes de navegadores
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS browser_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                browser_id INTEGER NOT NULL,
+                image_name TEXT NOT NULL,
+                image_path TEXT NOT NULL,
+                FOREIGN KEY (browser_id) REFERENCES browsers(id) ON DELETE CASCADE,
+                UNIQUE(browser_id, image_name)
+            )
+            '''
+        )
+        
+        # 🔄 MIGRACIÓN: Agregar browser_id a creator_setting si no existe
+        print("🔄 Verificando migración de creator_setting para múltiples navegadores...")
+        cursor.execute("PRAGMA table_info(creator_setting)")
+        setting_columns = [col[1] for col in cursor.fetchall()]
+        
+        # Si la tabla existe pero no tiene browser_id, necesitamos migrar
+        if setting_columns and 'browser_id' not in setting_columns:
+            print("🔄 Migrando creator_setting para soportar múltiples navegadores...")
             
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN timezone TEXT")
-            print("✅ Columna timezone agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
+            # Obtener navegador por defecto
+            cursor.execute("SELECT id FROM browsers LIMIT 1")
+            default_browser = cursor.fetchone()
+            if not default_browser:
+                cursor.execute("INSERT INTO browsers (name, isActive) VALUES (?, ?)", ("Navegador Principal", 1))
+                cursor.execute("SELECT id FROM browsers WHERE name = ?", ("Navegador Principal",))
+                default_browser_id = cursor.fetchone()[0]
+            else:
+                default_browser_id = default_browser[0]
             
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN notification_email TEXT")
-            print("✅ Columna notification_email agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
+            # Crear tabla temporal con la nueva estructura
+            cursor.execute('''
+                CREATE TABLE creator_setting_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    browser_id INTEGER NOT NULL,
+                    user_agent TEXT NOT NULL,
+                    accounts_to_create INTEGER NOT NULL DEFAULT 1,
+                    scheduled_time TEXT,
+                    timezone TEXT,
+                    notification_email TEXT,
+                    google_sheets_enabled INTEGER DEFAULT 0,
+                    google_sheets_name TEXT,
+                    google_credentials_file TEXT,
+                    cycle_time_minutes INTEGER DEFAULT 60,
+                    time_config_type TEXT DEFAULT 'scheduled',
+                    accounts_per_cycle INTEGER DEFAULT 1,
+                    isInVps INTEGER DEFAULT 0,
+                    is33mail INTEGER DEFAULT 1,
+                    domain TEXT,
+                    FOREIGN KEY (browser_id) REFERENCES browsers(id) ON DELETE CASCADE,
+                    UNIQUE(browser_id)
+                )
+            ''')
             
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN google_sheets_enabled INTEGER DEFAULT 0")
-            print("✅ Columna google_sheets_enabled agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
+            # Copiar datos existentes a la nueva tabla
+            cursor.execute("SELECT * FROM creator_setting")
+            old_data = cursor.fetchone()
+            if old_data:
+                cursor.execute('''
+                    INSERT INTO creator_setting_new (
+                        browser_id, user_agent, accounts_to_create, scheduled_time, timezone,
+                        notification_email, google_sheets_enabled, google_sheets_name,
+                        google_credentials_file, cycle_time_minutes, time_config_type,
+                        accounts_per_cycle, isInVps, is33mail, domain
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    default_browser_id,
+                    old_data[1] if len(old_data) > 1 else '',
+                    old_data[2] if len(old_data) > 2 else 1,
+                    old_data[3] if len(old_data) > 3 else None,
+                    old_data[4] if len(old_data) > 4 else None,
+                    old_data[5] if len(old_data) > 5 else None,
+                    old_data[6] if len(old_data) > 6 else 0,
+                    old_data[7] if len(old_data) > 7 else None,
+                    old_data[8] if len(old_data) > 8 else None,
+                    old_data[9] if len(old_data) > 9 else 60,
+                    old_data[10] if len(old_data) > 10 else 'scheduled',
+                    old_data[11] if len(old_data) > 11 else 1,
+                    old_data[12] if len(old_data) > 12 else 0,
+                    old_data[13] if len(old_data) > 13 else 1,
+                    old_data[14] if len(old_data) > 14 else None
+                ))
             
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN google_sheets_name TEXT")
-            print("✅ Columna google_sheets_name agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-            
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN google_credentials_file TEXT")
-            print("✅ Columna google_credentials_file agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-            
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN cycle_time_minutes INTEGER DEFAULT 60")
-            print("✅ Columna cycle_time_minutes agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-            
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN time_config_type TEXT DEFAULT 'scheduled'")
-            print("✅ Columna time_config_type agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-            
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN accounts_per_cycle INTEGER DEFAULT 1")
-            print("✅ Columna accounts_per_cycle agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-            
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN isInVps INTEGER DEFAULT 0")
-            print("✅ Columna isInVps agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-            
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN is33mail INTEGER DEFAULT 1")
-            print("✅ Columna is33mail agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
-            
-        try:
-            cursor.execute("ALTER TABLE creator_setting ADD COLUMN domain TEXT")
-            print("✅ Columna domain agregada a creator_setting")
-        except sqlite3.OperationalError:
-            # La columna ya existe, no hacer nada
-            pass
+            # Eliminar tabla antigua y renombrar la nueva
+            cursor.execute("DROP TABLE creator_setting")
+            cursor.execute("ALTER TABLE creator_setting_new RENAME TO creator_setting")
+            print("✅ Migración de creator_setting completada")
+        
+        # Agregar columnas faltantes si no existen
+        expected_setting_columns = [
+            'id', 'browser_id', 'user_agent', 'accounts_to_create', 'scheduled_time',
+            'timezone', 'notification_email', 'google_sheets_enabled', 'google_sheets_name',
+            'google_credentials_file', 'cycle_time_minutes', 'time_config_type',
+            'accounts_per_cycle', 'isInVps', 'is33mail', 'domain'
+        ]
+        
+        missing_setting_columns = set(expected_setting_columns) - set(setting_columns)
+        if missing_setting_columns:
+            print(f"🔄 Agregando columnas faltantes a creator_setting: {missing_setting_columns}")
+            for col in missing_setting_columns:
+                if col != 'browser_id':  # browser_id ya se maneja en la migración
+                    try:
+                        if col in ['scheduled_time', 'timezone', 'notification_email', 'google_sheets_name', 'google_credentials_file', 'domain']:
+                            cursor.execute(f"ALTER TABLE creator_setting ADD COLUMN {col} TEXT")
+                        elif col in ['google_sheets_enabled', 'cycle_time_minutes', 'accounts_per_cycle', 'isInVps', 'is33mail']:
+                            default_val = 0 if col in ['google_sheets_enabled', 'isInVps'] else (1 if col == 'is33mail' else (60 if col == 'cycle_time_minutes' else 1))
+                            cursor.execute(f"ALTER TABLE creator_setting ADD COLUMN {col} INTEGER DEFAULT {default_val}")
+                        elif col == 'time_config_type':
+                            cursor.execute(f"ALTER TABLE creator_setting ADD COLUMN {col} TEXT DEFAULT 'scheduled'")
+                        print(f"✅ Columna {col} agregada a creator_setting")
+                    except sqlite3.OperationalError:
+                        pass  # La columna ya existe
+        
+        print("✅ Verificación de creator_setting completada")
 
         # 🔹 Tabla para emails del creator
         cursor.execute(
@@ -405,6 +478,8 @@ def run_migrations():
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         # Obtener la versión actual de migración
@@ -499,6 +574,8 @@ def get_logged_in_user():
 
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
         # Obtener al primer usuario registrado en la tabla `user`
@@ -535,6 +612,8 @@ def delete_logged_in_user():
 
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
         # Eliminar el usuario por su ID
@@ -583,6 +662,8 @@ def clear_database():
 def save_bot_settings(iterations, pause_minutes=20, enable_adb=True, enable_proxy=True, emails_per_batch=5):
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
         # Verificamos si ya hay una configuración guardada
@@ -613,6 +694,8 @@ def save_bot_settings(iterations, pause_minutes=20, enable_adb=True, enable_prox
 def get_bot_settings():
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch FROM bot_settings LIMIT 1")
         row = cursor.fetchone()
@@ -637,6 +720,8 @@ def save_emails(email, email_hostinger, password_hostinger):
     """Guarda un único email con las credenciales de Hostinger."""
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
         cursor.execute('''
@@ -657,6 +742,8 @@ def save_emails(email, email_hostinger, password_hostinger):
 def get_all_emails():
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT email, email_hostinger, password_hostinger FROM emails")
         rows = cursor.fetchall()
@@ -670,6 +757,8 @@ def get_all_emails():
 def get_email_by_id(id):
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT email, email_hostinger, password_hostinger FROM emails WHERE id = ?", (id,))
         row = cursor.fetchone()
@@ -691,6 +780,8 @@ def get_email_by_id(id):
 def clear_emails():
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
         cursor.execute("DELETE FROM emails")
@@ -711,6 +802,8 @@ def clear_emails():
 def get_email_count():
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM emails")
         count = cursor.fetchone()[0]
@@ -738,6 +831,8 @@ def save_click_coordinates(coordinates):
 
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
         cursor.execute("REPLACE INTO actions (id, first_click, second_click, third_click, fourth_click) VALUES (1, ?, ?, ?, ?)",
@@ -757,6 +852,8 @@ def get_click_coordinates():
     """Devuelve un diccionario con las 3 coordenadas almacenadas o None."""
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT first_click, second_click, third_click, fourth_click FROM actions WHERE id = 1")
         row = cursor.fetchone()
@@ -785,6 +882,8 @@ def save_nopecha_key(api_key: str):
     """Guarda o reemplaza la clave de NopeCHA."""
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
         cursor.execute(
@@ -806,6 +905,8 @@ def get_nopecha_key():
     """Obtiene la clave de NopeCHA almacenada, o None si no existe."""
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT api_key FROM nopecha_key WHERE id = 1")
         row = cursor.fetchone()
@@ -820,25 +921,280 @@ def get_nopecha_key():
         return None
 
 
-def save_creator_coordinates(coordinates_dict=None, **kwargs):
+# =================================
+#         BROWSERS
+# =================================
 
+def create_browser(name, isActive=True):
+    """
+    Crea un nuevo navegador
+    
+    Args:
+        name (str): Nombre del navegador
+        isActive (bool): Si el navegador está activo (default: True)
+    
+    Returns:
+        int: ID del navegador creado, o None si hay error
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
-        # Obtener coordenadas existentes
-        cursor.execute("SELECT * FROM creator_coordinates WHERE id = 1")
+        cursor.execute(
+            "INSERT INTO browsers (name, isActive) VALUES (?, ?)",
+            (name.strip(), 1 if isActive else 0)
+        )
+        
+        browser_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Navegador '{name}' creado con ID {browser_id}")
+        return browser_id
+        
+    except sqlite3.IntegrityError:
+        print(f"⚠️ El navegador '{name}' ya existe")
+        return None
+    except Exception as e:
+        print(f"❌ Error al crear navegador: {e}")
+        return None
+
+
+def get_all_browsers():
+    """
+    Obtiene todos los navegadores
+    
+    Returns:
+        list: Lista de diccionarios con id, name, isActive
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name, isActive FROM browsers ORDER BY id ASC")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [
+            {
+                'id': row[0],
+                'name': row[1],
+                'isActive': bool(row[2])
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        print(f"❌ Error al obtener navegadores: {e}")
+        return []
+
+
+def get_browser_by_id(browser_id):
+    """
+    Obtiene un navegador por su ID
+    
+    Args:
+        browser_id (int): ID del navegador
+    
+    Returns:
+        dict: Diccionario con id, name, isActive, o None si no existe
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name, isActive FROM browsers WHERE id = ?", (browser_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'id': row[0],
+                'name': row[1],
+                'isActive': bool(row[2])
+            }
+        return None
+    except Exception as e:
+        print(f"❌ Error al obtener navegador: {e}")
+        return None
+
+
+def update_browser(browser_id, name=None, isActive=None):
+    """
+    Actualiza un navegador
+    
+    Args:
+        browser_id (int): ID del navegador
+        name (str): Nuevo nombre (opcional)
+        isActive (bool): Nuevo estado activo (opcional)
+    
+    Returns:
+        bool: True si se actualizó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        updates = []
+        values = []
+        
+        if name is not None:
+            updates.append("name = ?")
+            values.append(name.strip())
+        
+        if isActive is not None:
+            updates.append("isActive = ?")
+            values.append(1 if isActive else 0)
+        
+        if not updates:
+            conn.close()
+            return False
+        
+        values.append(browser_id)
+        cursor.execute(
+            f"UPDATE browsers SET {', '.join(updates)} WHERE id = ?",
+            values
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Navegador {browser_id} actualizado")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al actualizar navegador: {e}")
+        return False
+
+
+def delete_browser(browser_id):
+    """
+    Elimina un navegador y todas sus configuraciones asociadas
+    
+    Args:
+        browser_id (int): ID del navegador
+    
+    Returns:
+        bool: True si se eliminó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        # Verificar que existe
+        cursor.execute("SELECT name FROM browsers WHERE id = ?", (browser_id,))
+        browser = cursor.fetchone()
+        if not browser:
+            conn.close()
+            print(f"⚠️ Navegador {browser_id} no existe")
+            return False
+        
+        # Eliminar (CASCADE eliminará automáticamente coordenadas, configuraciones e imágenes)
+        cursor.execute("DELETE FROM browsers WHERE id = ?", (browser_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"✅ Navegador '{browser[0]}' eliminado")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al eliminar navegador: {e}")
+        return False
+
+
+def get_active_browsers():
+    """
+    Obtiene todos los navegadores activos
+    
+    Returns:
+        list: Lista de diccionarios con id, name, isActive
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name, isActive FROM browsers WHERE isActive = 1 ORDER BY id ASC")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [
+            {
+                'id': row[0],
+                'name': row[1],
+                'isActive': True
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        print(f"❌ Error al obtener navegadores activos: {e}")
+        return []
+
+
+def get_default_browser():
+    """
+    Obtiene el primer navegador activo, o el primero disponible si no hay activos
+    
+    Returns:
+        dict: Diccionario con id, name, isActive, o None si no hay navegadores
+    """
+    try:
+        # Intentar obtener un navegador activo
+        active_browsers = get_active_browsers()
+        if active_browsers:
+            return active_browsers[0]
+        
+        # Si no hay activos, obtener el primero disponible
+        all_browsers = get_all_browsers()
+        if all_browsers:
+            return all_browsers[0]
+        
+        return None
+    except Exception as e:
+        print(f"❌ Error al obtener navegador por defecto: {e}")
+        return None
+
+
+def save_creator_coordinates(browser_id, coordinates_dict=None, **kwargs):
+    """
+    Guarda las coordenadas del creator para un navegador específico
+    
+    Args:
+        browser_id (int): ID del navegador
+        coordinates_dict (dict): Diccionario con las coordenadas
+        **kwargs: Coordenadas individuales como argumentos
+    
+    Returns:
+        bool: True si se guardó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+
+        # Obtener coordenadas existentes para este navegador
+        cursor.execute("SELECT * FROM creator_coordinates WHERE browser_id = ?", (browser_id,))
         existing_row = cursor.fetchone()
         
-        # Preparar valores con los existentes como base
+        # Preparar valores con los existentes como base o valores por defecto
         if existing_row:
-            values = list(existing_row[1:])  # Excluir el id
-            # Asegurar que tenemos exactamente 15 valores (16 columnas - 1 id)
+            # Excluir id y browser_id (índices 0 y 1)
+            values = list(existing_row[2:])  # Desde índice 2 en adelante
+            # Asegurar que tenemos exactamente 15 valores
             while len(values) < 15:
                 values.append('')
-            values = values[:15]  # Limitar a 15 valores máximo
+            values = values[:15]
         else:
-            values = [''] * 15  # 15 campos de datos (sin id)
+            values = [''] * 15  # 15 campos de coordenadas
 
         # Mapeo de nombres de campos a índices (0-14 para 15 campos)
         field_mapping = {
@@ -870,22 +1226,23 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
             if field in field_mapping:
                 values[field_mapping[field]] = coord
 
+        # Insertar o actualizar (UPSERT usando REPLACE)
         cursor.execute(
             """
-            REPLACE INTO creator_coordinates (
-                id, brave_click, linkedin_fav_click, email_input_click,
+            INSERT OR REPLACE INTO creator_coordinates (
+                browser_id, brave_click, linkedin_fav_click, email_input_click,
                 continue_button_click, name_input_click, continue_button2_click,
                 close_captcha_click, close_number_click, cookie_editor_icon_click,
                 save_cookie_clipboard_click, close_window, continue_button_click_optional,
                 white_captcha_click, close_captcha_error_click, close_proxy_error_click
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            tuple(values)
+            (browser_id,) + tuple(values)
         )
 
         conn.commit()
         conn.close()
-        print("✅ Coordenadas del creator guardadas.")
+        print(f"✅ Coordenadas del creator guardadas para navegador {browser_id}")
         return True
 
     except Exception as e:
@@ -893,62 +1250,74 @@ def save_creator_coordinates(coordinates_dict=None, **kwargs):
         return False
 
 
-def get_creator_coordinates(*field_names):
-
+def get_creator_coordinates(browser_id, *field_names):
+    """
+    Obtiene las coordenadas del creator para un navegador específico
+    
+    Args:
+        browser_id (int): ID del navegador
+        *field_names: Campos específicos a obtener (opcional)
+    
+    Returns:
+        dict: Diccionario con las coordenadas, o None si no existen
+    """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM creator_coordinates WHERE id = 1")
+        cursor.execute("SELECT * FROM creator_coordinates WHERE browser_id = ?", (browser_id,))
         row = cursor.fetchone()
         conn.close()
 
         if not row:
             return None
 
-        # Mapeo de nombres de campos a índices
+        # Mapeo de nombres de campos a índices (ahora browser_id es índice 1)
         field_mapping = {
-            'brave_click': 1,
-            'linkedin_fav_click': 2,
-            'email_input_click': 3,
-            'continue_button_click': 4,
-            'name_input_click': 5,
-            'continue_button2_click': 6,
-            'close_captcha_click': 7,
-            'close_number_click': 8,
-            'cookie_editor_icon_click': 9,
-            'save_cookie_clipboard_click': 10,
-            'close_window': 11,
-            'continue_button_click_optional': 12,
-            'white_captcha_click': 13,
-            'close_captcha_error_click': 14,
-            'close_proxy_error_click': 15
+            'brave_click': 2,
+            'linkedin_fav_click': 3,
+            'email_input_click': 4,
+            'continue_button_click': 5,
+            'name_input_click': 6,
+            'continue_button2_click': 7,
+            'close_captcha_click': 8,
+            'close_number_click': 9,
+            'cookie_editor_icon_click': 10,
+            'save_cookie_clipboard_click': 11,
+            'close_window': 12,
+            'continue_button_click_optional': 13,
+            'white_captcha_click': 14,
+            'close_captcha_error_click': 15,
+            'close_proxy_error_click': 16
         }
 
         # Si no se especifican campos, devolver todos
         if not field_names:
             return {
-                'brave_click': row[1],
-                'linkedin_fav_click': row[2],
-                'email_input_click': row[3],
-                'continue_button_click': row[4],
-                'name_input_click': row[5],
-                'continue_button2_click': row[6],
-                'close_captcha_click': row[7],
-                'close_number_click': row[8],
-                'cookie_editor_icon_click': row[9],
-                'save_cookie_clipboard_click': row[10],
-                'close_window': row[11],
-                'continue_button_click_optional': row[12],
-                'white_captcha_click': row[13],
-                'close_captcha_error_click': row[14] if len(row) > 14 else '',
-                'close_proxy_error_click': row[15] if len(row) > 15 else ''
+                'brave_click': row[2] if len(row) > 2 else '',
+                'linkedin_fav_click': row[3] if len(row) > 3 else '',
+                'email_input_click': row[4] if len(row) > 4 else '',
+                'continue_button_click': row[5] if len(row) > 5 else '',
+                'name_input_click': row[6] if len(row) > 6 else '',
+                'continue_button2_click': row[7] if len(row) > 7 else '',
+                'close_captcha_click': row[8] if len(row) > 8 else '',
+                'close_number_click': row[9] if len(row) > 9 else '',
+                'cookie_editor_icon_click': row[10] if len(row) > 10 else '',
+                'save_cookie_clipboard_click': row[11] if len(row) > 11 else '',
+                'close_window': row[12] if len(row) > 12 else '',
+                'continue_button_click_optional': row[13] if len(row) > 13 else '',
+                'white_captcha_click': row[14] if len(row) > 14 else '',
+                'close_captcha_error_click': row[15] if len(row) > 15 else '',
+                'close_proxy_error_click': row[16] if len(row) > 16 else ''
             }
 
         # Devolver solo los campos solicitados
         result = {}
         for field_name in field_names:
             if field_name in field_mapping:
-                result[field_name] = row[field_mapping[field_name]]
+                idx = field_mapping[field_name]
+                result[field_name] = row[idx] if len(row) > idx else ''
 
         return result if result else None
 
@@ -958,11 +1327,12 @@ def get_creator_coordinates(*field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None, is33mail=None, domain=None):
+def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None, is33mail=None, domain=None):
     """
-    Guarda o actualiza la configuración del creator
+    Guarda o actualiza la configuración del creator para un navegador específico
     
     Args:
+        browser_id (int): ID del navegador
         user_agent (str): User agent a utilizar
         accounts_to_create (int): Cantidad de cuentas a crear (default: 1)
         scheduled_time (str): Hora programada en formato HH:MM (opcional)
@@ -980,21 +1350,23 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         # Convertir boolean a integer para SQLite (True = 1, False = 0)
         isInVps_int = 1 if isInVps is True else (0 if isInVps is False else None)
         is33mail_int = 1 if is33mail is True else (0 if is33mail is False else None)
         
-        # Insertar o actualizar (UPSERT)
+        # Insertar o actualizar (UPSERT usando REPLACE)
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail, domain)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps_int, is33mail_int, domain))
+            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail, domain)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (browser_id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps_int, is33mail_int, domain))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, isInVps={isInVps}, is33mail={is33mail}, domain={domain}")
+        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, isInVps={isInVps}, is33mail={is33mail}, domain={domain}")
         return True
         
     except Exception as e:
@@ -1002,17 +1374,22 @@ def save_creator_setting(user_agent, accounts_to_create=1, scheduled_time=None, 
         return False
 
 
-def get_creator_setting():
+def get_creator_setting(browser_id):
     """
-    Obtiene la configuración del creator
+    Obtiene la configuración del creator para un navegador específico
+    
+    Args:
+        browser_id (int): ID del navegador
     
     Returns:
         dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail y domain, o None si no existe
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail, domain FROM creator_setting WHERE id = 1")
+        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail, domain FROM creator_setting WHERE browser_id = ?", (browser_id,))
         row = cursor.fetchone()
         conn.close()
         
@@ -1047,31 +1424,185 @@ def get_creator_setting():
         return None
 
 
-def clear_scheduled_time():
+def clear_scheduled_time(browser_id):
     """
-    Elimina la hora programada de la configuración del creator
+    Elimina la hora programada de la configuración del creator para un navegador específico
+    
+    Args:
+        browser_id (int): ID del navegador
     
     Returns:
         bool: True si se eliminó correctamente, False en caso contrario
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         # Actualizar solo los campos de hora programada
         cursor.execute('''
             UPDATE creator_setting 
             SET scheduled_time = NULL, timezone = NULL 
-            WHERE id = 1
-        ''')
+            WHERE browser_id = ?
+        ''', (browser_id,))
         
         conn.commit()
         conn.close()
-        print("✅ Hora programada eliminada correctamente")
+        print(f"✅ Hora programada eliminada para navegador {browser_id}")
         return True
         
     except Exception as e:
         print(f"❌ Error al eliminar hora programada: {e}")
+        return False
+
+
+# =================================
+#         BROWSER IMAGES
+# =================================
+
+def save_browser_image(browser_id, image_name, image_path):
+    """
+    Guarda o actualiza una imagen asociada a un navegador
+    
+    Args:
+        browser_id (int): ID del navegador
+        image_name (str): Nombre de la imagen
+        image_path (str): Ruta de la imagen
+    
+    Returns:
+        bool: True si se guardó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO browser_images (browser_id, image_name, image_path)
+            VALUES (?, ?, ?)
+        ''', (browser_id, image_name, image_path))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Imagen '{image_name}' guardada para navegador {browser_id}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al guardar imagen del navegador: {e}")
+        return False
+
+
+def get_browser_image(browser_id, image_name):
+    """
+    Obtiene la ruta de una imagen específica de un navegador
+    
+    Args:
+        browser_id (int): ID del navegador
+        image_name (str): Nombre de la imagen
+    
+    Returns:
+        str: Ruta de la imagen, o None si no existe
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT image_path FROM browser_images WHERE browser_id = ? AND image_name = ?", (browser_id, image_name))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return row[0]
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error al obtener imagen del navegador: {e}")
+        return None
+
+
+def get_all_browser_images(browser_id):
+    """
+    Obtiene todas las imágenes asociadas a un navegador
+    
+    Args:
+        browser_id (int): ID del navegador
+    
+    Returns:
+        dict: Diccionario con image_name como clave y image_path como valor
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT image_name, image_path FROM browser_images WHERE browser_id = ?", (browser_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return {row[0]: row[1] for row in rows}
+        
+    except Exception as e:
+        print(f"❌ Error al obtener imágenes del navegador: {e}")
+        return {}
+
+
+def delete_browser_image(browser_id, image_name):
+    """
+    Elimina una imagen asociada a un navegador
+    
+    Args:
+        browser_id (int): ID del navegador
+        image_name (str): Nombre de la imagen
+    
+    Returns:
+        bool: True si se eliminó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM browser_images WHERE browser_id = ? AND image_name = ?", (browser_id, image_name))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Imagen '{image_name}' eliminada para navegador {browser_id}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al eliminar imagen del navegador: {e}")
+        return False
+
+
+def delete_all_browser_images(browser_id):
+    """
+    Elimina todas las imágenes asociadas a un navegador
+    
+    Args:
+        browser_id (int): ID del navegador
+    
+    Returns:
+        bool: True si se eliminaron correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM browser_images WHERE browser_id = ?", (browser_id,))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Todas las imágenes eliminadas para navegador {browser_id}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al eliminar imágenes del navegador: {e}")
         return False
 
 
@@ -1088,6 +1619,8 @@ def save_creator_email(email):
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -1117,6 +1650,8 @@ def get_all_creator_emails():
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT email FROM creator_email ORDER BY created_at DESC")
         rows = cursor.fetchall()
@@ -1140,6 +1675,8 @@ def get_creator_email_count():
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM creator_email")
         count = cursor.fetchone()[0]
@@ -1162,6 +1699,8 @@ def delete_all_creator_emails():
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         # Contar emails antes de eliminar
@@ -1187,6 +1726,8 @@ def delete_all_creator_emails():
 def get_creator_email_by_id(id):
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT email FROM creator_email WHERE id = ?", (id,))
         row = cursor.fetchone()
@@ -1206,6 +1747,8 @@ def get_all_creator_email_ids():
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM creator_email ORDER BY created_at DESC")
         rows = cursor.fetchall()
@@ -1327,6 +1870,8 @@ def get_creator_email_progress():
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT last_used_email_id, total_emails_used, last_updated FROM creator_email_progress WHERE id = 1")
         row = cursor.fetchone()
@@ -1358,6 +1903,8 @@ def update_creator_email_progress(last_used_email_id, total_emails_used):
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         # Insertar o actualizar (UPSERT)
@@ -1389,6 +1936,8 @@ def get_creator_emails_with_offset(limit, offset=0):
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM creator_email ORDER BY created_at ASC LIMIT ? OFFSET ?", (limit, offset))
         rows = cursor.fetchall()
@@ -1573,6 +2122,8 @@ def reset_creator_email_progress():
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         # Reiniciar progreso
@@ -1600,6 +2151,8 @@ def get_user_data():
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         cursor.execute('SELECT id, name, lastname, access_token FROM user LIMIT 1')
@@ -1754,6 +2307,8 @@ def save_emails_from_server(emails_data: list) -> bool:
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         # Limpiar emails existentes antes de agregar los nuevos
@@ -1888,6 +2443,8 @@ def check_email_exists(email: str) -> bool:
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM creator_email WHERE email = ?", (email,))
         count = cursor.fetchone()[0]
@@ -1914,6 +2471,8 @@ def append_emails_from_server(emails_data: list) -> bool:
     """
     try:
         conn = sqlite3.connect(DB_PATH)
+        # Habilitar claves foráneas
+        conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
         # Contar emails por status

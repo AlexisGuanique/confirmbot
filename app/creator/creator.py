@@ -96,7 +96,7 @@ def _son_cookies_similares(cookie1, cookie2):
         return False
 
 
-def observador_unificado(coordinates, email, password, filepath):
+def observador_unificado(coordinates, email, password, filepath, browser_id=None, browser_name=None):
     """
     Observador unificado que detecta números, captchas y éxito en la creación de cuentas
     """
@@ -124,54 +124,54 @@ def observador_unificado(coordinates, email, password, filepath):
             return False, "timeout", {"tiempo_transcurrido": time.time() - start_time, "timeout_seconds": timeout_seconds}
         
         # Verificar captcha bueno PRIMERO (solo desactiva proxy)
-        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado)
+        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado, browser_name=browser_name)
         if captcha_bueno_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar número
-        numero_result = _procesar_numero(coordinates, estado)
+        numero_result = _procesar_numero(coordinates, estado, browser_name=browser_name)
         if numero_result is False:  # Segundo obstáculo detectado
             return False, "numero_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
         elif numero_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar captcha error
-        captcha_error_result = _procesar_captcha_error(coordinates, estado)
+        captcha_error_result = _procesar_captcha_error(coordinates, estado, browser_name=browser_name)
         if captcha_error_result is False:  # Segundo obstáculo detectado
             return False, "captcha_error_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_error_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar proxy error (loop hasta que desaparezca)
-        proxy_error_result = _procesar_proxy_error(coordinates, estado)
+        proxy_error_result = _procesar_proxy_error(coordinates, estado, browser_name=browser_name)
         if proxy_error_result is True:  # Procesado o alcanzado límite, continuar
             continue
         elif proxy_error_result is None:  # No hay proxy error, continuar ciclo
             pass  # Continuar con las demás verificaciones
         
         # Verificar captcha rojo (VPS: cierra inmediatamente, Máquina física: dos verificaciones)
-        captcha_result = _procesar_captcha_rojo(coordinates, estado)
+        captcha_result = _procesar_captcha_rojo(coordinates, estado, browser_id=browser_id, browser_name=browser_name)
         if captcha_result is False:  # VPS: primera detección o Máquina física: segunda detección
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_result is True:  # Máquina física: primera detección procesada, continuar
             continue
         
         # Verificar formato nuevo
-        formato_nuevo_result = _procesar_formato_nuevo(coordinates, estado)
+        formato_nuevo_result = _procesar_formato_nuevo(coordinates, estado, browser_name=browser_name)
         if formato_nuevo_result is False:  # Formato nuevo detectado - terminar inmediatamente
             return False, "formato_nuevo_detectado", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif formato_nuevo_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar captcha imposible
-        captcha_imposible_result = _procesar_captcha_imposible(coordinates, estado)
+        captcha_imposible_result = _procesar_captcha_imposible(coordinates, estado, browser_name=browser_name)
         if captcha_imposible_result is False:  # Segundo obstáculo detectado
             return False, "captcha_imposible_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_imposible_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar éxito
-        exito_result = _procesar_exito(coordinates, email, password, filepath)
+        exito_result = _procesar_exito(coordinates, email, password, filepath, browser_id=browser_id, browser_name=browser_name)
         if exito_result is not None:
             # Si es un fallo de cookie, cerrar ventana antes de retornar
             if isinstance(exito_result, tuple) and len(exito_result) >= 2:
@@ -184,7 +184,7 @@ def observador_unificado(coordinates, email, password, filepath):
             return exito_result
         
         # Verificar captcha blanco (solo si no hay éxito)
-        captcha_blanco_result = _procesar_captcha_blanco(coordinates, estado)
+        captcha_blanco_result = _procesar_captcha_blanco(coordinates, estado, browser_name=browser_name)
         if captcha_blanco_result is False:  # Tercera detección de captcha blanco
             return False, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": estado.captcha_blanco_flag}
         elif captcha_blanco_result is True:  # Procesado correctamente, continuar
@@ -194,7 +194,7 @@ def observador_unificado(coordinates, email, password, filepath):
         time.sleep(0.5)
 
 
-def observador_unificado_con_detalle(coordinates, email, password, filepath):
+def observador_unificado_con_detalle(coordinates, email, password, filepath, browser_id=None, browser_name=None):
     """
     Versión mejorada del observador que devuelve información detallada sobre el resultado
     Retorna: (exito: bool, motivo_fallo: str, detalles: dict)
@@ -223,54 +223,54 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
             return False, "timeout", {"tiempo_transcurrido": time.time() - start_time, "timeout_seconds": timeout_seconds}
         
         # Verificar captcha bueno PRIMERO (solo desactiva proxy)
-        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado)
+        captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado, browser_name=browser_name)
         if captcha_bueno_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar número
-        numero_result = _procesar_numero(coordinates, estado)
+        numero_result = _procesar_numero(coordinates, estado, browser_name=browser_name)
         if numero_result is False:  # Segundo obstáculo detectado
             return False, "numero_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
         elif numero_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar captcha error
-        captcha_error_result = _procesar_captcha_error(coordinates, estado)
+        captcha_error_result = _procesar_captcha_error(coordinates, estado, browser_name=browser_name)
         if captcha_error_result is False:  # Segundo obstáculo detectado
             return False, "captcha_error_segundo_obstaculo", {"numero_count": estado.numero_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_error_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar proxy error (loop hasta que desaparezca)
-        proxy_error_result = _procesar_proxy_error(coordinates, estado)
+        proxy_error_result = _procesar_proxy_error(coordinates, estado, browser_name=browser_name)
         if proxy_error_result is True:  # Procesado o alcanzado límite, continuar
             continue
         elif proxy_error_result is None:  # No hay proxy error, continuar ciclo
             pass  # Continuar con las demás verificaciones
         
         # Verificar captcha rojo (VPS: cierra inmediatamente, Máquina física: dos verificaciones)
-        captcha_result = _procesar_captcha_rojo(coordinates, estado)
+        captcha_result = _procesar_captcha_rojo(coordinates, estado, browser_id=browser_id, browser_name=browser_name)
         if captcha_result is False:  # VPS: primera detección o Máquina física: segunda detección
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_result is True:  # Máquina física: primera detección procesada, continuar
             continue
         
         # Verificar formato nuevo
-        formato_nuevo_result = _procesar_formato_nuevo(coordinates, estado)
+        formato_nuevo_result = _procesar_formato_nuevo(coordinates, estado, browser_name=browser_name)
         if formato_nuevo_result is False:  # Formato nuevo detectado - terminar inmediatamente
             return False, "formato_nuevo_detectado", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif formato_nuevo_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar captcha imposible
-        captcha_imposible_result = _procesar_captcha_imposible(coordinates, estado)
+        captcha_imposible_result = _procesar_captcha_imposible(coordinates, estado, browser_name=browser_name)
         if captcha_imposible_result is False:  # Segundo obstáculo detectado
             return False, "captcha_imposible_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_imposible_result is True:  # Procesado correctamente, continuar
             continue
         
         # Verificar éxito
-        exito_result = _procesar_exito_con_detalle(coordinates, email, password, filepath)
+        exito_result = _procesar_exito_con_detalle(coordinates, email, password, filepath, browser_id=browser_id, browser_name=browser_name)
         if exito_result is not None:
             # Si es un fallo de cookie, cerrar ventana antes de retornar
             if isinstance(exito_result, tuple) and len(exito_result) >= 2:
@@ -283,7 +283,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath):
             return exito_result
         
         # Verificar captcha blanco (solo si no hay éxito)
-        captcha_blanco_result = _procesar_captcha_blanco(coordinates, estado)
+        captcha_blanco_result = _procesar_captcha_blanco(coordinates, estado, browser_name=browser_name)
         if captcha_blanco_result is False:  # Tercera detección de captcha blanco
             return False, "captcha_blanco_tercera_deteccion", {"captcha_blanco_flag": estado.captcha_blanco_flag}
         elif captcha_blanco_result is True:  # Procesado correctamente, continuar
@@ -323,12 +323,12 @@ def _verificar_timeout(start_time, timeout_seconds, coordinates):
     return False
 
 
-def _procesar_numero(coordinates, estado):
+def _procesar_numero(coordinates, estado, browser_name=None):
     """Procesa la detección de número"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
-    numero_found = wait_for_creator_image("imagen_numero", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    numero_found = wait_for_creator_image("imagen_numero", max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
     
     if not numero_found:
         return None  # No hay número que procesar
@@ -365,12 +365,12 @@ def _procesar_numero(coordinates, estado):
     return True
 
 
-def _procesar_captcha_error(coordinates, estado):
+def _procesar_captcha_error(coordinates, estado, browser_name=None):
     """Procesa la detección de captcha error"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
-    captcha_error_found = wait_for_creator_image("captcha_error", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    captcha_error_found = wait_for_creator_image("captcha_error", max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
     
     if not captcha_error_found:
         return None  # No hay captcha error que procesar
@@ -412,7 +412,7 @@ def _procesar_captcha_error(coordinates, estado):
     return True
 
 
-def _verificar_y_cerrar_proxy_error(coordinates, start_time=None, timeout_seconds=90):
+def _verificar_y_cerrar_proxy_error(coordinates, start_time=None, timeout_seconds=90, browser_name=None):
     """Función auxiliar para verificar y cerrar proxy error en cualquier momento del proceso"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
@@ -432,7 +432,7 @@ def _verificar_y_cerrar_proxy_error(coordinates, start_time=None, timeout_second
                 return True
         
         # PRIMERO: Verificar si la imagen está presente
-        proxy_error_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        proxy_error_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
         
         if not proxy_error_found:
             # La imagen ya no está presente
@@ -450,7 +450,7 @@ def _verificar_y_cerrar_proxy_error(coordinates, start_time=None, timeout_second
         
         # DESPUÉS DEL CLIC: Verificar que la imagen efectivamente desapareció
         time.sleep(0.5)  # Esperar adicional para que se procese
-        proxy_error_still_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.3, silent=True)
+        proxy_error_still_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.3, silent=True, browser_name=browser_name)
         
         if not proxy_error_still_found:
             # La imagen desapareció después del clic
@@ -467,7 +467,7 @@ def _verificar_y_cerrar_proxy_error(coordinates, start_time=None, timeout_second
     return True
 
 
-def _procesar_proxy_error(coordinates, estado):
+def _procesar_proxy_error(coordinates, estado, browser_name=None):
     """Procesa la detección de proxy error - loop continuo hasta que desaparezca"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
@@ -481,7 +481,7 @@ def _procesar_proxy_error(coordinates, estado):
     
     for intento in range(1, max_intentos + 1):
         # PRIMERO: Verificar si la imagen está presente
-        proxy_error_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.5, silent=True)
+        proxy_error_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
         
         if not proxy_error_found:
             # La imagen ya no está presente - VERIFICACIÓN COMPLETA
@@ -501,7 +501,7 @@ def _procesar_proxy_error(coordinates, estado):
         
         # DESPUÉS DEL CLIC: Verificar que la imagen efectivamente desapareció
         time.sleep(0.5)  # Esperar adicional para que se procese
-        proxy_error_still_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.3, silent=True)
+        proxy_error_still_found = wait_for_creator_image("proxy_error", max_attempts=1, delay_between_attempts=0.3, silent=True, browser_name=browser_name)
         
         if not proxy_error_still_found:
             # La imagen desapareció después del clic
@@ -520,12 +520,12 @@ def _procesar_proxy_error(coordinates, estado):
     return True
 
 
-def _procesar_formato_nuevo(coordinates, estado):
+def _procesar_formato_nuevo(coordinates, estado, browser_name=None):
     """Procesa la detección de formato nuevo - termina inmediatamente"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
     
-    formato_nuevo_found = wait_for_creator_image("formato_nuevo", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    formato_nuevo_found = wait_for_creator_image("formato_nuevo", max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
     
     if not formato_nuevo_found:
         return None  # No hay formato nuevo que procesar
@@ -547,19 +547,22 @@ def _procesar_formato_nuevo(coordinates, estado):
     return False  # Terminar el proceso inmediatamente
 
 
-def _procesar_captcha_rojo(coordinates, estado):
+def _procesar_captcha_rojo(coordinates, estado, browser_id=None, browser_name=None):
     """Procesa la detección de captcha rojo - comportamiento según tipo de máquina"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     from app.database.database import get_creator_setting
     import time
     
-    captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.5, silent=True)
+    captcha_found = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
     
     if not captcha_found:
         return None  # No hay captcha que procesar
     
     # Obtener configuración para determinar tipo de máquina
-    settings = get_creator_setting()
+    if browser_id:
+        settings = get_creator_setting(browser_id)
+    else:
+        settings = None
     isInVps = settings.get('isInVps') if settings else None
     
     estado.captcha_count += 1
@@ -608,21 +611,21 @@ def _procesar_captcha_rojo(coordinates, estado):
         return True  # Continuar el proceso
 
 
-def _procesar_captcha_imposible(coordinates, estado):
+def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
     """Procesa la detección de captcha imposible (incluye captcha_imposible, captcha_imposible_2 y captcha_imposible_3)"""
     from app.creator.computer_actions import click_coordinates, wait_for_spinner
     import time
     
     # Detectar captcha imposible (versión 1) usando wait_for_spinner porque tiene un spinner rotando
-    captcha_found = wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True)
+    captcha_found = wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True, browser_name=browser_name)
     
     # Si no se encuentra la versión 1, intentar con la versión 2
     if not captcha_found:
-        captcha_found = wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True)
+        captcha_found = wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True, browser_name=browser_name)
     
     # Si no se encuentra la versión 2, intentar con la versión 3
     if not captcha_found:
-        captcha_found = wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True)
+        captcha_found = wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True, browser_name=browser_name)
     
     if not captcha_found:
         return None  # No hay captcha que procesar
@@ -646,11 +649,11 @@ def _procesar_captcha_imposible(coordinates, estado):
         captcha_still_found = False
         
         # Verificar las tres variantes del captcha imposible
-        if wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True):
+        if wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True, browser_name=browser_name):
             captcha_still_found = True
-        elif wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True):
+        elif wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True, browser_name=browser_name):
             captcha_still_found = True
-        elif wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True):
+        elif wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.2, confidence=0.5, silent=True, browser_name=browser_name):
             captcha_still_found = True
         
         if captcha_still_found:
@@ -684,7 +687,7 @@ def _procesar_captcha_imposible(coordinates, estado):
     return True
 
 
-def _procesar_exito(coordinates, email, password, filepath):
+def _procesar_exito(coordinates, email, password, filepath, browser_id=None, browser_name=None):
     """Procesa la detección de éxito en la creación de cuenta"""
     from app.creator.computer_actions import wait_for_creator_image
     
@@ -699,7 +702,7 @@ def _procesar_exito(coordinates, email, password, filepath):
     exito_image_name = None
     
     for image_name in exito_images:
-        if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True):
+        if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name):
             exito_found = True
             exito_image_name = image_name
             break
@@ -710,10 +713,10 @@ def _procesar_exito(coordinates, email, password, filepath):
     print(f"✅ Imagen de éxito encontrada - buscando cookie...")
     _desactivar_proxy()
     
-    return _obtener_y_guardar_cookie(coordinates, email, password, filepath)
+    return _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id=browser_id, browser_name=browser_name)
 
 
-def _procesar_exito_con_detalle(coordinates, email, password, filepath):
+def _procesar_exito_con_detalle(coordinates, email, password, filepath, exito_image_name=None, browser_id=None, browser_name=None):
     """Procesa la detección de éxito con información detallada"""
     from app.creator.computer_actions import wait_for_creator_image
     
@@ -725,12 +728,12 @@ def _procesar_exito_con_detalle(coordinates, email, password, filepath):
     ]
     
     exito_found = False
-    exito_image_name = None
+    exito_image_name_found = None
     
     for image_name in exito_images:
-        if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True):
+        if wait_for_creator_image(image_name, max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name):
             exito_found = True
-            exito_image_name = image_name
+            exito_image_name_found = image_name
             break
     
     if not exito_found:
@@ -739,10 +742,10 @@ def _procesar_exito_con_detalle(coordinates, email, password, filepath):
     print(f"✅ Imagen de éxito encontrada - buscando cookie...")
     _desactivar_proxy()
     
-    return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name)
+    return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name_found, browser_id=browser_id, browser_name=browser_name)
 
 
-def _procesar_captcha_bueno(coordinates, estado):
+def _procesar_captcha_bueno(coordinates, estado, browser_name=None):
     """Procesa la detección de captcha bueno - solo desactiva el proxy (máximo 2 veces)"""
     from app.creator.computer_actions import wait_for_creator_image
     import time
@@ -761,10 +764,10 @@ def _procesar_captcha_bueno(coordinates, estado):
     
     for nombre in variantes:
         # Primera verificación rápida
-        if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.3, silent=True):
+        if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.3, silent=True, browser_name=browser_name):
             # Segunda verificación para confirmar que realmente está presente
             time.sleep(0.2)  # Pequeña pausa entre verificaciones
-            if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.1, silent=True):
+            if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.1, silent=True, browser_name=browser_name):
                 captcha_bueno_found = nombre
                 break  # Salir del bucle al encontrar la primera variante
     
@@ -792,7 +795,7 @@ def _procesar_captcha_bueno(coordinates, estado):
     return True  # Continuar con el proceso normal
 
 
-def _procesar_captcha_blanco(coordinates, estado):
+def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
     """Procesa la detección de captcha blanco con delay y doble verificación (incluye captcha_blanco_2)"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
@@ -803,7 +806,7 @@ def _procesar_captcha_blanco(coordinates, estado):
     captcha_blanco_tipo = None
     
     for nombre in variantes_captcha_blanco:
-        if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True):
+        if wait_for_creator_image(nombre, max_attempts=1, delay_between_attempts=0.5, confidence=0.95, silent=True, browser_name=browser_name):
             captcha_blanco_found = nombre
             captcha_blanco_tipo = nombre
             break
@@ -812,7 +815,7 @@ def _procesar_captcha_blanco(coordinates, estado):
         return None  # No hay captcha blanco que procesar
     
     # Verificar que NO hay captcha rojo presente
-    captcha_rojo_presente = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.1, silent=True)
+    captcha_rojo_presente = wait_for_creator_image("imagen_captcha_rojo", max_attempts=1, delay_between_attempts=0.1, silent=True, browser_name=browser_name)
     
     if captcha_rojo_presente:
         print("⚠️ Captcha en proceso de carga detectado - ignorando detección de captcha blanco")
@@ -877,7 +880,7 @@ def _procesar_captcha_blanco(coordinates, estado):
     return True
 
 
-def _obtener_y_guardar_cookie(coordinates, email, password, filepath):
+def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id=None, browser_name=None):
     """Obtiene y guarda la cookie de la cuenta creada"""
     from app.creator.computer_actions import click_coordinates, get_clipboard_content
     from app.database.database import get_creator_setting
@@ -937,7 +940,10 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath):
         # Guardar cookie
         print("✅ Cookie única guardada")
         
-        creator_settings = get_creator_setting()
+        if browser_id:
+            creator_settings = get_creator_setting(browser_id)
+        else:
+            creator_settings = None
         if not creator_settings or not creator_settings.get('user_agent'):
             return False, "user_agent_no_encontrado", {}
         
@@ -960,7 +966,7 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath):
     return False, "max_intentos_cookie", {"max_intentos": max_intentos}
 
 
-def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name):
+def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name, browser_id=None, browser_name=None):
     """Obtiene y guarda la cookie con información detallada"""
     from app.creator.computer_actions import click_coordinates, get_clipboard_content
     from app.database.database import get_creator_setting
@@ -1020,7 +1026,10 @@ def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath
         # Guardar cookie
         print("✅ Cookie única guardada")
         
-        creator_settings = get_creator_setting()
+        if browser_id:
+            creator_settings = get_creator_setting(browser_id)
+        else:
+            creator_settings = None
         if not creator_settings or not creator_settings.get('user_agent'):
             return False, "user_agent_no_encontrado", {}
         
@@ -1080,7 +1089,7 @@ def _format_cookie_to_single_line(cookie_content):
 
 
 
-def procesar_email_individual(email_id, coordinates, filepath, contador, total):
+def procesar_email_individual(email_id, coordinates, filepath, contador, total, browser_id=None, browser_name=None):
     """
     Procesa un email individual en el proceso de creación de cuenta LinkedIn
     """
@@ -1094,8 +1103,8 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total):
         print(f"⚠️ Email ID {email_id} no encontrado")
         return False
     
-    # Paso 1: Click en Brave
-    if not _click_brave(coordinates):
+    # Paso 1: Click en el navegador
+    if not _click_brave(coordinates, browser_name=browser_name):
         return False
     
     # Paso 2: Click en LinkedIn fav
@@ -1103,25 +1112,25 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total):
         return False
     
     # Paso 3: Verificar carga de LinkedIn
-    if not _verificar_carga_linkedin(coordinates):
+    if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
         print("❌ LinkedIn no cargó correctamente - cerrando ventana")
         _desactivar_proxy()
         _cerrar_ventana(coordinates)
         return False
     
     # Verificar proxy error después de cargar LinkedIn
-    _verificar_y_cerrar_proxy_error(coordinates)
+    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
     
     # Paso 4: Llenar formulario de registro
-    formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email)
+    formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email, browser_id=browser_id, browser_name=browser_name)
     if not formulario_ok:
         return False
     
     # Verificar proxy error después de llenar formulario
-    _verificar_y_cerrar_proxy_error(coordinates)
+    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
     
     # Paso 5: Observar y crear cuenta
-    cuenta_creada = observador_unificado(coordinates, full_email, _get_password_usado(), filepath)
+    cuenta_creada = observador_unificado(coordinates, full_email, _get_password_usado(), filepath, browser_id=browser_id, browser_name=browser_name)
     
     # Paso 6: Cerrar ventana si se creó exitosamente
     if cuenta_creada:
@@ -1131,13 +1140,15 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total):
         return False
 
 
-def procesar_email_individual_con_detalle(email_id, coordinates, filepath, contador, total):
+def procesar_email_individual_con_detalle(email_id, coordinates, filepath, contador, total, browser_id=None, browser_name=None):
     """
     Procesa un email individual en el proceso de creación de cuenta LinkedIn con información detallada
     Retorna: (exito: bool, motivo_fallo: str, detalles: dict)
     
     Args:
         email_id: Puede ser un ID de email (int) o un email directamente (str) cuando is33mail es false
+        browser_id: ID del navegador activo
+        browser_name: Nombre del navegador activo
     """
     from app.database.database import get_creator_email_by_id
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname
@@ -1153,8 +1164,8 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
             print(f"⚠️ Email ID {email_id} no encontrado")
             return False, "email_no_encontrado", {"email_id": email_id}
     
-    # Paso 1: Click en Brave
-    if not _click_brave(coordinates):
+    # Paso 1: Click en el navegador
+    if not _click_brave(coordinates, browser_name=browser_name):
         return False, "error_click_brave", {}
     
     # Paso 2: Click en LinkedIn fav
@@ -1162,25 +1173,28 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         return False, "error_click_linkedin_fav", {}
     
     # Paso 3: Verificar carga de LinkedIn
-    if not _verificar_carga_linkedin(coordinates):
+    if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
         print("❌ LinkedIn no cargó correctamente - cerrando ventana")
         _desactivar_proxy()
         _cerrar_ventana(coordinates)
         return False, "error_carga_linkedin", {}
     
     # Verificar proxy error después de cargar LinkedIn
-    _verificar_y_cerrar_proxy_error(coordinates)
+    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
     
     # Paso 4: Llenar formulario de registro
-    formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email)
+    formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email, browser_id=browser_id, browser_name=browser_name)
     if not formulario_ok:
         return False, "error_llenar_formulario", {}
     
     # Verificar proxy error después de llenar formulario
-    _verificar_y_cerrar_proxy_error(coordinates)
+    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
     
     # Paso 5: Observar y crear cuenta con detalle
-    exito, motivo_fallo, detalles = observador_unificado_con_detalle(coordinates, full_email, _get_password_usado(), filepath)
+    exito, motivo_fallo, detalles = observador_unificado_con_detalle(
+        coordinates, full_email, _get_password_usado(), filepath, 
+        browser_id=browser_id, browser_name=browser_name
+    )
     
     # Paso 6: Cerrar ventana si se creó exitosamente
     if exito:
@@ -1190,10 +1204,13 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         return False, motivo_fallo, detalles
 
 
-def _click_brave(coordinates):
-    """Hace clic en Brave con validación de imagen"""
+def _click_brave(coordinates, browser_name=None):
+    """Hace clic en el navegador con validación de imagen"""
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image
     import time
+    
+    # Obtener nombre del navegador para mensajes
+    nombre_navegador = browser_name if browser_name else "navegador"
     
     brave_coords = coordinates.get("brave_click")
     if not brave_coords:
@@ -1206,25 +1223,25 @@ def _click_brave(coordinates):
         click_coordinates(brave_coords, double_click=True)
         time.sleep(2)
         
-        # Validar que la imagen de Brave apareció
-        brave_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True)
+        # Validar que la imagen del navegador apareció (busca en la carpeta específica del navegador)
+        browser_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
         
         # Si NO encuentra la imagen en el primer intento, significa que hizo el clic bien
-        # (Brave ya está abierto/no está en la pantalla de inicio)
-        if not brave_image_found:
-            print(f"✅ Brave validado en el intento {intento} - clic realizado correctamente")
-            # Verificar proxy error después de abrir Brave
-            _verificar_y_cerrar_proxy_error(coordinates)
+        # (El navegador ya está abierto/no está en la pantalla de inicio)
+        if not browser_image_found:
+            print(f"✅ {nombre_navegador} validado en el intento {intento} - clic realizado correctamente")
+            # Verificar proxy error después de abrir el navegador
+            _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
             return True
         
         # Si encuentra la imagen, significa que NO hizo el clic bien
-        # (Brave todavía está en la pantalla de inicio)
+        # (El navegador todavía está en la pantalla de inicio)
         if intento < max_intentos:
-            print(f"⚠️ Brave todavía en pantalla de inicio, reintentando clic... ({intento}/{max_intentos})")
+            print(f"⚠️ {nombre_navegador} todavía en pantalla de inicio, reintentando clic... ({intento}/{max_intentos})")
             time.sleep(1)
         else:
             # Después de 3 intentos y siempre encuentra la imagen, algo está mal
-            print("❌ No se pudo abrir Brave correctamente después de 3 intentos")
+            print(f"❌ No se pudo abrir {nombre_navegador} correctamente después de 3 intentos")
             return False
     
     return False
@@ -1248,10 +1265,10 @@ def _click_linkedin_fav(coordinates):
     return True
 
 
-def _verificar_carga_linkedin(coordinates=None):
+def _verificar_carga_linkedin(coordinates=None, browser_name=None):
     """Verifica que LinkedIn haya cargado correctamente con matching 100% exacto - busca tres imágenes posibles"""
     from app.creator.computer_actions import find_creator_image, click_coordinates, wait_for_creator_image
-    from app.database.database import get_creator_coordinates
+    from app.database.database import get_creator_coordinates, get_default_browser
     import time
     
     # Lista de imágenes posibles para verificar carga de LinkedIn
@@ -1261,16 +1278,34 @@ def _verificar_carga_linkedin(coordinates=None):
         "imagen_de_verificacion_de_exito_carga_linkedin_3"
     ]
     
-    print(f"🔍 Iniciando observador para verificación de LinkedIn")
+    nombre_navegador = browser_name if browser_name else "navegador"
+    print(f"🔍 Verificando carga de LinkedIn (Navegador: {nombre_navegador})")
+    
+    # Esperar un momento inicial para que LinkedIn cargue completamente
+    time.sleep(3)
     
     max_attempts_per_cycle = 6
     max_reintentos = 3
-    delay_between_attempts = 1
-    confidence = 0.99  # 99% de precisión - solo acepta imágenes prácticamente idénticas
+    delay_between_attempts = 1.5  # Aumentar delay entre intentos
+    # Reducir confianza ligeramente para permitir pequeñas variaciones (resolución, antialiasing, etc.)
+    confidence = 0.90  # 90% de precisión - permite pequeñas variaciones pero mantiene alta precisión
     
     # Obtener coordenadas necesarias para reinicio si no se proporcionaron
     if not coordinates:
-        coordinates = get_creator_coordinates()
+        # Si no hay browser_name, obtener navegador por defecto
+        if not browser_name:
+            default_browser = get_default_browser()
+            if default_browser:
+                browser_id = default_browser['id']
+            else:
+                browser_id = None
+        else:
+            browser_id = None  # No podemos obtener browser_id solo con nombre sin consultar DB
+        
+        if browser_id:
+            coordinates = get_creator_coordinates(browser_id)
+        else:
+            coordinates = None
         if not coordinates:
             print("❌ No se pudieron obtener las coordenadas")
             return False
@@ -1280,7 +1315,11 @@ def _verificar_carga_linkedin(coordinates=None):
         for attempt in range(1, max_attempts_per_cycle + 1):
             # Intentar buscar cada imagen en este ciclo
             for image_name in linkedin_verification_images:
-                verification_image = find_creator_image(image_name, confidence=confidence)
+                # Esperar un poco antes de buscar para dar tiempo a que cargue la página
+                if attempt == 1:
+                    time.sleep(1)
+                
+                verification_image = find_creator_image(image_name, confidence=confidence, browser_name=browser_name)
                 if verification_image:
                     print(f"✅ ¡Imagen encontrada en el intento {attempt}! Usando: {image_name}")
                     return True
@@ -1290,7 +1329,9 @@ def _verificar_carga_linkedin(coordinates=None):
                 time.sleep(delay_between_attempts)
         
         # Si llegamos aquí, no se encontró ninguna imagen después de max_attempts_per_cycle intentos
-        print(f"⚠️ No se encontró imagen después de {max_attempts_per_cycle} intentos")
+        # Solo mostrar mensaje si no es el último reintento para reducir ruido en consola
+        if reintento < max_reintentos:
+            print(f"⚠️ No se encontró imagen después de {max_attempts_per_cycle} intentos")
         
         # Si no es el último reintento, reiniciar el proceso
         if reintento < max_reintentos:
@@ -1303,31 +1344,35 @@ def _verificar_carga_linkedin(coordinates=None):
                 click_coordinates(close_window_coords)
                 time.sleep(1)
             
-            # 2. Doble clic en Brave con validación
+            # 2. Doble clic en el navegador con validación
+            # Obtener nombre del navegador para mensajes
+            nombre_navegador = browser_name if browser_name else "navegador"
+            
             brave_coords = coordinates.get("brave_click")
             if brave_coords:
-                print(f"🔄 Haciendo doble clic en Brave...")
+                print(f"🔄 Haciendo doble clic en {nombre_navegador}...")
                 click_coordinates(brave_coords, double_click=True)
                 time.sleep(2)
                 
-                # Validar que la imagen de Brave NO apareció (significa que Brave se abrió correctamente)
-                brave_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True)
-                if brave_image_found:
-                    print(f"⚠️ Brave todavía en pantalla de inicio, reintentando clic...")
+                # Validar que la imagen del navegador NO apareció (significa que el navegador se abrió correctamente)
+                browser_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
+                if browser_image_found:
+                    print(f"⚠️ {nombre_navegador} todavía en pantalla de inicio, reintentando clic...")
                     click_coordinates(brave_coords, double_click=True)
                     time.sleep(2)
-                    brave_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True)
-                    if brave_image_found:
-                        print(f"❌ No se pudo abrir Brave correctamente")
+                    browser_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
+                    if browser_image_found:
+                        print(f"❌ No se pudo abrir {nombre_navegador} correctamente")
                         return False
-                print(f"✅ Brave validado - clic realizado correctamente")
+                print(f"✅ {nombre_navegador} validado - clic realizado correctamente")
             
             # 3. Clic en LinkedIn fav
             linkedin_coords = coordinates.get("linkedin_fav_click")
             if linkedin_coords:
                 print(f"🔄 Haciendo clic en LinkedIn fav...")
                 click_coordinates(linkedin_coords)
-                time.sleep(3)
+                # Esperar más tiempo para que LinkedIn cargue completamente
+                time.sleep(5)
             
             # 4. Continuar buscando imágenes en el siguiente reintento
             print(f"🔄 Continuando búsqueda de imágenes...")
@@ -1433,7 +1478,7 @@ def _verificar_campo_pegado(texto_esperado, tipo_campo="campo"):
         return False
 
 
-def _llenar_formulario_registro(coordinates, email):
+def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_name=None):
     """Llena el formulario de registro de LinkedIn"""
     from app.creator.computer_actions import click_coordinates, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname, wait_for_creator_image, generate_email_prefix, generate_email_with_domain_format
     from app.database.database import get_creator_setting
@@ -1456,7 +1501,10 @@ def _llenar_formulario_registro(coordinates, email):
     # Generar email según configuración
     if email.startswith('@'):
         # Obtener configuración para verificar is33mail
-        settings = get_creator_setting()
+        if browser_id:
+            settings = get_creator_setting(browser_id)
+        else:
+            settings = None
         is33mail = settings.get('is33mail', True) if settings else True
         
         if not is33mail:
@@ -1478,7 +1526,7 @@ def _llenar_formulario_registro(coordinates, email):
         return False, None
     
     # Verificar proxy error
-    _verificar_y_cerrar_proxy_error(coordinates)
+    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
     
     # Ir al campo de contraseña
     press_key("tab")
@@ -1489,25 +1537,68 @@ def _llenar_formulario_registro(coordinates, email):
     type_text(password)
     time.sleep(0.3)  # Tiempo mínimo para que se escriba
     
-    checkbox_found = wait_for_creator_image("Checkbox recuerdame", max_attempts=1, delay_between_attempts=0.5, silent=True)
-    
-    if checkbox_found:
-        # Si encuentra el checkbox, usar continue_button_click
-        continue_coords = coordinates.get("continue_button_click")
-        if not continue_coords:
-            return False, None
-        click_coordinates(continue_coords)
-    else:
-        # Si no encuentra el checkbox, usar continue_button_click_optional
-        continue_coords = coordinates.get("continue_button_click_optional")
-        if not continue_coords:
-            return False, None
-        click_coordinates(continue_coords)
-    
+    # Presionar tecla Esc después de pegar la contraseña
+    press_key("esc")
+    # Si llegamos aquí, la verificación fue exitosa
     time.sleep(2)
     
+    # Determinar qué botón continue usar según si hay checkbox
+    checkbox_found = wait_for_creator_image("Checkbox recuerdame", max_attempts=1, delay_between_attempts=0.3, silent=True, browser_name=browser_name)
+    
+    if checkbox_found:
+        continue_coords = coordinates.get("continue_button_click")
+    else:
+        continue_coords = coordinates.get("continue_button_click_optional")
+    
+    if not continue_coords:
+        print("⚠️ No se encontraron coordenadas de continue_button")
+        return False, None
+    
+    # Verificar que se cargó correctamente el email y contraseña DESPUÉS del clic en continue
+    max_intentos_verificacion = 4
+    email_password_loaded = False
+    
+    for intento_verificacion in range(1, max_intentos_verificacion + 1):
+        # Hacer clic en continue_button
+        # print(f"🔄 Haciendo clic en continue_button (intento {intento_verificacion}/{max_intentos_verificacion})")
+        click_coordinates(continue_coords)
+        time.sleep(2)  # Esperar a que se procese el clic
+        
+        # DESPUÉS del clic, verificar imagen de carga de email y contraseña
+        # Usar confidence muy alto (0.98) para evitar falsos positivos con botones similares
+        email_password_loaded = wait_for_creator_image(
+            "Imagen de verificación de carga email y contraseña", 
+            max_attempts=3, 
+            delay_between_attempts=0.5, 
+            silent=True,  # Silencioso para reducir ruido en consola
+            confidence=0.98,  # Confidence muy alto para evitar falsos positivos
+            browser_name=browser_name
+        )
+        
+        if email_password_loaded:
+            # print("✅ Email y contraseña cargados correctamente")
+            break
+        
+        # Si no se encontró la imagen
+        if intento_verificacion < max_intentos_verificacion:
+            # print(f"⚠️ No se encontró imagen de verificación después del clic (intento {intento_verificacion}/{max_intentos_verificacion})")
+            # Esperar un poco antes de volver a intentar
+            time.sleep(1)
+        else:
+            # Último intento fallido
+            # print("❌ No se pudo verificar la carga correcta del email y contraseña después de 4 intentos")
+            # print("🔄 Cerrando ventana y continuando con el siguiente email")
+            _desactivar_proxy()
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False, None
+    
+
+    
     # Verificar proxy error antes de continuar
-    _verificar_y_cerrar_proxy_error(coordinates)
+    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
     
     # Click en name_input_click
     name_coords = coordinates.get("name_input_click")
@@ -1736,20 +1827,32 @@ def _inicializar_archivo_salida(total_emails):
         return None
 
 
-def _verificar_hora_programada():
+def _verificar_hora_programada(browser_id=None):
     """
     Verifica si hay una hora programada y espera hasta esa hora si es necesario.
+    
+    Args:
+        browser_id: ID del navegador para obtener la configuración
     
     Returns:
         bool: True si debe continuar con el proceso, False si debe detenerse
     """
-    from app.database.database import get_creator_setting
+    from app.database.database import get_creator_setting, get_default_browser
     import time
     import datetime
     import pytz
     import re
     
-    settings = get_creator_setting()
+    # Si no se proporciona browser_id, obtener el navegador por defecto
+    if not browser_id:
+        default_browser = get_default_browser()
+        if default_browser:
+            browser_id = default_browser['id']
+    
+    if browser_id:
+        settings = get_creator_setting(browser_id)
+    else:
+        settings = None
     if not settings:
         print("⚡ No hay configuración de tiempo, ejecutando inmediatamente")
         return True  # No hay configuración, continuar inmediatamente
@@ -1815,22 +1918,48 @@ def _verificar_hora_programada():
         return True  # En caso de error, continuar inmediatamente
 
 
-def _determinar_emails_realmente_fallidos(emails_procesados):
+def _determinar_emails_realmente_fallidos(emails_procesados, browser_id=None):
     """
     Determina qué emails realmente fallaron (no se usaron exitosamente en ningún momento)
     
     Args:
         emails_procesados (list): Lista de emails procesados con sus resultados
+        browser_id (int, optional): ID del navegador para obtener configuración
     
     Returns:
         list: Lista de emails que realmente fallaron (no exitosos)
     """
     try:
-        from app.database.database import get_creator_setting
+        from app.database.database import get_creator_setting, get_default_browser
         from datetime import datetime
         
         cuentas_realmente_fallidas = []
-        creator_settings = get_creator_setting()
+        
+        # Si no se proporciona browser_id, intentar obtenerlo del primer email procesado o usar el navegador por defecto
+        if not browser_id:
+            # Intentar obtener browser_id del primer email procesado que tenga browser_name
+            for email_resultado in emails_procesados:
+                if 'browser_name' in email_resultado:
+                    # Buscar el browser_id basado en el browser_name
+                    from app.database.database import get_active_browsers
+                    active_browsers = get_active_browsers()
+                    for browser in active_browsers:
+                        if browser['name'] == email_resultado['browser_name']:
+                            browser_id = browser['id']
+                            break
+                    if browser_id:
+                        break
+            
+            # Si aún no hay browser_id, usar el navegador por defecto
+            if not browser_id:
+                default_browser = get_default_browser()
+                if default_browser:
+                    browser_id = default_browser['id']
+        
+        if browser_id:
+            creator_settings = get_creator_setting(browser_id)
+        else:
+            creator_settings = None
         user_agent = creator_settings.get('user_agent', '') if creator_settings else ''
         
         # Agrupar emails por dirección de email para determinar el estado final
@@ -1869,12 +1998,12 @@ def _determinar_emails_realmente_fallidos(emails_procesados):
         return []
 
 
-def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_fallidas=None, es_ciclo=False, ciclo_minutes=None, tiempo_inicio_ciclo=None):
+def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_fallidas=None, es_ciclo=False, ciclo_minutes=None, tiempo_inicio_ciclo=None, browser_id=None):
     print("📧 Iniciando envío de correo de informe...")
     
     try:
         from app.confirmabot.hostinger_actions import send_email_with_file
-        from app.database.database import get_creator_setting, get_all_emails, get_user_data
+        from app.database.database import get_creator_setting, get_all_emails, get_user_data, get_default_browser
         from app.utils.http_utils import post
         import os
         from datetime import datetime, timedelta
@@ -1901,8 +2030,17 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
         if not email_address or not email_password:
             return True  # No hay credenciales, omitir envío
         
+        # Si no se proporciona browser_id, usar el navegador por defecto
+        if not browser_id:
+            default_browser = get_default_browser()
+            if default_browser:
+                browser_id = default_browser['id']
+        
         # Obtener email de destino
-        settings = get_creator_setting()
+        if browser_id:
+            settings = get_creator_setting(browser_id)
+        else:
+            settings = None
         email_destino = settings.get('notification_email') if settings else None
         
         if not email_destino:
@@ -2078,13 +2216,25 @@ def _enviar_correo_sin_adjunto(email_address: str, password: str, to_email: str,
         return False
 
 
-def _enviar_notificacion_inicio_ciclo(ciclo_numero: int, objetivo_cuentas: int, ciclo_minutes: int):
+def _enviar_notificacion_inicio_ciclo(ciclo_numero: int, objetivo_cuentas: int, ciclo_minutes: int, browser_id=None):
     """
     Envía una notificación por email al inicio de cada ciclo
+    
+    Args:
+        ciclo_numero: Número del ciclo
+        objetivo_cuentas: Objetivo de cuentas a crear
+        ciclo_minutes: Minutos del ciclo
+        browser_id: ID del navegador para obtener configuración
     """
     try:
-        from app.database.database import get_creator_setting, get_all_emails
+        from app.database.database import get_creator_setting, get_all_emails, get_default_browser
         from datetime import datetime, timedelta
+        
+        # Si no se proporciona browser_id, usar el navegador por defecto
+        if not browser_id:
+            default_browser = get_default_browser()
+            if default_browser:
+                browser_id = default_browser['id']
         
         # Obtener credenciales de correo
         emails_data = get_all_emails()
@@ -2104,7 +2254,10 @@ def _enviar_notificacion_inicio_ciclo(ciclo_numero: int, objetivo_cuentas: int, 
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
         
         # Obtener email de destino
-        settings = get_creator_setting()
+        if browser_id:
+            settings = get_creator_setting(browser_id)
+        else:
+            settings = None
         email_destino = settings.get('notification_email') if settings else None
         
         if not email_destino:
@@ -2388,17 +2541,174 @@ def _leer_cuentas_del_archivo(filepath):
         return []
 
 
+def _validar_navegador_configurado(browser_id, browser_name, mostrar_detalles=False):
+    """
+    Valida que un navegador tenga la configuración necesaria (coordenadas e imágenes esenciales)
+    
+    Args:
+        browser_id: ID del navegador
+        browser_name: Nombre del navegador
+        mostrar_detalles: Si es True, muestra detalles de la validación
+    
+    Returns:
+        tuple: (bool, str) - (True si está configurado, motivo si no está configurado)
+    """
+    from app.database.database import get_creator_coordinates
+    from app.creator.image_config import get_image_path
+    from app.utils.path_utils import get_browser_images_path
+    import os
+    
+    # Verificar coordenadas
+    coordinates = get_creator_coordinates(browser_id)
+    if not coordinates:
+        motivo = "sin coordenadas configuradas"
+        if mostrar_detalles:
+            print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
+        return False, motivo
+    
+    # Verificar que exista la carpeta de imágenes del navegador
+    images_dir = get_browser_images_path(browser_name)
+    if not os.path.exists(images_dir):
+        motivo = "carpeta de imágenes no existe"
+        if mostrar_detalles:
+            print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
+        return False, motivo
+    
+    # Verificar al menos algunas imágenes esenciales
+    imagenes_esenciales = [
+        "brave_image",
+        "imagen_de_verificacion_de_exito_carga_linkedin",
+        "imagen_de_creacion_de_cuenta_con_exito_logo_linkedin"
+    ]
+    
+    imagenes_encontradas = 0
+    for imagen in imagenes_esenciales:
+        if get_image_path(imagen, browser_name=browser_name):
+            imagenes_encontradas += 1
+    
+    # Requerir al menos 2 imágenes esenciales
+    if imagenes_encontradas < 2:
+        motivo = f"faltan imágenes esenciales (encontradas: {imagenes_encontradas}/{len(imagenes_esenciales)})"
+        if mostrar_detalles:
+            print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
+        return False, motivo
+    
+    return True, None
+
+
+def _filtrar_navegadores_configurados(active_browsers):
+    """
+    Filtra los navegadores activos para incluir solo los que tienen configuración completa
+    
+    Args:
+        active_browsers: Lista de navegadores activos
+    
+    Returns:
+        tuple: (list, list) - (navegadores configurados, navegadores ignorados con motivos)
+    """
+    navegadores_configurados = []
+    navegadores_ignorados = []
+    
+    for browser in active_browsers:
+        es_valido, motivo = _validar_navegador_configurado(browser['id'], browser['name'], mostrar_detalles=False)
+        if es_valido:
+            navegadores_configurados.append(browser)
+        else:
+            navegadores_ignorados.append({
+                'browser': browser,
+                'motivo': motivo
+            })
+    
+    return navegadores_configurados, navegadores_ignorados
+
+
+def _mostrar_error_navegadores_sin_configuracion(active_browsers_originales):
+    """
+    Muestra un messagebox de error cuando no hay navegadores con configuración completa
+    
+    Args:
+        active_browsers_originales: Lista original de navegadores activos (antes del filtro)
+    """
+    import tkinter as tk
+    from tkinter import messagebox
+    
+    # Crear ventana temporal para el messagebox
+    root = tk.Tk()
+    root.withdraw()  # Ocultar ventana principal
+    
+    # Construir mensaje detallado
+    mensaje = "❌ No hay navegadores con configuración completa.\n\n"
+    mensaje += "El bot requiere que al menos un navegador activo tenga:\n"
+    mensaje += "• Coordenadas configuradas\n"
+    mensaje += "• Carpeta de imágenes creada\n"
+    mensaje += "• Al menos 2 imágenes esenciales cargadas\n\n"
+    
+    if active_browsers_originales:
+        mensaje += f"Navegadores activos encontrados ({len(active_browsers_originales)}):\n"
+        for browser in active_browsers_originales:
+            mensaje += f"  - {browser['name']}\n"
+        mensaje += "\nPor favor, configura al menos un navegador antes de continuar."
+    else:
+        mensaje += "No hay navegadores activos.\n\nPor favor, activa y configura al menos un navegador."
+    
+    messagebox.showerror(
+        "Error de Configuración",
+        mensaje
+    )
+    
+    root.destroy()
+
+
 def execute_creator():
     """
     Función principal del creator que ejecuta todas las acciones
+    Rota entre navegadores activos
     """
-    from app.database.database import get_creator_setting
+    from app.database.database import get_active_browsers, get_creator_setting
     import time
     
     global _password_usado
     _password_usado = ""
     
-    settings = get_creator_setting()
+    # Obtener navegadores activos
+    active_browsers = get_active_browsers()
+    if not active_browsers:
+        print("❌ No hay navegadores activos. Por favor activa al menos un navegador.")
+        return
+    
+    print(f"🌐 Navegadores activos encontrados: {len(active_browsers)}")
+    for browser in active_browsers:
+        print(f"   - {browser['name']} (ID: {browser['id']})")
+    
+    # Guardar lista original para el mensaje de error
+    active_browsers_originales = active_browsers.copy()
+    
+    # Filtrar navegadores con configuración completa
+    active_browsers, navegadores_ignorados = _filtrar_navegadores_configurados(active_browsers)
+    
+    # Mostrar resumen de navegadores ignorados si los hay
+    if navegadores_ignorados:
+        print("\n" + "="*60)
+        print("⚠️  RESUMEN DE NAVEGADORES IGNORADOS")
+        print("="*60)
+        for item in navegadores_ignorados:
+            browser = item['browser']
+            motivo = item['motivo']
+            print(f"   ❌ {browser['name']} (ID: {browser['id']}) - {motivo}")
+        print("="*60 + "\n")
+    
+    if not active_browsers:
+        print("❌ No hay navegadores activos con configuración completa. Por favor configura al menos un navegador.")
+        _mostrar_error_navegadores_sin_configuracion(active_browsers_originales)
+        return
+    
+    print(f"✅ Navegadores configurados válidos: {len(active_browsers)}")
+    for browser in active_browsers:
+        print(f"   ✓ {browser['name']} (ID: {browser['id']})")
+    
+    # Obtener configuración del primer navegador activo para determinar modo de ejecución
+    # (todos los navegadores activos deberían tener la misma configuración de tiempo)
+    settings = get_creator_setting(active_browsers[0]['id'])
     if not settings:
         print("❌ Sin configuración")
         return
@@ -2414,25 +2724,26 @@ def execute_creator():
     # Determinar modo de ejecución
     if has_scheduled and has_cycle:
         print("🔄 Ciclo + Hora programada")
-        if not _verificar_hora_programada():
+        if not _verificar_hora_programada(active_browsers[0]['id']):
             return
-        _ejecutar_creator_en_ciclo()
+        _ejecutar_creator_en_ciclo(active_browsers)
     elif has_cycle:
         print("🔄 Solo ciclo")
-        _ejecutar_creator_en_ciclo()
+        _ejecutar_creator_en_ciclo(active_browsers)
     elif has_scheduled:
         print("🕐 Solo hora programada")
-        if not _verificar_hora_programada():
+        if not _verificar_hora_programada(active_browsers[0]['id']):
             return
-        _ejecutar_proceso_creator()
+        _ejecutar_proceso_creator(active_browsers)
     else:
         print("👤 Modo manual")
-        _ejecutar_proceso_creator()
+        _ejecutar_proceso_creator(active_browsers)
 
 
-def _ejecutar_proceso_creator():
+def _ejecutar_proceso_creator(active_browsers):
     """
     Ejecuta el proceso de creación de cuentas una sola vez
+    Rota entre navegadores activos
     """
     from app.database.database import (
         get_creator_coordinates, get_all_available_creator_emails, get_next_creator_emails, 
@@ -2441,7 +2752,30 @@ def _ejecutar_proceso_creator():
     )
     import time
     
-    settings = get_creator_setting()
+    # Guardar lista original para el mensaje de error
+    active_browsers_originales = active_browsers.copy()
+    
+    # Filtrar navegadores con configuración completa
+    active_browsers, navegadores_ignorados = _filtrar_navegadores_configurados(active_browsers)
+    
+    # Mostrar resumen de navegadores ignorados si los hay
+    if navegadores_ignorados:
+        print("\n" + "="*60)
+        print("⚠️  RESUMEN DE NAVEGADORES IGNORADOS")
+        print("="*60)
+        for item in navegadores_ignorados:
+            browser = item['browser']
+            motivo = item['motivo']
+            print(f"   ❌ {browser['name']} (ID: {browser['id']}) - {motivo}")
+        print("="*60 + "\n")
+    
+    if not active_browsers:
+        print("❌ No hay navegadores con configuración completa para procesar")
+        _mostrar_error_navegadores_sin_configuracion(active_browsers_originales)
+        return False
+    
+    # Obtener configuración del primer navegador (todos deberían tener la misma configuración de tiempo)
+    settings = get_creator_setting(active_browsers[0]['id'])
     time_config_type = settings.get('time_config_type', 'manual')
     is33mail = settings.get('is33mail', True)
     domain = settings.get('domain', '')
@@ -2500,25 +2834,37 @@ def _ejecutar_proceso_creator():
             reset_creator_email_progress()
         return False
     
-    coordinates = get_creator_coordinates()
-    if not coordinates:
-        print("❌ Sin coordenadas")
-        return
-    
     filepath = _inicializar_archivo_salida(len(email_ids))
     if not filepath:
         return
     
-    # Procesar emails
+    # Procesar emails rotando entre navegadores activos
     emails_exitosos = 0
     emails_procesados = []  # Lista para trackear todos los emails procesados
     from datetime import datetime
     tiempo_inicio_proceso = datetime.now()
     
+    # Índice para rotar entre navegadores
+    browser_index = 0
+    
     for i, email_id in enumerate(email_ids, 1):
+        # Seleccionar navegador activo (rotación)
+        current_browser = active_browsers[browser_index]
+        browser_id = current_browser['id']
+        browser_name = current_browser['name']
+        
         print("#########################################################")
+        print(f"🌐 Usando navegador: {browser_name} (ID: {browser_id})")
         _ejecutar_modo_avion()
         print(f"📧 {i}/{len(email_ids)}")
+        
+        # Obtener coordenadas del navegador actual
+        coordinates = get_creator_coordinates(browser_id)
+        if not coordinates:
+            print(f"❌ Sin coordenadas para navegador {browser_name}")
+            # Rotar al siguiente navegador
+            browser_index = (browser_index + 1) % len(active_browsers)
+            continue
         
         # Obtener email antes de procesarlo
         if is33mail:
@@ -2528,7 +2874,10 @@ def _ejecutar_proceso_creator():
             # En modo domain, email_id es el email directamente
             current_email = email_id
         
-        exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, i, len(email_ids))
+        exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(
+            email_id, coordinates, filepath, i, len(email_ids), 
+            browser_id=browser_id, browser_name=browser_name
+        )
         
         # Trackear el resultado del procesamiento
         email_resultado = {
@@ -2537,27 +2886,35 @@ def _ejecutar_proceso_creator():
             "exito": exito,
             "motivo_fallo": motivo_fallo,
             "detalles": detalles,
-            "contador": i
+            "contador": i,
+            "browser_name": browser_name
         }
         emails_procesados.append(email_resultado)
         
         if exito:
             emails_exitosos += 1
-            print(f"✅ Cuenta {emails_exitosos}")
+            print(f"✅ Cuenta {emails_exitosos} (Navegador: {browser_name})")
         else:
-            print(f"❌ Falló - {motivo_fallo}")
+            print(f"❌ Falló - {motivo_fallo} (Navegador: {browser_name})")
         
         # Solo actualizar progreso si estamos usando 33mail
         if is33mail:
             update_creator_email_progress(email_id, emails_exitosos)
+        
+        # Rotar al siguiente navegador para el próximo email
+        browser_index = (browser_index + 1) % len(active_browsers)
+        
         if i < len(email_ids):
             time.sleep(1)
     
     print(f"🎉 Completado: {emails_exitosos}/{len(email_ids)}")
     _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)
     
+    # Obtener browser_id del primer navegador activo para funciones auxiliares
+    first_browser_id = active_browsers[0]['id'] if active_browsers else None
+    
     # Determinar emails realmente fallidos (no usados exitosamente)
-    cuentas_realmente_fallidas = _determinar_emails_realmente_fallidos(emails_procesados)
+    cuentas_realmente_fallidas = _determinar_emails_realmente_fallidos(emails_procesados, browser_id=first_browser_id)
     
     # Guardar solo emails realmente fallidos en el servidor
     if cuentas_realmente_fallidas:
@@ -2574,18 +2931,19 @@ def _ejecutar_proceso_creator():
         _guardar_cuentas_en_servidor(filepath)
     
     # Enviar correo de informe (opcional)
-    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_realmente_fallidas, False, None, tiempo_inicio_proceso)
+    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_realmente_fallidas, False, None, tiempo_inicio_proceso, browser_id=first_browser_id)
     
     return True
 
 
-def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool = False, ciclo_minutes: int = None) -> int:
+def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool = False, ciclo_minutes: int = None, active_browsers=None) -> int:
     """
     Ejecuta el proceso de creación de cuentas con un objetivo específico
+    Rota entre navegadores activos
     """
     from app.database.database import (
         get_creator_coordinates, get_all_available_creator_emails_for_objective,
-        update_creator_email_progress, fetch_and_append_emails_for_cycle, get_creator_setting
+        update_creator_email_progress, fetch_and_append_emails_for_cycle, get_creator_setting, get_active_browsers
     )
     import time
     import tkinter as tk
@@ -2593,14 +2951,39 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     
     print(f"🎯 Objetivo: {objetivo_cuentas} cuentas")
     
-    settings = get_creator_setting()
+    # Obtener navegadores activos si no se proporcionaron
+    if not active_browsers:
+        active_browsers = get_active_browsers()
+        if not active_browsers:
+            print("❌ No hay navegadores activos")
+            return 0
+    
+    # Guardar lista original para el mensaje de error
+    active_browsers_originales = active_browsers.copy()
+    
+    # Filtrar navegadores con configuración completa
+    active_browsers, navegadores_ignorados = _filtrar_navegadores_configurados(active_browsers)
+    
+    # Mostrar resumen de navegadores ignorados si los hay
+    if navegadores_ignorados:
+        print("\n" + "="*60)
+        print("⚠️  RESUMEN DE NAVEGADORES IGNORADOS")
+        print("="*60)
+        for item in navegadores_ignorados:
+            browser = item['browser']
+            motivo = item['motivo']
+            print(f"   ❌ {browser['name']} (ID: {browser['id']}) - {motivo}")
+        print("="*60 + "\n")
+    
+    if not active_browsers:
+        print("❌ No hay navegadores con configuración completa para procesar")
+        _mostrar_error_navegadores_sin_configuracion(active_browsers_originales)
+        return 0
+    
+    # Obtener configuración del primer navegador
+    settings = get_creator_setting(active_browsers[0]['id'])
     is33mail = settings.get('is33mail', True)
     domain = settings.get('domain', '')
-    
-    coordinates = get_creator_coordinates()
-    if not coordinates:
-        print("❌ Sin coordenadas")
-        return 0
     
     filepath = _inicializar_archivo_salida(objetivo_cuentas)
     if not filepath:
@@ -2611,6 +2994,9 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     intento = 1
     from datetime import datetime
     tiempo_inicio_proceso = datetime.now()
+    
+    # Índice para rotar entre navegadores
+    browser_index = 0
     
     # Si is33mail es false, usar domain directamente
     if not is33mail:
@@ -2632,15 +3018,32 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
             for i, email_id in enumerate(email_ids, 1):
                 if cuentas_creadas >= objetivo_cuentas:
                     break
-                    
+                
+                # Seleccionar navegador activo (rotación)
+                current_browser = active_browsers[browser_index]
+                browser_id = current_browser['id']
+                browser_name = current_browser['name']
+                
                 print("#########################################################")
+                print(f"🌐 Usando navegador: {browser_name} (ID: {browser_id})")
                 _ejecutar_modo_avion()
                 print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
+                
+                # Obtener coordenadas del navegador actual
+                coordinates = get_creator_coordinates(browser_id)
+                if not coordinates:
+                    print(f"❌ Sin coordenadas para navegador {browser_name}")
+                    # Rotar al siguiente navegador
+                    browser_index = (browser_index + 1) % len(active_browsers)
+                    continue
                 
                 # En modo domain, email_id es el email directamente
                 current_email = email_id
                 
-                exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
+                exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(
+                    email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas,
+                    browser_id=browser_id, browser_name=browser_name
+                )
                 
                 # Trackear el resultado del procesamiento
                 email_resultado = {
@@ -2650,15 +3053,19 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
                     "motivo_fallo": motivo_fallo,
                     "detalles": detalles,
                     "contador": cuentas_creadas + 1,
-                    "intento": intento
+                    "intento": intento,
+                    "browser_name": browser_name
                 }
                 emails_procesados.append(email_resultado)
                 
                 if exito:
                     cuentas_creadas += 1
-                    print(f"✅ Cuenta {cuentas_creadas}")
+                    print(f"✅ Cuenta {cuentas_creadas} (Navegador: {browser_name})")
                 else:
-                    print(f"❌ Falló - {motivo_fallo}")
+                    print(f"❌ Falló - {motivo_fallo} (Navegador: {browser_name})")
+                
+                # Rotar al siguiente navegador para el próximo email
+                browser_index = (browser_index + 1) % len(active_browsers)
                 
                 if i < len(email_ids):
                     time.sleep(1)
@@ -2701,16 +3108,33 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
             for i, email_id in enumerate(email_ids, 1):
                 if cuentas_creadas >= objetivo_cuentas:
                     break
-                    
+                
+                # Seleccionar navegador activo (rotación)
+                current_browser = active_browsers[browser_index]
+                browser_id = current_browser['id']
+                browser_name = current_browser['name']
+                
                 print("#########################################################")
+                print(f"🌐 Usando navegador: {browser_name} (ID: {browser_id})")
                 _ejecutar_modo_avion()
                 print(f"📧 {cuentas_creadas + 1}/{objetivo_cuentas}")
+                
+                # Obtener coordenadas del navegador actual
+                coordinates = get_creator_coordinates(browser_id)
+                if not coordinates:
+                    print(f"❌ Sin coordenadas para navegador {browser_name}")
+                    # Rotar al siguiente navegador
+                    browser_index = (browser_index + 1) % len(active_browsers)
+                    continue
                 
                 # Obtener email antes de procesarlo
                 from app.database.database import get_creator_email_by_id
                 current_email = get_creator_email_by_id(email_id)
                 
-                exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas)
+                exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(
+                    email_id, coordinates, filepath, cuentas_creadas + 1, objetivo_cuentas,
+                    browser_id=browser_id, browser_name=browser_name
+                )
                 
                 # Trackear el resultado del procesamiento
                 email_resultado = {
@@ -2720,17 +3144,22 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
                     "motivo_fallo": motivo_fallo,
                     "detalles": detalles,
                     "contador": cuentas_creadas + 1,
-                    "intento": intento
+                    "intento": intento,
+                    "browser_name": browser_name
                 }
                 emails_procesados.append(email_resultado)
                 
                 if exito:
                     cuentas_creadas += 1
-                    print(f"✅ Cuenta {cuentas_creadas}")
+                    print(f"✅ Cuenta {cuentas_creadas} (Navegador: {browser_name})")
                 else:
-                    print(f"❌ Falló - {motivo_fallo}")
+                    print(f"❌ Falló - {motivo_fallo} (Navegador: {browser_name})")
                 
                 update_creator_email_progress(email_id, cuentas_creadas)
+                
+                # Rotar al siguiente navegador para el próximo email
+                browser_index = (browser_index + 1) % len(active_browsers)
+                
                 if i < len(email_ids):
                     time.sleep(1)
             
@@ -2739,8 +3168,11 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     print(f"🎉 Completado: {cuentas_creadas}/{objetivo_cuentas}")
     _actualizar_encabezado_con_exitos(filepath, objetivo_cuentas, cuentas_creadas)
     
+    # Obtener browser_id del primer navegador activo para funciones auxiliares
+    first_browser_id = active_browsers[0]['id'] if active_browsers else None
+    
     # Determinar emails realmente fallidos (no usados exitosamente)
-    cuentas_realmente_fallidas = _determinar_emails_realmente_fallidos(emails_procesados)
+    cuentas_realmente_fallidas = _determinar_emails_realmente_fallidos(emails_procesados, browser_id=first_browser_id)
     
     # Guardar solo emails realmente fallidos en el servidor
     if cuentas_realmente_fallidas:
@@ -2757,22 +3189,53 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
         _guardar_cuentas_en_servidor(filepath)
     
     # Enviar correo de informe (opcional)
-    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_realmente_fallidas, es_ciclo, ciclo_minutes, tiempo_inicio_proceso)
+    _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_realmente_fallidas, es_ciclo, ciclo_minutes, tiempo_inicio_proceso, browser_id=first_browser_id)
     
     return cuentas_creadas
 
 
-def _ejecutar_creator_en_ciclo():
+def _ejecutar_creator_en_ciclo(active_browsers):
     """
     Ejecuta el proceso de creación de cuentas en ciclo continuo
+    Rota entre navegadores activos
     """
     from app.database.database import (
         get_creator_setting, fetch_and_save_emails_for_cycle, 
-        delete_all_creator_emails, reset_creator_email_progress
+        delete_all_creator_emails, reset_creator_email_progress, get_active_browsers
     )
     import time
     
-    settings = get_creator_setting()
+    # Obtener navegadores activos si no se proporcionaron
+    if not active_browsers:
+        active_browsers = get_active_browsers()
+        if not active_browsers:
+            print("❌ No hay navegadores activos")
+            return
+    
+    # Guardar lista original para el mensaje de error
+    active_browsers_originales = active_browsers.copy()
+    
+    # Filtrar navegadores con configuración completa
+    active_browsers, navegadores_ignorados = _filtrar_navegadores_configurados(active_browsers)
+    
+    # Mostrar resumen de navegadores ignorados si los hay
+    if navegadores_ignorados:
+        print("\n" + "="*60)
+        print("⚠️  RESUMEN DE NAVEGADORES IGNORADOS")
+        print("="*60)
+        for item in navegadores_ignorados:
+            browser = item['browser']
+            motivo = item['motivo']
+            print(f"   ❌ {browser['name']} (ID: {browser['id']}) - {motivo}")
+        print("="*60 + "\n")
+    
+    if not active_browsers:
+        print("❌ No hay navegadores con configuración completa para procesar")
+        _mostrar_error_navegadores_sin_configuracion(active_browsers_originales)
+        return
+    
+    # Obtener configuración del primer navegador
+    settings = get_creator_setting(active_browsers[0]['id'])
     cycle_minutes = settings.get('cycle_time_minutes', 60)
     accounts_per_cycle = settings.get('accounts_per_cycle', 1)
     is33mail = settings.get('is33mail', True)
@@ -2788,8 +3251,11 @@ def _ejecutar_creator_en_ciclo():
             print("########################################################")
             print(f"\n🔄 CICLO #{ciclo}")
             
+            # Obtener browser_id del primer navegador activo para notificación
+            first_browser_id = active_browsers[0]['id'] if active_browsers else None
+            
             # Enviar notificación de inicio de ciclo
-            _enviar_notificacion_inicio_ciclo(ciclo, accounts_per_cycle, cycle_minutes)
+            _enviar_notificacion_inicio_ciclo(ciclo, accounts_per_cycle, cycle_minutes, browser_id=first_browser_id)
             
             # Si is33mail es false, no solicitar emails del servidor
             if is33mail:
@@ -2829,7 +3295,7 @@ def _ejecutar_creator_en_ciclo():
                 print(f"🌐 Usando domain: {domain}")
             
             # Ejecutar proceso de creación
-            cuentas_creadas = _ejecutar_proceso_creator_con_objetivo(accounts_per_cycle, es_ciclo=True, ciclo_minutes=cycle_minutes)
+            cuentas_creadas = _ejecutar_proceso_creator_con_objetivo(accounts_per_cycle, es_ciclo=True, ciclo_minutes=cycle_minutes, active_browsers=active_browsers)
             
             # Mostrar resultado
             if cuentas_creadas >= accounts_per_cycle:

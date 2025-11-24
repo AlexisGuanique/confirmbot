@@ -50,7 +50,7 @@ def find_image(image_path, confidence=0.7, silent=False):
         pass
     return None
 
-def find_creator_image(image_name, confidence=0.8, return_box=False, grayscale=True, region=None):
+def find_creator_image(image_name, confidence=0.8, return_box=False, grayscale=True, region=None, browser_name=None):
     """
     Busca una imagen del creator por su nombre.
     
@@ -60,11 +60,12 @@ def find_creator_image(image_name, confidence=0.8, return_box=False, grayscale=T
         return_box: Si es True, devuelve el Box completo en lugar del centro
         grayscale: Si es True, convierte a escala de grises antes de comparar (default: True)
         region: Tupla (left, top, width, height) para limitar la búsqueda a una región específica
+        browser_name: Nombre del navegador. Si se proporciona, busca en su directorio específico.
     
     Returns:
         Point (x, y) si return_box=False, o Box (left, top, width, height) si return_box=True
     """
-    image_path = get_image_path(image_name)
+    image_path = get_image_path(image_name, browser_name=browser_name)
     if not image_path:
         return None
     
@@ -100,8 +101,14 @@ def find_creator_image(image_name, confidence=0.8, return_box=False, grayscale=T
     except Exception as e:
         # Log del error para debugging (solo si es un error real)
         error_type = type(e).__name__
+        error_msg = str(e)
+        # No mostrar errores de archivo faltante o problemas de codificación (son normales)
+        # Estos errores son esperados y no necesitan mostrarse en consola
         if "ImageNotFoundException" not in error_type and "NotFound" not in error_type:
-            print(f"⚠️ Error al buscar imagen '{image_name}': {e}")
+            # Filtrar errores comunes de codificación o archivo faltante
+            if "can't open/read file" not in error_msg.lower() and "file is missing" not in error_msg.lower():
+                # Solo mostrar errores realmente inesperados (muy raros)
+                pass
         return None
 
 def image_exists(image_path, confidence=0.7):
@@ -235,12 +242,11 @@ def wait_for_image(image_path, max_attempts=90, delay_between_attempts=1, confid
         print(f"❌ No se encontró la imagen después de {max_attempts} intentos")
     return None
 
-def wait_for_creator_image(image_name, max_attempts=90, delay_between_attempts=1, confidence=0.8, silent=False, grayscale=True, region=None):
+def wait_for_creator_image(image_name, max_attempts=90, delay_between_attempts=1, confidence=0.8, silent=False, grayscale=True, region=None, browser_name=None):
 
-    image_path = get_image_path(image_name)
+    image_path = get_image_path(image_name, browser_name=browser_name)
     if not image_path:
-        if not silent:
-            print(f"❌ No se encontró la imagen del creator: {image_name}")
+        # No mostrar mensaje - es normal que algunas imágenes no existan (variantes opcionales)
         return None
     
     # Asegurar que confidence sea razonable (mínimo 0.7 para evitar falsos positivos)
@@ -249,13 +255,13 @@ def wait_for_creator_image(image_name, max_attempts=90, delay_between_attempts=1
     
     # Usar find_creator_image directamente para tener control sobre grayscale
     for attempt in range(1, max_attempts + 1):
-        location = find_creator_image(image_name, confidence=confidence, return_box=False, grayscale=grayscale, region=region)
+        location = find_creator_image(image_name, confidence=confidence, return_box=False, grayscale=grayscale, region=region, browser_name=browser_name)
         if location:
             # Validación adicional: verificar una segunda vez para evitar falsos positivos
             # Solo si max_attempts es 1 (búsqueda rápida), hacer doble verificación
             if max_attempts == 1:
                 time.sleep(0.1)  # Pequeña pausa
-                location2 = find_creator_image(image_name, confidence=confidence, return_box=False, grayscale=grayscale, region=region)
+                location2 = find_creator_image(image_name, confidence=confidence, return_box=False, grayscale=grayscale, region=region, browser_name=browser_name)
                 if not location2:
                     # Si la segunda verificación falla, probablemente fue un falso positivo
                     continue
@@ -400,7 +406,7 @@ def get_clipboard_content():
         print(f"❌ Error obteniendo contenido del portapapeles: {e}")
         return ""
 
-def wait_for_spinner(image_name, max_attempts=90, delay_between_attempts=0.2, confidence=0.5, silent=False):
+def wait_for_spinner(image_name, max_attempts=90, delay_between_attempts=0.2, confidence=0.5, silent=False, browser_name=None):
     """
     Detecta un spinner de carga que está en constante rotación.
     Usa un confidence bajo por defecto (0.5) para detectar el spinner aunque no sea idéntico
@@ -416,7 +422,7 @@ def wait_for_spinner(image_name, max_attempts=90, delay_between_attempts=0.2, co
     Returns:
         Point (x, y) si encuentra el spinner, None si no
     """
-    image_path = get_image_path(image_name)
+    image_path = get_image_path(image_name, browser_name=browser_name)
     if not image_path:
         if not silent:
             print(f"❌ No se encontró la imagen del spinner: {image_name}")
@@ -431,7 +437,8 @@ def wait_for_spinner(image_name, max_attempts=90, delay_between_attempts=0.2, co
                 image_name,
                 confidence=confidence,
                 return_box=False,
-                grayscale=True
+                grayscale=True,
+                browser_name=browser_name
             )
             if location:
                 if not silent:

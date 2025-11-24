@@ -100,19 +100,25 @@ def view_image(image_path, refresh_callback=None):
         messagebox.showerror("Error", f"No se pudo abrir la imagen: {e}")
 
 
-def load_image(image_name):
+def load_image(image_name, browser_name=None):
     """
-    Permite al usuario cargar una imagen y la guarda en la carpeta /images
+    Permite al usuario cargar una imagen y la guarda en la carpeta de imágenes del navegador
     
     Args:
         image_name (str): Nombre descriptivo de la imagen (para el archivo)
+        browser_name (str, optional): Nombre del navegador. Si se proporciona, guarda en su directorio específico.
     
     Returns:
         str: Ruta de la imagen cargada o None si se canceló
     """
     try:
-        # Crear carpeta /images si no existe (al lado del ejecutable)
-        images_dir = get_images_path()
+        # Determinar la carpeta de imágenes a usar
+        if browser_name:
+            from app.utils.path_utils import get_browser_images_path
+            images_dir = get_browser_images_path(browser_name)
+        else:
+            images_dir = get_images_path()
+        
         ensure_directory_exists(images_dir)
         
         # Abrir diálogo para seleccionar imagen
@@ -133,8 +139,8 @@ def load_image(image_name):
             return None
         
         # Generar nombre de archivo basado en el nombre de la imagen
-        # Convertir espacios y caracteres especiales a guiones bajos
-        safe_name = image_name.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+        # Convertir espacios y caracteres especiales a guiones bajos (misma normalización que get_image_path)
+        safe_name = image_name.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n")
         
         # Obtener extensión del archivo original
         file_extension = os.path.splitext(file_path)[1]
@@ -156,33 +162,52 @@ def load_image(image_name):
         return None
 
 
-def get_image_path(image_name):
+def get_image_path(image_name, browser_name=None):
     """
-    Obtiene la ruta de una imagen si existe en la carpeta /images
+    Obtiene la ruta de una imagen si existe en la carpeta de imágenes del navegador
     
     Args:
         image_name (str): Nombre descriptivo de la imagen
+        browser_name (str, optional): Nombre del navegador. Si se proporciona, busca en su directorio específico.
     
     Returns:
         str: Ruta de la imagen si existe, None si no existe
     """
     try:
-        images_dir = get_images_path()
+        # Determinar la carpeta de imágenes a usar
+        if browser_name:
+            from app.utils.path_utils import get_browser_images_path
+            images_dir = get_browser_images_path(browser_name)
+        else:
+            images_dir = get_images_path()
         
         if not os.path.exists(images_dir):
             return None
         
         # Buscar archivos que coincidan con el nombre
-        safe_name = image_name.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+        # Normalizar el nombre: convertir a minúsculas, espacios a guiones bajos, eliminar caracteres especiales
+        safe_name = image_name.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n")
+        
+        # También crear variante con "ñ" original (para compatibilidad con archivos guardados antes de la normalización)
+        safe_name_with_ñ = image_name.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
         
         # Buscar archivos con diferentes extensiones
         extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff']
         
+        # Primero buscar con nombre normalizado (sin ñ)
         for ext in extensions:
             potential_path = os.path.join(images_dir, f"{safe_name}{ext}")
             if os.path.exists(potential_path):
                 return potential_path
         
+        # Si no se encuentra, buscar con nombre original (con ñ) para compatibilidad
+        if safe_name_with_ñ != safe_name:
+            for ext in extensions:
+                potential_path = os.path.join(images_dir, f"{safe_name_with_ñ}{ext}")
+                if os.path.exists(potential_path):
+                    return potential_path
+        
+        # No mostrar mensajes de depuración - es normal que algunas imágenes no existan (variantes opcionales)
         return None
         
     except Exception as e:

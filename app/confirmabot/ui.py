@@ -241,14 +241,15 @@ def setup_ui(logged_in_user, on_login_success):
     )
     stop_button.pack(pady=(5, 10))
 
-        #! 👉 Botón para abrir ventana nueva
-    def open_new_window():
-        create_new_window(root)
+        #! 👉 Botón para abrir ventana de gestión de navegadores
+    def open_browser_manager():
+        from app.creator.browser_manager import create_browser_manager_window
+        create_browser_manager_window(root)
 
     new_window_button = ctk.CTkButton(
         options_frame,
         text="Configuración del creator",
-        command=open_new_window,
+        command=open_browser_manager,
         fg_color="#28a745",
         text_color="white",
         font=("Arial", 12)

@@ -37,6 +37,38 @@ def get_images_path():
             # Fallback a ./images si no existe la carpeta de desarrollo
             return os.path.join(get_base_path(), "images")
 
+def get_browser_images_path(browser_name):
+    """
+    Obtiene la ruta de la carpeta de imágenes para un navegador específico.
+    
+    Args:
+        browser_name (str): Nombre del navegador
+    
+    Returns:
+        str: Ruta de la carpeta de imágenes del navegador
+    """
+    # Limpiar el nombre del navegador para usarlo como nombre de directorio
+    # Reemplazar caracteres especiales y espacios
+    safe_name = browser_name.strip()
+    safe_name = safe_name.replace(" ", "_")
+    safe_name = safe_name.replace("/", "_")
+    safe_name = safe_name.replace("\\", "_")
+    safe_name = safe_name.replace(":", "_")
+    safe_name = safe_name.replace("*", "_")
+    safe_name = safe_name.replace("?", "_")
+    safe_name = safe_name.replace('"', "_")
+    safe_name = safe_name.replace("<", "_")
+    safe_name = safe_name.replace(">", "_")
+    safe_name = safe_name.replace("|", "_")
+    
+    # Obtener la ruta base de imágenes
+    base_images_path = get_images_path()
+    
+    # Crear ruta del navegador
+    browser_images_path = os.path.join(base_images_path, safe_name)
+    
+    return browser_images_path
+
 def get_linkedin_accounts_path():
     """
     Obtiene la ruta de la carpeta de cuentas de LinkedIn.

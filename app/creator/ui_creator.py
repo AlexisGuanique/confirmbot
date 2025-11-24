@@ -1,13 +1,22 @@
-def create_new_window(parent_root):
+def create_new_window(parent_root, browser_id=None):
     """
-    Crea una nueva ventana con tabla de coordenadas del creator
+    Crea una nueva ventana con tabla de coordenadas del creator para un navegador específico
+    
+    Args:
+        parent_root: Ventana padre
+        browser_id (int, optional): ID del navegador. Si es None, usa el navegador por defecto o crea uno nuevo.
     """
     import customtkinter as ctk
     from tkinter import messagebox
     import threading
     import datetime
     import pytz
-    from app.database.database import get_creator_coordinates, save_creator_coordinates, save_creator_setting, get_creator_setting, load_emails_from_file, get_creator_email_count, clear_scheduled_time, get_user_data
+    from app.database.database import (
+        get_creator_coordinates, save_creator_coordinates, save_creator_setting, 
+        get_creator_setting, load_emails_from_file, get_creator_email_count, 
+        clear_scheduled_time, get_user_data, get_default_browser, get_browser_by_id,
+        create_browser
+    )
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
     from app.creator.image_config import view_image, load_image, get_image_path
     from app.creator.computer_actions import find_creator_image, wait_for_spinner
@@ -131,7 +140,6 @@ def create_new_window(parent_root):
     
     # Función para obtener el conteo de emails globales del servidor
     def get_global_email_count():
-        """Obtiene el conteo de emails globales del servidor"""
         try:
             user_data = get_user_data()
             if not user_data:
@@ -150,9 +158,30 @@ def create_new_window(parent_root):
             print(f"❌ Error al obtener conteo global: {e}")
             return None
     
+    # Obtener o crear navegador
+    if browser_id is None:
+        default_browser = get_default_browser()
+        if default_browser:
+            browser_id = default_browser['id']
+        else:
+            # Crear navegador por defecto si no existe ninguno
+            browser_id = create_browser("Navegador Principal", True)
+            if not browser_id:
+                messagebox.showerror("Error", "❌ No se pudo crear un navegador por defecto.")
+                return None
+    
+    # Verificar que el navegador existe
+    browser = get_browser_by_id(browser_id)
+    if not browser:
+        messagebox.showerror("Error", f"❌ El navegador con ID {browser_id} no existe.")
+        return None
+    
+    # Obtener nombre del navegador para las imágenes
+    browser_name = browser['name']
+    
     # Crear la nueva ventana
     new_window = ctk.CTkToplevel(parent_root)
-    new_window.title("Configuración del Creator")
+    new_window.title(f"Configuración del Creator - {browser_name}")
     new_window.geometry("650x600")
     new_window.configure(fg_color="#FFFFFF")
     
@@ -164,10 +193,10 @@ def create_new_window(parent_root):
     main_scroll_frame = ctk.CTkScrollableFrame(new_window, fg_color="transparent")
     main_scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
     
-    # Título de la ventana
+    # Título de la ventana con nombre del navegador
     title_label = ctk.CTkLabel(
         main_scroll_frame,
-        text="⚙️ Configuración de Coordenadas del Creator",
+        text=f"⚙️ Configuración del Creator - {browser['name']}",
         font=("Arial", 18, "bold"),
         text_color="black"
     )
@@ -188,8 +217,8 @@ def create_new_window(parent_root):
     user_agent_frame = ctk.CTkFrame(main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
     user_agent_frame.pack(fill="x", padx=20, pady=(0, 20))
     
-    # Obtener configuración actual
-    current_settings = get_creator_setting()
+    # Obtener configuración actual para este navegador
+    current_settings = get_creator_setting(browser_id)
     current_user_agent = current_settings.get('user_agent', '') if current_settings else ''
     
     # Frame para los inputs (User Agent y Hora Programada)
@@ -238,8 +267,7 @@ def create_new_window(parent_root):
     )
     notification_email_entry.pack(fill="x", pady=(5, 15))
     
-    # Insertar el valor actual si existe
-    current_settings = get_creator_setting()
+    # Insertar el valor actual si existe (ya obtenido arriba)
     if current_settings and current_settings.get('notification_email'):
         notification_email_entry.insert(0, current_settings['notification_email'])
     
@@ -310,8 +338,8 @@ def create_new_window(parent_root):
     # ================= CONFIGURACIÓN DE TIEMPO =================
     
     def open_time_config_window():
-        """Abre la ventana de configuración de tiempo"""
-        create_time_config_window(new_window)
+        """Abre la ventana de configuración de tiempo para este navegador"""
+        create_time_config_window(new_window, browser_id=browser_id)
     
     # Botón para abrir configuración de tiempo
     time_config_button = ctk.CTkButton(
@@ -434,11 +462,11 @@ def create_new_window(parent_root):
                 messagebox.showwarning("Advertencia", "Por favor ingresa un email válido para las notificaciones.")
                 return
         
-        # Obtener configuración actual para preservar configuración de tiempo
-        current_settings = get_creator_setting()
+        # Obtener configuración actual para preservar configuración de tiempo (ya obtenida arriba)
         
         # Guardar configuración (preservar configuración de tiempo existente)
         if save_creator_setting(
+            browser_id=browser_id,
             user_agent=user_agent, 
             accounts_to_create=1, 
             scheduled_time=current_settings.get('scheduled_time') if current_settings else None,
@@ -599,7 +627,7 @@ def create_new_window(parent_root):
     
     # Definir las coordenadas y sus nombres
     coordinates_list = [
-        "Click del Brave",
+        "Click del Navegador",
         "Click del link de LinkedIn en fav",
         "Click input email",
         "Click botón Agree",
@@ -618,7 +646,7 @@ def create_new_window(parent_root):
     
     # Mapeo de nombres a campos de la base de datos
     field_mapping = {
-        "Click del Brave": "brave_click",
+        "Click del Navegador": "brave_click",
         "Click del link de LinkedIn en fav": "linkedin_fav_click",
         "Click input email": "email_input_click",
         "Click botón Agree": "continue_button_click",
@@ -635,8 +663,8 @@ def create_new_window(parent_root):
         "Click cerrar proxy error": "close_proxy_error_click"
     }
     
-    # Obtener coordenadas guardadas
-    saved_coordinates = get_creator_coordinates()
+    # Obtener coordenadas guardadas para este navegador
+    saved_coordinates = get_creator_coordinates(browser_id)
     
     # Función para capturar coordenadas (igual que en ui.py)
     def capture_coordinate(coord_name, field_name, value_label_ref):
@@ -721,7 +749,7 @@ def create_new_window(parent_root):
                         widget.destroy()
                 
                 def guardar():
-                    if save_creator_coordinates(**{field_name: coord}):
+                    if save_creator_coordinates(browser_id, **{field_name: coord}):
                         messagebox.showinfo("Guardado", f"✅ Coordenada guardada: {coord}")
                         popup.destroy()
                         # Actualizar solo el label de valor sin refrescar toda la ventana
@@ -758,7 +786,7 @@ def create_new_window(parent_root):
     # Función para refrescar la ventana
     def refresh_window():
         new_window.destroy()
-        create_new_window(parent_root)
+        create_new_window(parent_root, browser_id=browser_id)
     
     # Crear contenedor de la tabla de coordenadas con borde
     table_container = ctk.CTkFrame(main_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
@@ -866,6 +894,7 @@ def create_new_window(parent_root):
         "Imagen de verificación de éxito carga LinkedIn 2",
         "Imagen de verificación de éxito carga LinkedIn 3",
         "Checkbox recuerdame",
+        "Imagen de verificación de carga email y contraseña",
         "Imagen captcha rojo",
         "Imagen captcha blanco",
         "Imagen número",
@@ -928,8 +957,8 @@ def create_new_window(parent_root):
         )
         name_label.grid(row=0, column=0, padx=5, pady=8, sticky="w")
         
-        # Verificar si existe la imagen
-        image_path = get_image_path(image_name)
+        # Verificar si existe la imagen (en el directorio del navegador)
+        image_path = get_image_path(image_name, browser_name=browser_name)
         has_image = image_path is not None
         
         # Crear botón para ver imagen
@@ -946,9 +975,9 @@ def create_new_window(parent_root):
         view_button.grid(row=0, column=1, padx=5, pady=8)
         
         # Función para ver imagen con referencia correcta al botón
-        def create_view_function(img_name, view_button_ref, observe_button_ref):
+        def create_view_function(img_name, view_button_ref, observe_button_ref, browser_name_ref):
             def view_image_func():
-                image_path = get_image_path(img_name)
+                image_path = get_image_path(img_name, browser_name=browser_name_ref)
                 if image_path:
                     # Callback para actualizar los botones cuando se elimine la imagen
                     def update_buttons_after_delete():
@@ -966,9 +995,9 @@ def create_new_window(parent_root):
             return view_image_func
         
         # Función para cargar imagen con referencia correcta al botón
-        def create_load_function(img_name, view_button_ref, observe_button_ref):
+        def create_load_function(img_name, view_button_ref, observe_button_ref, browser_name_ref):
             def load_image_func():
-                result = load_image(img_name)
+                result = load_image(img_name, browser_name=browser_name_ref)
                 if result:
                     # Actualizar los botones "Ver Imagen" y "Observar" sin refrescar toda la ventana
                     view_button_ref.configure(
@@ -982,10 +1011,10 @@ def create_new_window(parent_root):
             return load_image_func
         
         # Función para observar imagen (verificar si está visible en pantalla)
-        def create_observe_function(img_name):
+        def create_observe_function(img_name, browser_name_ref):
             def observe_image_func():
                 # Verificar primero si la imagen existe
-                image_path = get_image_path(img_name)
+                image_path = get_image_path(img_name, browser_name=browser_name_ref)
                 if not image_path:
                     messagebox.showwarning(
                         "Imagen no encontrada", 
@@ -1019,7 +1048,8 @@ def create_new_window(parent_root):
                             max_attempts=3,  # Pocos intentos para prueba rápida
                             delay_between_attempts=0.1,
                             confidence=config["confidence"],
-                            silent=True
+                            silent=True,
+                            browser_name=browser_name_ref
                         )
                         if test_location:
                             location = test_location
@@ -1031,7 +1061,7 @@ def create_new_window(parent_root):
                     
                     if location:
                         # Obtener el box para dibujar el borde
-                        box = find_creator_image(img_name, confidence=0.5, return_box=True, grayscale=True)
+                        box = find_creator_image(img_name, confidence=0.5, return_box=True, grayscale=True, browser_name=browser_name_ref)
                         if box:
                             # Dibujar borde rojo alrededor del spinner
                             new_window.after(100, lambda: draw_red_border_around_image(box, duration=3000))
@@ -1063,16 +1093,30 @@ def create_new_window(parent_root):
                         )
                 else:
                     # Usar método normal para imágenes sin spinner
-                    # Probar diferentes configuraciones para diagnosticar problemas
-                    # Empezar con configuraciones más estrictas para evitar falsos positivos
-                    configs_to_try = [
-                        {"confidence": 0.9, "grayscale": True, "name": "Confianza 0.9, Escala de grises"},
-                        {"confidence": 0.8, "grayscale": True, "name": "Confianza 0.8, Escala de grises"},
-                        {"confidence": 0.7, "grayscale": True, "name": "Confianza 0.7, Escala de grises"},
-                        {"confidence": 0.9, "grayscale": False, "name": "Confianza 0.9, Color completo"},
-                        {"confidence": 0.8, "grayscale": False, "name": "Confianza 0.8, Color completo"},
-                        {"confidence": 0.7, "grayscale": False, "name": "Confianza 0.7, Color completo"},
-                    ]
+                    # Usar confidence muy alto para determinar con precisión si la imagen está en pantalla
+                    # Especialmente importante para imágenes críticas como verificación de carga
+                    is_critical_image = (
+                        "verificación" in img_name.lower() or 
+                        "verificacion" in img_name.lower() or
+                        "carga" in img_name.lower()
+                    )
+                    
+                    if is_critical_image:
+                        # Para imágenes críticas, usar confidence muy alto (0.98) para evitar falsos positivos
+                        configs_to_try = [
+                            {"confidence": 0.98, "grayscale": True, "name": "Confianza 0.98, Escala de grises (Alta precisión)"},
+                            {"confidence": 0.97, "grayscale": True, "name": "Confianza 0.97, Escala de grises"},
+                            {"confidence": 0.98, "grayscale": False, "name": "Confianza 0.98, Color completo (Alta precisión)"},
+                            {"confidence": 0.97, "grayscale": False, "name": "Confianza 0.97, Color completo"},
+                        ]
+                    else:
+                        # Para otras imágenes, usar confidence alto pero no tan extremo
+                        configs_to_try = [
+                            {"confidence": 0.95, "grayscale": True, "name": "Confianza 0.95, Escala de grises"},
+                            {"confidence": 0.9, "grayscale": True, "name": "Confianza 0.9, Escala de grises"},
+                            {"confidence": 0.95, "grayscale": False, "name": "Confianza 0.95, Color completo"},
+                            {"confidence": 0.9, "grayscale": False, "name": "Confianza 0.9, Color completo"},
+                        ]
                     
                     results = []
                     box = None
@@ -1084,7 +1128,8 @@ def create_new_window(parent_root):
                             img_name, 
                             confidence=config["confidence"], 
                             return_box=True,
-                            grayscale=config["grayscale"]
+                            grayscale=config["grayscale"],
+                            browser_name=browser_name_ref
                         )
                         if test_box:
                             box = test_box
@@ -1092,7 +1137,8 @@ def create_new_window(parent_root):
                                 img_name, 
                                 confidence=config["confidence"], 
                                 return_box=False,
-                                grayscale=config["grayscale"]
+                                grayscale=config["grayscale"],
+                                browser_name=browser_name_ref
                             )
                             successful_config = config
                             results.append(f"✅ {config['name']}: ENCONTRADA")
@@ -1140,7 +1186,7 @@ def create_new_window(parent_root):
         observe_button = ctk.CTkButton(
             row_frame,
             text="Observar",
-            command=create_observe_function(image_name),
+            command=create_observe_function(image_name, browser_name),
             fg_color="#28a745" if has_image else "#6c757d",
             text_color="white",
             font=("Arial", 11),
@@ -1151,12 +1197,12 @@ def create_new_window(parent_root):
         observe_button.grid(row=0, column=3, padx=5, pady=8)
         
         # Asignar comandos a los botones con las referencias correctas
-        view_button.configure(command=create_view_function(image_name, view_button, observe_button))
+        view_button.configure(command=create_view_function(image_name, view_button, observe_button, browser_name))
         
         load_button = ctk.CTkButton(
             row_frame,
             text="Cargar Imagen",
-            command=create_load_function(image_name, view_button, observe_button),
+            command=create_load_function(image_name, view_button, observe_button, browser_name),
             fg_color="#007ACC",
             text_color="white",
             font=("Arial", 11),
@@ -1172,15 +1218,37 @@ def create_new_window(parent_root):
     return new_window
 
 
-def create_time_config_window(parent_root):
+def create_time_config_window(parent_root, browser_id=None):
     """
-    Crea una nueva ventana para configurar el tiempo (hora programada o ciclo)
+    Crea una nueva ventana para configurar el tiempo (hora programada o ciclo) para un navegador específico
+    
+    Args:
+        parent_root: Ventana padre
+        browser_id (int, optional): ID del navegador. Si es None, usa el navegador por defecto.
     """
     import customtkinter as ctk
     from tkinter import messagebox
     import datetime
     import pytz
-    from app.database.database import get_creator_setting, save_creator_setting, clear_scheduled_time
+    from app.database.database import (
+        get_creator_setting, save_creator_setting, clear_scheduled_time,
+        get_default_browser, get_browser_by_id
+    )
+    
+    # Obtener navegador
+    if browser_id is None:
+        default_browser = get_default_browser()
+        if default_browser:
+            browser_id = default_browser['id']
+        else:
+            messagebox.showerror("Error", "❌ No hay navegadores disponibles.")
+            return None
+    
+    # Verificar que el navegador existe
+    browser = get_browser_by_id(browser_id)
+    if not browser:
+        messagebox.showerror("Error", f"❌ El navegador con ID {browser_id} no existe.")
+        return None
     
     # Crear la nueva ventana
     time_window = ctk.CTkToplevel(parent_root)
@@ -1209,8 +1277,8 @@ def create_time_config_window(parent_root):
     )
     title_label.pack(pady=(0, 30))
     
-    # Obtener configuración actual
-    current_settings = get_creator_setting()
+    # Obtener configuración actual para este navegador
+    current_settings = get_creator_setting(browser_id)
     if not current_settings:
         current_settings = {
             'time_config_type': 'scheduled',
@@ -1568,6 +1636,7 @@ def create_time_config_window(parent_root):
         
         # Guardar configuración
         success = save_creator_setting(
+            browser_id=browser_id,
             user_agent=current_settings.get('user_agent', ''),
             accounts_to_create=current_settings.get('accounts_to_create', 1),
             scheduled_time=scheduled_time if scheduled_enabled else None,
@@ -1608,6 +1677,7 @@ def create_time_config_window(parent_root):
         
         # Guardar configuración limpia (modo manual)
         success = save_creator_setting(
+            browser_id=browser_id,
             user_agent=current_settings.get('user_agent', ''),
             accounts_to_create=current_settings.get('accounts_to_create', 1),
             scheduled_time=None,
