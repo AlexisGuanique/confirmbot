@@ -105,8 +105,8 @@ class HostingerEmailClient:
             # Crear contexto SSL
             context = ssl.create_default_context()
             
-            # Conectar al servidor SMTP con STARTTLS
-            self.smtp_server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+            # Conectar al servidor SMTP con STARTTLS y timeout de 10 segundos
+            self.smtp_server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10)
             self.smtp_server.starttls(context=context)
             
             # Autenticar
@@ -117,6 +117,7 @@ class HostingerEmailClient:
         except smtplib.SMTPAuthenticationError as e:
             return False
         except Exception as e:
+            logger.error(f"Error al conectar SMTP: {e}")
             return False
     
     def disconnect_smtp(self):
@@ -1348,7 +1349,8 @@ def send_html_email_quick(email_address: str, password: str, to_email: str,
 def send_email_with_file(email_address: str, password: str, to_email: str, 
                         subject: str, body: str, attachment_path: str) -> bool:
     """
-    Función rápida para enviar un correo electrónico con archivo adjunto
+    Función rápida para enviar un correo electrónico con archivo adjunto.
+    Tiene timeout de 10 segundos en la conexión SMTP para evitar bloqueos.
     
     Args:
         email_address: Dirección de correo del remitente
@@ -1364,15 +1366,26 @@ def send_email_with_file(email_address: str, password: str, to_email: str,
     email_client = HostingerEmailClient(email_address, password)
     
     try:
+        # Intentar conectar con timeout (configurado en connect_smtp)
         if email_client.connect_smtp():
-            success = email_client.send_email_with_attachment(to_email, subject, body, attachment_path)
-            return success
+            try:
+                success = email_client.send_email_with_attachment(to_email, subject, body, attachment_path)
+                return success
+            except Exception as e:
+                logger.error(f"Error al enviar correo: {e}")
+                return False
         else:
+            logger.error("No se pudo conectar al servidor SMTP")
             return False
     except Exception as e:
+        logger.error(f"Error inesperado en send_email_with_file: {e}")
         return False
     finally:
-        email_client.disconnect_smtp()
+        # Asegurarse de desconectar siempre
+        try:
+            email_client.disconnect_smtp()
+        except Exception:
+            pass  # Ignorar errores al desconectar
 
 
 if __name__ == "__main__":

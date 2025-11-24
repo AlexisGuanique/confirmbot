@@ -1999,8 +1999,9 @@ def _determinar_emails_realmente_fallidos(emails_procesados, browser_id=None):
 
 
 def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_fallidas=None, es_ciclo=False, ciclo_minutes=None, tiempo_inicio_ciclo=None, browser_id=None):
-    print("📧 Iniciando envío de correo de informe...")
-    
+    """
+    Envía un correo de informe. Retorna rápidamente si no hay configuración necesaria.
+    """
     try:
         from app.confirmabot.hostinger_actions import send_email_with_file
         from app.database.database import get_creator_setting, get_all_emails, get_user_data, get_default_browser
@@ -2011,11 +2012,41 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
         
         # Verificar archivo
         if not os.path.exists(filepath):
-            return False
+            print("⚠️ Archivo no encontrado, omitiendo envío de correo")
+            return True
+        
+        # Si no se proporciona browser_id, usar el navegador por defecto
+        if not browser_id:
+            default_browser = get_default_browser()
+            if default_browser:
+                browser_id = default_browser['id']
+        
+        # Obtener email de destino PRIMERO (antes de hacer operaciones costosas)
+        try:
+            if browser_id:
+                settings = get_creator_setting(browser_id)
+            else:
+                settings = None
+            email_destino = settings.get('notification_email') if settings else None
+        except Exception as e:
+            print(f"⚠️ Error al obtener configuración del navegador: {e}")
+            print("ℹ️ Omitiendo envío de correo debido a error")
+            return True
+        
+        if not email_destino:
+            print("ℹ️ No hay email de destino configurado, omitiendo envío de correo")
+            return True  # No hay email de destino configurado, continuar
         
         # Intentar obtener credenciales de correo (opcional)
-        emails_data = get_all_emails()
-        if not emails_data:
+        try:
+            emails_data = get_all_emails()
+        except Exception as e:
+            print(f"⚠️ Error al obtener emails de la base de datos: {e}")
+            print("ℹ️ Omitiendo envío de correo debido a error")
+            return True
+        
+        if not emails_data or len(emails_data) == 0:
+            print("ℹ️ No hay emails configurados, omitiendo envío de correo")
             return True  # No hay emails configurados, omitir envío
         
         # Buscar email con credenciales de Hostinger
@@ -2028,26 +2059,18 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
                 break
         
         if not email_address or not email_password:
+            print("ℹ️ No hay credenciales de Hostinger configuradas, omitiendo envío de correo")
             return True  # No hay credenciales, omitir envío
         
-        # Si no se proporciona browser_id, usar el navegador por defecto
-        if not browser_id:
-            default_browser = get_default_browser()
-            if default_browser:
-                browser_id = default_browser['id']
+        # Si llegamos aquí, tenemos todo lo necesario para enviar el correo
+        print("📧 Iniciando envío de correo de informe...")
         
-        # Obtener email de destino
-        if browser_id:
-            settings = get_creator_setting(browser_id)
-        else:
-            settings = None
-        email_destino = settings.get('notification_email') if settings else None
-        
-        if not email_destino:
-            return True  # No hay email de destino configurado, continuar
-        
-        # Obtener conteo total de cuentas en el servidor
-        total_cuentas_servidor = _obtener_conteo_cuentas_servidor()
+        # Obtener conteo total de cuentas en el servidor (opcional, no crítico)
+        try:
+            total_cuentas_servidor = _obtener_conteo_cuentas_servidor()
+        except Exception as e:
+            print(f"⚠️ No se pudo obtener conteo de cuentas del servidor: {e}")
+            total_cuentas_servidor = 0
         
         # Preparar correo
         fecha_hora = datetime.now().strftime('%d/%m/%Y a las %H:%M:%S')
@@ -2104,33 +2127,39 @@ def _enviar_archivo_por_correo(filepath, total_emails, emails_exitosos, cuentas_
         # Crear archivo de estadísticas detalladas temporal
         archivo_estadisticas = _crear_archivo_estadisticas_detalladas(cuentas_fallidas, tiempo_total_minutos, promedio_minutos_por_cuenta, tiempo_por_cuenta_procesada, porcentaje_tiempo_por_cuenta)
         
-        # Enviar correo con archivo adjunto
-        exito = send_email_with_file(
-            email_address=email_address,
-            password=email_password,
-            to_email=email_destino,
-            subject=asunto,
-            body=cuerpo,
-            attachment_path=archivo_estadisticas
-        )
+        # Enviar correo con archivo adjunto (con timeout implícito en connect_smtp)
+        try:
+            exito = send_email_with_file(
+                email_address=email_address,
+                password=email_password,
+                to_email=email_destino,
+                subject=asunto,
+                body=cuerpo,
+                attachment_path=archivo_estadisticas
+            )
+            
+            if exito:
+                print("✅ Correo enviado con éxito")
+            else:
+                print("❌ Error al enviar correo (verificar credenciales o conexión)")
+        except Exception as e:
+            print(f"❌ Error al intentar enviar correo: {str(e)}")
+            exito = False
+        finally:
+            # Eliminar archivo temporal después del envío (siempre, incluso si falló)
+            if archivo_estadisticas and os.path.exists(archivo_estadisticas):
+                try:
+                    os.remove(archivo_estadisticas)
+                except Exception:
+                    pass  # Ignorar errores al eliminar
         
-        # Eliminar archivo temporal después del envío
-        if archivo_estadisticas and os.path.exists(archivo_estadisticas):
-            try:
-                os.remove(archivo_estadisticas)
-            except Exception:
-                pass  # Ignorar errores al eliminar
-        
-        if exito:
-            print("✅ Correo enviado con éxito")
-        else:
-            print("❌ Error al enviar correo")
-        
-        return exito
+        # Retornar True para continuar el proceso incluso si falló el envío
+        return True
             
     except Exception as e:
-        print(f"❌ Error inesperado al enviar correo: {str(e)}")
-        return False
+        print(f"❌ Error inesperado al procesar envío de correo: {str(e)}")
+        # Retornar True para no bloquear el proceso principal
+        return True
 
 
     
