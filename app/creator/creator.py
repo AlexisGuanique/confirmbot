@@ -2965,7 +2965,7 @@ def _ejecutar_proceso_creator(active_browsers):
     return True
 
 
-def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool = False, ciclo_minutes: int = None, active_browsers=None) -> int:
+def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool = False, ciclo_minutes: int = None, active_browsers=None, browser_index_start: int = 0) -> tuple:
     """
     Ejecuta el proceso de creación de cuentas con un objetivo específico
     Rota entre navegadores activos
@@ -2985,7 +2985,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
         active_browsers = get_active_browsers()
         if not active_browsers:
             print("❌ No hay navegadores activos")
-            return 0
+            return 0, 0
     
     # Guardar lista original para el mensaje de error
     active_browsers_originales = active_browsers.copy()
@@ -3007,7 +3007,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     if not active_browsers:
         print("❌ No hay navegadores con configuración completa para procesar")
         _mostrar_error_navegadores_sin_configuracion(active_browsers_originales)
-        return 0
+        return 0, 0
     
     # Obtener configuración del primer navegador
     settings = get_creator_setting(active_browsers[0]['id'])
@@ -3016,7 +3016,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     
     filepath = _inicializar_archivo_salida(objetivo_cuentas)
     if not filepath:
-        return 0
+        return 0, browser_index_start
     
     cuentas_creadas = 0
     emails_procesados = []  # Lista para trackear todos los emails procesados
@@ -3024,14 +3024,14 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     from datetime import datetime
     tiempo_inicio_proceso = datetime.now()
     
-    # Índice para rotar entre navegadores
-    browser_index = 0
+    # Índice para rotar entre navegadores (usar el índice inicial pasado como parámetro)
+    browser_index = browser_index_start
     
     # Si is33mail es false, usar domain directamente
     if not is33mail:
         if not domain:
             print("❌ Domain no configurado")
-            return 0
+            return 0, browser_index_start
         
         # Preparar el dominio con @ al inicio si no lo tiene
         domain_email = domain if domain.startswith('@') else f"@{domain}"
@@ -3220,7 +3220,8 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     # Enviar correo de informe (opcional)
     _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_realmente_fallidas, es_ciclo, ciclo_minutes, tiempo_inicio_proceso, browser_id=first_browser_id)
     
-    return cuentas_creadas
+    # Retornar tanto las cuentas creadas como el índice del navegador actual para continuar la rotación
+    return cuentas_creadas, browser_index
 
 
 def _ejecutar_creator_en_ciclo(active_browsers):
@@ -3274,6 +3275,8 @@ def _ejecutar_creator_en_ciclo(active_browsers):
     print("💡 Ctrl+C para detener")
     
     ciclo = 1
+    # Mantener el índice del navegador entre ciclos para continuar la rotación
+    browser_index = 0
     
     try:
         while True:
@@ -3323,8 +3326,11 @@ def _ejecutar_creator_en_ciclo(active_browsers):
                     break
                 print(f"🌐 Usando domain: {domain}")
             
-            # Ejecutar proceso de creación
-            cuentas_creadas = _ejecutar_proceso_creator_con_objetivo(accounts_per_cycle, es_ciclo=True, ciclo_minutes=cycle_minutes, active_browsers=active_browsers)
+            # Ejecutar proceso de creación, pasando el índice del navegador actual
+            cuentas_creadas, browser_index = _ejecutar_proceso_creator_con_objetivo(
+                accounts_per_cycle, es_ciclo=True, ciclo_minutes=cycle_minutes, 
+                active_browsers=active_browsers, browser_index_start=browser_index
+            )
             
             # Mostrar resultado
             if cuentas_creadas >= accounts_per_cycle:
