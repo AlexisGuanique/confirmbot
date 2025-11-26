@@ -1206,7 +1206,7 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
 
 def _click_brave(coordinates, browser_name=None):
     """Hace clic en el navegador con validación de imagen"""
-    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image, press_key
     import time
     
     # Obtener nombre del navegador para mensajes
@@ -1219,8 +1219,10 @@ def _click_brave(coordinates, browser_name=None):
     max_intentos = 3
     
     for intento in range(1, max_intentos + 1):
-        # Hacer doble clic
-        click_coordinates(brave_coords, double_click=True)
+        # Hacer un solo clic, esperar medio segundo y presionar Enter
+        click_coordinates(brave_coords, double_click=False)
+        time.sleep(0.5)
+        press_key('enter')
         time.sleep(2)
         
         # Validar que la imagen del navegador apareció (busca en la carpeta específica del navegador)
