@@ -334,6 +334,28 @@ def create_database():
             '''
         )
         
+        # 🔹 Tabla para configuración global de tiempo (hora programada y ciclo)
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS global_time_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scheduled_time TEXT,
+                timezone TEXT,
+                cycle_time_minutes INTEGER DEFAULT 60,
+                time_config_type TEXT DEFAULT 'manual',
+                accounts_per_cycle INTEGER DEFAULT 1
+            )
+            '''
+        )
+        
+        # Inicializar con un registro por defecto si no existe
+        cursor.execute("SELECT COUNT(*) FROM global_time_config")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute('''
+                INSERT INTO global_time_config (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle)
+                VALUES (NULL, NULL, 60, 'manual', 1)
+            ''')
+        
         # 🔄 MIGRACIÓN: Agregar browser_id a creator_setting si no existe
         print("🔄 Verificando migración de creator_setting para múltiples navegadores...")
         cursor.execute("PRAGMA table_info(creator_setting)")
@@ -1330,17 +1352,19 @@ def get_creator_coordinates(browser_id, *field_names):
 def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None, is33mail=None, domain=None):
     """
     Guarda o actualiza la configuración del creator para un navegador específico
+    NOTA: Los campos de tiempo (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle) 
+    ahora se ignoran aquí y deben guardarse usando save_global_time_config()
     
     Args:
         browser_id (int): ID del navegador
         user_agent (str): User agent a utilizar
         accounts_to_create (int): Cantidad de cuentas a crear (default: 1)
-        scheduled_time (str): Hora programada en formato HH:MM (opcional)
-        timezone (str): Zona horaria (opcional)
+        scheduled_time (str): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
+        timezone (str): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
         notification_email (str): Email para recibir notificaciones (opcional)
-        cycle_time_minutes (int): Tiempo en minutos para el ciclo (default: 60)
-        time_config_type (str): Tipo de configuración ('scheduled' o 'cycle')
-        accounts_per_cycle (int): Cantidad de cuentas a crear por ciclo (default: 1)
+        cycle_time_minutes (int): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
+        time_config_type (str): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
+        accounts_per_cycle (int): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
         isInVps (bool): Si está ejecutándose en VPS (True) o máquina física (False) (opcional)
         is33mail (bool): Si se usa 33mail (True) o no (False) (opcional)
         domain (str): Dominio a utilizar (opcional)
@@ -1358,15 +1382,15 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
         isInVps_int = 1 if isInVps is True else (0 if isInVps is False else None)
         is33mail_int = 1 if is33mail is True else (0 if is33mail is False else None)
         
-        # Insertar o actualizar (UPSERT usando REPLACE)
+        # Insertar o actualizar (UPSERT usando REPLACE) - NO guardar campos de tiempo
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail, domain)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (browser_id, user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps_int, is33mail_int, domain))
+            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, notification_email, isInVps, is33mail, domain)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (browser_id, user_agent, accounts_to_create, notification_email, isInVps_int, is33mail_int, domain))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Hora={scheduled_time}, Zona={timezone}, Notificación={notification_email}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, isInVps={isInVps}, is33mail={is33mail}, domain={domain}")
+        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Notificación={notification_email}, isInVps={isInVps}, is33mail={is33mail}, domain={domain}")
         return True
         
     except Exception as e:
@@ -1377,45 +1401,52 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
 def get_creator_setting(browser_id):
     """
     Obtiene la configuración del creator para un navegador específico
+    Combina la configuración del navegador con la configuración global de tiempo
     
     Args:
         browser_id (int): ID del navegador
     
     Returns:
-        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail y domain, o None si no existe
+        dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, 
+              cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail y domain, 
+              o None si no existe la configuración del navegador
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         # Habilitar claves foráneas
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create, scheduled_time, timezone, notification_email, cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail, domain FROM creator_setting WHERE browser_id = ?", (browser_id,))
+        cursor.execute("SELECT user_agent, accounts_to_create, notification_email, isInVps, is33mail, domain FROM creator_setting WHERE browser_id = ?", (browser_id,))
         row = cursor.fetchone()
         conn.close()
         
         if row:
             # Convertir integer a boolean para isInVps (None si no está configurado)
             isInVps_bool = None
-            if row[8] is not None:
-                isInVps_bool = bool(row[8])
+            if row[3] is not None:
+                isInVps_bool = bool(row[3])
             
             # Convertir integer a boolean para is33mail (None si no está configurado)
             is33mail_bool = None
-            if row[9] is not None:
-                is33mail_bool = bool(row[9])
+            if row[4] is not None:
+                is33mail_bool = bool(row[4])
+            
+            # Obtener configuración global de tiempo
+            global_time_config = get_global_time_config()
             
             return {
                 'user_agent': row[0],
                 'accounts_to_create': row[1],
-                'scheduled_time': row[2],
-                'timezone': row[3],
-                'notification_email': row[4],
-                'cycle_time_minutes': row[5],  # Mantener el valor real, incluso si es None
-                'time_config_type': row[6] if row[6] is not None else 'manual',  # Cambiar default a 'manual'
-                'accounts_per_cycle': row[7],  # Mantener el valor real, incluso si es None
+                'notification_email': row[2],
                 'isInVps': isInVps_bool,  # Boolean o None
                 'is33mail': is33mail_bool,  # Boolean o None
-                'domain': row[10]  # String o None
+                'domain': row[5],  # String o None
+                # Campos de tiempo desde configuración global
+                'scheduled_time': global_time_config['scheduled_time'],
+                'timezone': global_time_config['timezone'],
+                'cycle_time_minutes': global_time_config['cycle_time_minutes'],
+                'time_config_type': global_time_config['time_config_type'],
+                'accounts_per_cycle': global_time_config['accounts_per_cycle']
             }
         return None
         
@@ -1427,6 +1458,7 @@ def get_creator_setting(browser_id):
 def clear_scheduled_time(browser_id):
     """
     Elimina la hora programada de la configuración del creator para un navegador específico
+    (DEPRECADO: Ahora se usa configuración global)
     
     Args:
         browser_id (int): ID del navegador
@@ -1455,6 +1487,99 @@ def clear_scheduled_time(browser_id):
     except Exception as e:
         print(f"❌ Error al eliminar hora programada: {e}")
         return False
+
+
+#! FUNCIONES DE CONFIGURACIÓN GLOBAL DE TIEMPO
+def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None):
+    """
+    Guarda o actualiza la configuración global de tiempo (hora programada y ciclo)
+    Esta configuración es global para todos los navegadores
+    
+    Args:
+        scheduled_time (str): Hora programada en formato HH:MM (opcional)
+        timezone (str): Zona horaria (opcional)
+        cycle_time_minutes (int): Tiempo en minutos para el ciclo (opcional)
+        time_config_type (str): Tipo de configuración ('scheduled', 'cycle', 'both', 'manual')
+        accounts_per_cycle (int): Cantidad de cuentas a crear por ciclo (opcional)
+    
+    Returns:
+        bool: True si se guardó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        # Actualizar el único registro (siempre ID 1)
+        cursor.execute('''
+            UPDATE global_time_config 
+            SET scheduled_time = ?, timezone = ?, cycle_time_minutes = ?, 
+                time_config_type = ?, accounts_per_cycle = ?
+            WHERE id = 1
+        ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle))
+        
+        # Si no existe ningún registro, crear uno
+        if cursor.rowcount == 0:
+            cursor.execute('''
+                INSERT INTO global_time_config (id, scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle)
+                VALUES (1, ?, ?, ?, ?, ?)
+            ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Configuración global de tiempo guardada: Hora={scheduled_time}, Zona={timezone}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al guardar configuración global de tiempo: {e}")
+        return False
+
+
+def get_global_time_config():
+    """
+    Obtiene la configuración global de tiempo (hora programada y ciclo)
+    Esta configuración es global para todos los navegadores
+    
+    Returns:
+        dict: Diccionario con scheduled_time, timezone, cycle_time_minutes, time_config_type y accounts_per_cycle, 
+              o valores por defecto si no existe
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle FROM global_time_config WHERE id = 1")
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'scheduled_time': row[0],
+                'timezone': row[1],
+                'cycle_time_minutes': row[2] if row[2] is not None else 60,
+                'time_config_type': row[3] if row[3] is not None else 'manual',
+                'accounts_per_cycle': row[4] if row[4] is not None else 1
+            }
+        
+        # Valores por defecto si no existe
+        return {
+            'scheduled_time': None,
+            'timezone': None,
+            'cycle_time_minutes': 60,
+            'time_config_type': 'manual',
+            'accounts_per_cycle': 1
+        }
+        
+    except Exception as e:
+        print(f"❌ Error al obtener configuración global de tiempo: {e}")
+        # Retornar valores por defecto en caso de error
+        return {
+            'scheduled_time': None,
+            'timezone': None,
+            'cycle_time_minutes': 60,
+            'time_config_type': 'manual',
+            'accounts_per_cycle': 1
+        }
 
 
 # =================================

@@ -335,25 +335,6 @@ def create_new_window(parent_root, browser_id=None):
     )
     fisica_checkbox.pack(side="left")
     
-    # ================= CONFIGURACIÓN DE TIEMPO =================
-    
-    def open_time_config_window():
-        """Abre la ventana de configuración de tiempo para este navegador"""
-        create_time_config_window(new_window, browser_id=browser_id)
-    
-    # Botón para abrir configuración de tiempo
-    time_config_button = ctk.CTkButton(
-        inputs_frame,
-        text="⏰ Configurar Tiempo",
-        command=open_time_config_window,
-        fg_color="#007bff",
-        text_color="white",
-        font=("Arial", 11),
-        height=35,
-        width=150
-    )
-    time_config_button.pack(side="left", padx=(0, 10), pady=(5, 15))
-    
     # === CHECKBOX Y INPUT DE 33MAIL ===
     # Frame para la configuración de 33mail
     mail33_frame = ctk.CTkFrame(inputs_frame, fg_color="transparent")
@@ -489,7 +470,7 @@ def create_new_window(parent_root, browser_id=None):
             success_msg += f"\nEs con 33mail: {mail33_text}"
             if not is33mail and domain:
                 success_msg += f"\nDominio: {domain}"
-            success_msg += f"\n\n💡 Para configurar el tiempo de ejecución, usa el botón '⏰ Configurar Tiempo'"
+            success_msg += f"\n\n💡 Para configurar el tiempo de ejecución (global), ve a 'Gestión de Navegadores'"
             messagebox.showinfo("Éxito", success_msg)
         else:
             messagebox.showerror("Error", "❌ No se pudo guardar la configuración.")
@@ -1220,35 +1201,20 @@ def create_new_window(parent_root, browser_id=None):
 
 def create_time_config_window(parent_root, browser_id=None):
     """
-    Crea una nueva ventana para configurar el tiempo (hora programada o ciclo) para un navegador específico
+    Crea una nueva ventana para configurar el tiempo (hora programada o ciclo) de forma global
+    Esta configuración se aplica a todos los navegadores
     
     Args:
         parent_root: Ventana padre
-        browser_id (int, optional): ID del navegador. Si es None, usa el navegador por defecto.
+        browser_id (int, optional): IGNORADO - mantenido por compatibilidad. La configuración ahora es global.
     """
     import customtkinter as ctk
     from tkinter import messagebox
     import datetime
     import pytz
     from app.database.database import (
-        get_creator_setting, save_creator_setting, clear_scheduled_time,
-        get_default_browser, get_browser_by_id
+        get_global_time_config, save_global_time_config
     )
-    
-    # Obtener navegador
-    if browser_id is None:
-        default_browser = get_default_browser()
-        if default_browser:
-            browser_id = default_browser['id']
-        else:
-            messagebox.showerror("Error", "❌ No hay navegadores disponibles.")
-            return None
-    
-    # Verificar que el navegador existe
-    browser = get_browser_by_id(browser_id)
-    if not browser:
-        messagebox.showerror("Error", f"❌ El navegador con ID {browser_id} no existe.")
-        return None
     
     # Crear la nueva ventana
     time_window = ctk.CTkToplevel(parent_root)
@@ -1271,25 +1237,26 @@ def create_time_config_window(parent_root, browser_id=None):
     # Título de la ventana
     title_label = ctk.CTkLabel(
         main_frame,
-        text="⏰ Configuración de Tiempo",
+        text="⏰ Configuración Global de Tiempo",
         font=("Arial", 18, "bold"),
         text_color="black"
     )
-    title_label.pack(pady=(0, 30))
+    title_label.pack(pady=(0, 10))
     
-    # Obtener configuración actual para este navegador
-    current_settings = get_creator_setting(browser_id)
-    if not current_settings:
-        current_settings = {
-            'time_config_type': 'scheduled',
-            'scheduled_time': '',
-            'timezone': 'Argentina (GMT-3)',
-            'cycle_time_minutes': 60,
-            'accounts_per_cycle': 1
-        }
+    # Subtítulo explicativo
+    subtitle_label = ctk.CTkLabel(
+        main_frame,
+        text="🌐 Esta configuración se aplica a TODOS los navegadores",
+        font=("Arial", 11),
+        text_color="gray"
+    )
+    subtitle_label.pack(pady=(0, 30))
+    
+    # Obtener configuración global actual
+    current_settings = get_global_time_config()
     
     # Debug: mostrar configuración cargada
-    print(f"🔍 Configuración cargada en ventana de tiempo:")
+    print(f"🔍 Configuración global de tiempo cargada:")
     print(f"   - Tipo: {current_settings.get('time_config_type')}")
     print(f"   - Hora programada: {current_settings.get('scheduled_time')}")
     print(f"   - Zona horaria: {current_settings.get('timezone')}")
@@ -1634,20 +1601,13 @@ def create_time_config_window(parent_root, browser_id=None):
         else:
             config_type = 'manual'
         
-        # Guardar configuración
-        success = save_creator_setting(
-            browser_id=browser_id,
-            user_agent=current_settings.get('user_agent', ''),
-            accounts_to_create=current_settings.get('accounts_to_create', 1),
+        # Guardar configuración global de tiempo
+        success = save_global_time_config(
             scheduled_time=scheduled_time if scheduled_enabled else None,
             timezone=timezone if scheduled_enabled else None,
-            notification_email=current_settings.get('notification_email', ''),
             cycle_time_minutes=int(cycle_minutes) if cycle_enabled and cycle_minutes != "" else None,
             time_config_type=config_type,
-            accounts_per_cycle=int(accounts_per_cycle) if cycle_enabled and accounts_per_cycle else None,
-            isInVps=current_settings.get('isInVps') if current_settings else None,
-            is33mail=current_settings.get('is33mail') if current_settings else None,
-            domain=current_settings.get('domain') if current_settings else None
+            accounts_per_cycle=int(accounts_per_cycle) if cycle_enabled and accounts_per_cycle else None
         )
         
         if success:
@@ -1675,20 +1635,13 @@ def create_time_config_window(parent_root, browser_id=None):
         cycle_minutes_entry.delete(0, 'end')
         accounts_per_cycle_entry.delete(0, 'end')
         
-        # Guardar configuración limpia (modo manual)
-        success = save_creator_setting(
-            browser_id=browser_id,
-            user_agent=current_settings.get('user_agent', ''),
-            accounts_to_create=current_settings.get('accounts_to_create', 1),
+        # Guardar configuración global limpia (modo manual)
+        success = save_global_time_config(
             scheduled_time=None,
             timezone=None,
-            notification_email=current_settings.get('notification_email', ''),
             cycle_time_minutes=None,
             time_config_type='manual',
-            accounts_per_cycle=None,
-            isInVps=current_settings.get('isInVps') if current_settings else None,
-            is33mail=current_settings.get('is33mail') if current_settings else None,
-            domain=current_settings.get('domain') if current_settings else None
+            accounts_per_cycle=None
         )
         
         if success:

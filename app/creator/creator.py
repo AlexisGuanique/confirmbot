@@ -106,6 +106,8 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
     import json
     
     print("👁️ Observando número, captcha rojo, captcha blanco o éxito...")
+    # Asegurar que el proxy esté desactivado al inicio del observador (no se necesita durante la observación)
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     time.sleep(5)
     
     # Configuración del observador
@@ -118,6 +120,17 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
     while True:
         # Resetear flag de captcha bueno procesado en este ciclo
         estado.captcha_bueno_procesado_en_ciclo = False
+        
+        # Resetear flag de captcha imposible si el captcha ya desapareció (verificación rápida)
+        if hasattr(estado, 'captcha_imposible_procesado') and estado.captcha_imposible_procesado:
+            from app.creator.computer_actions import wait_for_spinner
+            captcha_still_found = wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            if not captcha_still_found:
+                captcha_still_found = wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            if not captcha_still_found:
+                captcha_still_found = wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            if not captcha_still_found:
+                estado.captcha_imposible_procesado = False
         
         # Verificar timeout
         if _verificar_timeout(start_time, timeout_seconds, coordinates):
@@ -190,7 +203,8 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
         elif captcha_blanco_result is True:  # Procesado correctamente, continuar
             continue
         
-        # Pausa entre ciclos
+        # Pausa entre ciclos - asegurar que el proxy esté desactivado durante la espera
+        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
         time.sleep(0.5)
 
 
@@ -205,6 +219,8 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
     import json
     
     print("👁️ Observando número, captcha rojo, captcha blanco o éxito...")
+    # Asegurar que el proxy esté desactivado al inicio del observador (no se necesita durante la observación)
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     time.sleep(5)
     
     # Configuración del observador
@@ -217,6 +233,17 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
     while True:
         # Resetear flag de captcha bueno procesado en este ciclo
         estado.captcha_bueno_procesado_en_ciclo = False
+        
+        # Resetear flag de captcha imposible si el captcha ya desapareció (verificación rápida)
+        if hasattr(estado, 'captcha_imposible_procesado') and estado.captcha_imposible_procesado:
+            from app.creator.computer_actions import wait_for_spinner
+            captcha_still_found = wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            if not captcha_still_found:
+                captcha_still_found = wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            if not captcha_still_found:
+                captcha_still_found = wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            if not captcha_still_found:
+                estado.captcha_imposible_procesado = False
         
         # Verificar timeout
         if _verificar_timeout(start_time, timeout_seconds, coordinates):
@@ -289,7 +316,8 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
         elif captcha_blanco_result is True:  # Procesado correctamente, continuar
             continue
         
-        # Pausa entre ciclos
+        # Pausa entre ciclos - asegurar que el proxy esté desactivado durante la espera
+        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
         time.sleep(0.5)
 
 
@@ -304,6 +332,7 @@ class ObservadorEstado:
         self.captcha_bueno_count = 0
         self.captcha_bueno_procesado_en_ciclo = False
         self.captcha_blanco_ultima_deteccion_tiempo = None
+        self.captcha_imposible_procesado = False  # Flag para evitar procesar captcha imposible múltiples veces
 
 
 def _verificar_timeout(start_time, timeout_seconds, coordinates):
@@ -314,7 +343,7 @@ def _verificar_timeout(start_time, timeout_seconds, coordinates):
     elapsed_time = time.time() - start_time
     if elapsed_time > timeout_seconds:
         print("⏰ Timeout de 150 segundos - no se encontraron imágenes, cerrando ventana")
-        _desactivar_proxy()
+        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos en cada verificación
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
@@ -339,17 +368,18 @@ def _procesar_numero(coordinates, estado, browser_name=None):
     print(f"✅ Número encontrado (vez #{estado.numero_count})")
     
     # Desactivar proxy inmediatamente al detectar número
-    _desactivar_proxy()
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        _desactivar_proxy()
+        # Ya se desactivó arriba, no es necesario desactivar de nuevo
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
             time.sleep(1)
         return False  # Terminar el proceso
     
+    # Si es la primera vez, cerrar el número y continuar
     close_number_coords = coordinates.get("close_number_click")
     if close_number_coords:
         click_coordinates(close_number_coords)
@@ -357,10 +387,13 @@ def _procesar_numero(coordinates, estado, browser_name=None):
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
-            # Reactivar proxy antes de hacer clic en continue_button2_click
-            click_coordinates(continue2_coords)
+            # Activar proxy SOLO justo antes de hacer clic
             _activar_proxy()
-            time.sleep(2)
+            time.sleep(0.3)  # Tiempo mínimo para activar proxy
+            click_coordinates(continue2_coords)
+            time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
+            # Desactivar proxy inmediatamente después del clic
+            _desactivar_proxy()
     
     return True
 
@@ -381,11 +414,11 @@ def _procesar_captcha_error(coordinates, estado, browser_name=None):
     print(f"✅ Captcha error encontrado (vez #{estado.numero_count})")
     
     # Desactivar proxy inmediatamente al detectar captcha error
-    _desactivar_proxy()
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        _desactivar_proxy()
+        # Ya se desactivó arriba, no es necesario desactivar de nuevo
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
@@ -402,10 +435,13 @@ def _procesar_captcha_error(coordinates, estado, browser_name=None):
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
-            # Reactivar proxy antes de hacer clic en continue_button2_click
-            click_coordinates(continue2_coords)
+            # Activar proxy SOLO justo antes de hacer clic
             _activar_proxy()
-            time.sleep(2)
+            time.sleep(0.3)  # Tiempo mínimo para activar proxy
+            click_coordinates(continue2_coords)
+            time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
+            # Desactivar proxy inmediatamente después del clic
+            _desactivar_proxy()
     else:
         print(f"⚠️ No se encontraron coordenadas de close_captcha_error_click - por favor configúralas")
     
@@ -536,7 +572,7 @@ def _procesar_formato_nuevo(coordinates, estado, browser_name=None):
     print(f"✅ Formato nuevo encontrado - cerrando ventana inmediatamente")
     
     # Desactivar proxy inmediatamente al detectar formato nuevo
-    _desactivar_proxy()
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     # Cerrar ventana directamente
     close_window_coords = coordinates.get("close_window")
@@ -570,7 +606,7 @@ def _procesar_captcha_rojo(coordinates, estado, browser_id=None, browser_name=No
     estado.ciclos_sin_imagen = 0
     
     # Desactivar proxy inmediatamente al detectar captcha rojo
-    _desactivar_proxy()
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     # Comportamiento según tipo de máquina
     if isInVps is True:
@@ -601,12 +637,15 @@ def _procesar_captcha_rojo(coordinates, estado, browser_id=None, browser_name=No
             click_coordinates(close_captcha_coords)
             time.sleep(1)
             
-            continue2_coords = coordinates.get("continue_button2_click")
-            if continue2_coords:
-                # Reactivar proxy antes de hacer clic en continue_button2_click
-                click_coordinates(continue2_coords)
-                _activar_proxy()
-                time.sleep(2)
+        continue2_coords = coordinates.get("continue_button2_click")
+        if continue2_coords:
+            # Activar proxy SOLO justo antes de hacer clic
+            _activar_proxy()
+            time.sleep(0.3)  # Tiempo mínimo para activar proxy
+            click_coordinates(continue2_coords)
+            time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
+            # Desactivar proxy inmediatamente después del clic
+            _desactivar_proxy()
         
         return True  # Continuar el proceso
 
@@ -615,6 +654,32 @@ def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
     """Procesa la detección de captcha imposible (incluye captcha_imposible, captcha_imposible_2 y captcha_imposible_3)"""
     from app.creator.computer_actions import click_coordinates, wait_for_spinner
     import time
+    
+    # Si ya se procesó el captcha imposible, verificar si desapareció antes de procesar de nuevo
+    if hasattr(estado, 'captcha_imposible_procesado') and estado.captcha_imposible_procesado:
+        # Verificar si el captcha ya desapareció (verificación rápida)
+        captcha_still_found = wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+        if not captcha_still_found:
+            captcha_still_found = wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+        if not captcha_still_found:
+            captcha_still_found = wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+        
+        # Si el captcha ya desapareció, resetear el flag y permitir procesamiento futuro
+        if not captcha_still_found:
+            estado.captcha_imposible_procesado = False
+            return None
+        else:
+            # El captcha sigue presente pero ya se procesó la primera vez
+            # Si es la segunda vez (obstaculo_count >= 1), debemos procesarlo para cerrar la ventana
+            # Si no, retornar None para evitar loops infinitos de clics en continue
+            if estado.obstaculo_count >= 1:
+                # Es la segunda vez, resetear el flag y permitir procesamiento
+                # para que se detecte como segundo obstáculo y se cierre la ventana
+                estado.captcha_imposible_procesado = False
+                # Continuar con el procesamiento normal (no retornar None)
+            else:
+                # Primera vez procesada, evitar loops infinitos
+                return None
     
     # Detectar captcha imposible (versión 1) usando wait_for_spinner porque tiene un spinner rotando
     captcha_found = wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.5, confidence=0.5, silent=True, browser_name=browser_name)
@@ -636,7 +701,7 @@ def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
     print(f"✅ Captcha imposible encontrado (vez #{estado.captcha_count})")
     
     # Desactivar proxy inmediatamente al detectar captcha imposible
-    _desactivar_proxy()
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - verificando confirmación antes de cerrar...")
@@ -658,7 +723,7 @@ def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
         
         if captcha_still_found:
             print("✅ Spinner de captcha imposible confirmado - procediendo a cerrar ventana")
-            _desactivar_proxy()
+            # Ya se desactivó arriba, no es necesario desactivar de nuevo
             close_window_coords = coordinates.get("close_window")
             if close_window_coords:
                 click_coordinates(close_window_coords)
@@ -671,18 +736,47 @@ def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
             # Esto permite que el captcha bueno sea procesado si aparece
             return True  # Continuar el proceso
     
+    # Primera detección - cerrar captcha y continuar
     close_captcha_coords = coordinates.get("close_captcha_click")
     if close_captcha_coords:
+        print("📍 Cerrando captcha imposible...")
         click_coordinates(close_captcha_coords)
         time.sleep(1)
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
-            # Reactivar proxy antes de hacer clic en continue_button2_click
-            
-            click_coordinates(continue2_coords)
+            print("📍 Haciendo clic en continue después de captcha imposible...")
+            # Activar proxy SOLO justo antes de hacer clic
             _activar_proxy()
-            time.sleep(2)
+            time.sleep(0.3)  # Tiempo mínimo para activar proxy
+            click_coordinates(continue2_coords)
+            time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
+            # Desactivar proxy inmediatamente después del clic
+            _desactivar_proxy()
+            print("✅ Clic en continue realizado después de captcha imposible")
+            # Esperar un momento para que el captcha desaparezca después del clic
+            time.sleep(1)
+            # Verificar si el captcha desapareció y resetear el flag si es así
+            captcha_still_found = wait_for_spinner("captcha_imposible", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            if not captcha_still_found:
+                captcha_still_found = wait_for_spinner("captcha_imposible_2", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            if not captcha_still_found:
+                captcha_still_found = wait_for_spinner("captcha_imposible_3", max_attempts=1, delay_between_attempts=0.1, confidence=0.5, silent=True, browser_name=browser_name)
+            
+            # Si el captcha desapareció, no marcar como procesado (permitir detección futura si reaparece)
+            if not captcha_still_found:
+                estado.captcha_imposible_procesado = False
+            else:
+                # Marcar como procesado solo si el captcha sigue presente
+                estado.captcha_imposible_procesado = True
+        else:
+            print("⚠️ No se encontraron coordenadas de continue_button2_click para captcha imposible")
+            # Si no hay continue_button2_click, marcar como procesado de todas formas
+            estado.captcha_imposible_procesado = True
+    else:
+        print("⚠️ No se encontraron coordenadas de close_captcha_click para captcha imposible")
+        # Si no hay close_captcha_click, marcar como procesado de todas formas
+        estado.captcha_imposible_procesado = True
     
     return True
 
@@ -711,7 +805,7 @@ def _procesar_exito(coordinates, email, password, filepath, browser_id=None, bro
         return None
     
     print(f"✅ Imagen de éxito encontrada - buscando cookie...")
-    _desactivar_proxy()
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     return _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id=browser_id, browser_name=browser_name)
 
@@ -740,7 +834,7 @@ def _procesar_exito_con_detalle(coordinates, email, password, filepath, exito_im
         return None
     
     print(f"✅ Imagen de éxito encontrada - buscando cookie...")
-    _desactivar_proxy()
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name_found, browser_id=browser_id, browser_name=browser_name)
 
@@ -787,10 +881,10 @@ def _procesar_captcha_bueno(coordinates, estado, browser_name=None):
         print(f"✅ Captcha bueno detectado (vez #1)")
     
     # Solo desactivar el proxy UNA VEZ por detección (no por cada variante)
-    _desactivar_proxy()
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
-    # Esperar un momento para que la imagen desaparezca de pantalla
-    time.sleep(2)
+    # Esperar un momento para que la imagen desaparezca de pantalla (reducido)
+    time.sleep(0.5)  # Reducido de 2s a 0.5s
     
     return True  # Continuar con el proceso normal
 
@@ -843,7 +937,7 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
         estado.ciclos_sin_imagen = 0
         
         # Desactivar proxy
-        _desactivar_proxy()
+        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
         
         # Cerrar captcha blanco
         close_captcha_coords = coordinates.get("close_captcha_click")
@@ -854,11 +948,13 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
             # Hacer clic en continue
             continue2_coords = coordinates.get("continue_button2_click")
             if continue2_coords:
-
-                click_coordinates(continue2_coords)                
-                # Reactivar proxy después de hacer clic en continue
+                # Activar proxy SOLO justo antes de hacer clic
                 _activar_proxy()
-                time.sleep(2)
+                time.sleep(0.3)  # Tiempo mínimo para activar proxy
+                click_coordinates(continue2_coords)
+                time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
+                # Desactivar proxy inmediatamente después del clic
+                _desactivar_proxy()
         
         # Actualizar tiempo de última detección
         estado.captcha_blanco_ultima_deteccion_tiempo = time.time()
@@ -870,7 +966,7 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
     elif estado.captcha_blanco_flag >= 4:
         # Cuarta detección: cerrar ventana y finalizar proceso
         print("❌ Captcha blanco encontrado (vez #4) - finalizando proceso")
-        _desactivar_proxy()
+        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
@@ -1114,7 +1210,7 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total, 
     # Paso 3: Verificar carga de LinkedIn
     if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
         print("❌ LinkedIn no cargó correctamente - cerrando ventana")
-        _desactivar_proxy()
+        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
         _cerrar_ventana(coordinates)
         return False
     
@@ -1175,7 +1271,7 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
     # Paso 3: Verificar carga de LinkedIn
     if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
         print("❌ LinkedIn no cargó correctamente - cerrando ventana")
-        _desactivar_proxy()
+        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
         _cerrar_ventana(coordinates)
         return False, "error_carga_linkedin", {}
     
@@ -1253,7 +1349,7 @@ def _click_linkedin_fav(coordinates):
     """Hace clic en el favorito de LinkedIn"""
     from app.creator.computer_actions import click_coordinates
     import time
-    
+    time.sleep(3)
     linkedin_coords = coordinates.get("linkedin_fav_click")
     if not linkedin_coords:
         return False
@@ -1487,6 +1583,9 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
     import time
     import pyperclip
     
+    # Asegurar que el proxy esté desactivado al inicio (no se necesita para escribir texto)
+    _desactivar_proxy()
+    
     # Click en email_input_click
     email_coords = coordinates.get("email_input_click")
     if not email_coords:
@@ -1523,18 +1622,18 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
         full_email = email
         print(f"📧 Email completo recibido: {full_email}")
     
-    # Escribir email completo con verificación
+    # Escribir email completo con verificación (proxy desactivado - no se necesita)
     if not _escribir_y_verificar_campo(full_email, "email"):
         return False, None
     
-    # Verificar proxy error
+    # Verificar proxy error (sin activar proxy)
     _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
     
     # Ir al campo de contraseña
     press_key("tab")
     time.sleep(0.5)
     
-    # Escribir contraseña aleatoria (sin verificación para mayor velocidad)
+    # Escribir contraseña aleatoria (sin verificación para mayor velocidad, proxy desactivado)
     password = generate_random_password()
     type_text(password)
     time.sleep(0.3)  # Tiempo mínimo para que se escriba
@@ -1561,10 +1660,10 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
     email_password_loaded = False
     
     for intento_verificacion in range(1, max_intentos_verificacion + 1):
-        # Hacer clic en continue_button
+        # Hacer clic en continue_button SIN activar proxy (no se necesita para este clic)
         # print(f"🔄 Haciendo clic en continue_button (intento {intento_verificacion}/{max_intentos_verificacion})")
         click_coordinates(continue_coords)
-        time.sleep(2)  # Esperar a que se procese el clic
+        time.sleep(2)  # Tiempo de espera después del clic (sin proxy)
         
         # DESPUÉS del clic, verificar imagen de carga de email y contraseña
         # Usar confidence muy alto (0.98) para evitar falsos positivos con botones similares
@@ -1590,7 +1689,7 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
             # Último intento fallido
             # print("❌ No se pudo verificar la carga correcta del email y contraseña después de 4 intentos")
             # print("🔄 Cerrando ventana y continuando con el siguiente email")
-            _desactivar_proxy()
+            _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
             close_window_coords = coordinates.get("close_window")
             if close_window_coords:
                 click_coordinates(close_window_coords)
@@ -1610,7 +1709,7 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
     click_coordinates(name_coords)
     time.sleep(0.5)
     
-    # Escribir nombre aleatorio con verificación
+    # Escribir nombre aleatorio con verificación (proxy desactivado - no se necesita)
     random_name = generate_random_name()
     if not _escribir_y_verificar_campo(random_name, "nombre"):
         return False, None
@@ -1619,21 +1718,23 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
     press_key("tab")
     time.sleep(0.5)
     
-    # Escribir apellido aleatorio con verificación
+    # Escribir apellido aleatorio con verificación (proxy desactivado - no se necesita)
     random_lastname = generate_random_lastname()
     if not _escribir_y_verificar_campo(random_lastname, "apellido"):
         return False, None
 
 
-    # Click en continue_button2_click (sin activar proxy prematuramente)
+    # Click en continue_button2_click - activar proxy SOLO justo antes del clic
     continue2_coords = coordinates.get("continue_button2_click")
     if not continue2_coords:
         return False, None
-    # Activar proxy después de hacer clic en continue_button2_click
+    # Activar proxy SOLO justo antes de hacer clic (máxima optimización)
     _activar_proxy()
-    time.sleep(1)
+    time.sleep(0.3)  # Tiempo mínimo para activar proxy
     click_coordinates(continue2_coords)
-    time.sleep(10)
+    time.sleep(0.5)  # Tiempo mínimo para que se procese el clic
+    # Desactivar proxy inmediatamente después del clic (no mantenerlo activo)
+    _desactivar_proxy()
     
 
 
@@ -1729,8 +1830,11 @@ def _activar_proxy():
         pass
 
 
-def _desactivar_proxy():
-    """Desactiva el proxy si está habilitado en la configuración - VERSIÓN SEGURA"""
+def _desactivar_proxy(silent=False):
+    """Desactiva el proxy si está habilitado en la configuración - VERSIÓN SEGURA
+    Args:
+        silent: Si es True, no imprime logs (útil para llamadas repetitivas en loops)
+    Solo imprime log si realmente estaba activo y se desactivó, y silent=False"""
     import time
     from app.database.database import get_bot_settings
     from app.confirmabot.utils.proxy_tool_safe import SafeProxyController
@@ -1742,17 +1846,27 @@ def _desactivar_proxy():
         try:
             proxy_controller = SafeProxyController()
             try:
-                success = proxy_controller.disable_proxy()
-                if success:
-                    proxy_controller.refresh_internet_settings()
-                    print("✅ Proxy desactivado")
-                else:
-                    print("⚠️ No se pudo desactivar proxy")
-                time.sleep(0.5)  # Esperar un momento para que el proxy se desactive
+                # Verificar si el proxy está activo antes de intentar desactivarlo
+                proxy_enabled, _, _ = proxy_controller.get_proxy_status()
+                
+                # Solo intentar desactivar si está activo
+                if proxy_enabled:
+                    success = proxy_controller.disable_proxy()
+                    if success:
+                        proxy_controller.refresh_internet_settings()
+                        if not silent:
+                            print("✅ Proxy desactivado")
+                    else:
+                        if not silent:
+                            print("⚠️ No se pudo desactivar proxy")
+                    # Reducido de 0.5s a 0.2s - tiempo mínimo necesario
+                    time.sleep(0.2)
+                # Si ya está desactivado, no hacer nada ni imprimir log
             finally:
                 proxy_controller.close()
         except Exception as e:
-            print(f"❌ Error al desactivar proxy: {e}")
+            if not silent:
+                print(f"❌ Error al desactivar proxy: {e}")
     else:
         pass
 
@@ -1832,46 +1946,36 @@ def _inicializar_archivo_salida(total_emails):
 def _verificar_hora_programada(browser_id=None):
     """
     Verifica si hay una hora programada y espera hasta esa hora si es necesario.
+    Usa la configuración global de tiempo (no requiere browser_id)
     
     Args:
-        browser_id: ID del navegador para obtener la configuración
+        browser_id: IGNORADO - mantenido por compatibilidad. La configuración ahora es global.
     
     Returns:
         bool: True si debe continuar con el proceso, False si debe detenerse
     """
-    from app.database.database import get_creator_setting, get_default_browser
+    from app.database.database import get_global_time_config
     import time
     import datetime
     import pytz
     import re
     
-    # Si no se proporciona browser_id, obtener el navegador por defecto
-    if not browser_id:
-        default_browser = get_default_browser()
-        if default_browser:
-            browser_id = default_browser['id']
-    
-    if browser_id:
-        settings = get_creator_setting(browser_id)
-    else:
-        settings = None
-    if not settings:
-        print("⚡ No hay configuración de tiempo, ejecutando inmediatamente")
-        return True  # No hay configuración, continuar inmediatamente
+    # Obtener configuración global de tiempo
+    global_time_config = get_global_time_config()
     
     # Solo verificar hora programada si el tipo de configuración es 'scheduled' o 'both'
-    time_config_type = settings.get('time_config_type')
+    time_config_type = global_time_config.get('time_config_type')
     if time_config_type not in ['scheduled', 'both']:
         print("⚡ Configuración de ciclo de tiempo, ejecutando inmediatamente")
         return True  # No es configuración programada, continuar inmediatamente
     
     # Verificar si hay hora programada configurada
-    if not settings.get('scheduled_time') or not settings.get('timezone'):
+    if not global_time_config.get('scheduled_time') or not global_time_config.get('timezone'):
         print("⚡ No hay hora programada configurada, ejecutando inmediatamente")
         return True  # No hay hora programada, continuar inmediatamente
     
-    scheduled_time = settings.get('scheduled_time')
-    timezone_str = settings.get('timezone')
+    scheduled_time = global_time_config.get('scheduled_time')
+    timezone_str = global_time_config.get('timezone')
     
     print(f"🕐 Hora programada configurada: {scheduled_time} ({timezone_str})")
     
@@ -2737,25 +2841,22 @@ def execute_creator():
     for browser in active_browsers:
         print(f"   ✓ {browser['name']} (ID: {browser['id']})")
     
-    # Obtener configuración del primer navegador activo para determinar modo de ejecución
-    # (todos los navegadores activos deberían tener la misma configuración de tiempo)
-    settings = get_creator_setting(active_browsers[0]['id'])
-    if not settings:
-        print("❌ Sin configuración")
-        return
+    # Obtener configuración global de tiempo
+    from app.database.database import get_global_time_config
+    global_time_config = get_global_time_config()
     
-    time_config_type = settings.get('time_config_type', 'manual')
-    scheduled_time = settings.get('scheduled_time')
-    cycle_time_minutes = settings.get('cycle_time_minutes', 60)
+    time_config_type = global_time_config.get('time_config_type', 'manual')
+    scheduled_time = global_time_config.get('scheduled_time')
+    cycle_time_minutes = global_time_config.get('cycle_time_minutes', 60)
     
     has_scheduled = scheduled_time and scheduled_time.strip()
     # El ciclo se considera habilitado aunque los minutos sean 0
-    has_cycle = settings.get('time_config_type') in ['cycle', 'both']
+    has_cycle = global_time_config.get('time_config_type') in ['cycle', 'both']
     
     # Determinar modo de ejecución
     if has_scheduled and has_cycle:
         print("🔄 Ciclo + Hora programada")
-        if not _verificar_hora_programada(active_browsers[0]['id']):
+        if not _verificar_hora_programada():
             return
         _ejecutar_creator_en_ciclo(active_browsers)
     elif has_cycle:
@@ -2763,7 +2864,7 @@ def execute_creator():
         _ejecutar_creator_en_ciclo(active_browsers)
     elif has_scheduled:
         print("🕐 Solo hora programada")
-        if not _verificar_hora_programada(active_browsers[0]['id']):
+        if not _verificar_hora_programada():
             return
         _ejecutar_proceso_creator(active_browsers)
     else:
@@ -2805,11 +2906,19 @@ def _ejecutar_proceso_creator(active_browsers):
         _mostrar_error_navegadores_sin_configuracion(active_browsers_originales)
         return False
     
-    # Obtener configuración del primer navegador (todos deberían tener la misma configuración de tiempo)
+    # Obtener configuración del primer navegador (para is33mail y domain)
     settings = get_creator_setting(active_browsers[0]['id'])
-    time_config_type = settings.get('time_config_type', 'manual')
+    if not settings:
+        print("❌ Sin configuración del navegador")
+        return False
+    
     is33mail = settings.get('is33mail', True)
     domain = settings.get('domain', '')
+    
+    # Obtener configuración global de tiempo
+    from app.database.database import get_global_time_config
+    global_time_config = get_global_time_config()
+    time_config_type = global_time_config.get('time_config_type', 'manual')
     
     # Si is33mail es false, usar domain directamente
     if not is33mail:
@@ -2822,7 +2931,7 @@ def _ejecutar_proceso_creator(active_browsers):
         
         # Obtener cantidad de cuentas a crear
         if time_config_type in ['cycle', 'both']:
-            accounts_per_cycle = settings.get('accounts_per_cycle', 1)
+            accounts_per_cycle = global_time_config.get('accounts_per_cycle', 1)
             email_ids = [domain_email] * accounts_per_cycle
             print(f"🔄 Procesando {accounts_per_cycle} cuentas usando domain: {domain_email}")
         else:
@@ -2832,7 +2941,7 @@ def _ejecutar_proceso_creator(active_browsers):
     else:
         # Obtener emails según configuración (modo normal con 33mail)
         if time_config_type in ['cycle', 'both']:
-            accounts_per_cycle = settings.get('accounts_per_cycle', 1)
+            accounts_per_cycle = global_time_config.get('accounts_per_cycle', 1)
             email_ids = get_next_creator_emails(accounts_per_cycle)
             print(f"🔄 Procesando {accounts_per_cycle} cuentas")
         else:
@@ -3013,6 +3122,10 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     
     # Obtener configuración del primer navegador
     settings = get_creator_setting(active_browsers[0]['id'])
+    if not settings:
+        print("❌ Sin configuración del navegador")
+        return 0, browser_index_start
+    
     is33mail = settings.get('is33mail', True)
     domain = settings.get('domain', '')
     
@@ -3268,8 +3381,15 @@ def _ejecutar_creator_en_ciclo(active_browsers):
     
     # Obtener configuración del primer navegador
     settings = get_creator_setting(active_browsers[0]['id'])
-    cycle_minutes = settings.get('cycle_time_minutes', 60)
-    accounts_per_cycle = settings.get('accounts_per_cycle', 1)
+    if not settings:
+        print("❌ Sin configuración del navegador")
+        return
+    
+    # Obtener configuración global de tiempo
+    from app.database.database import get_global_time_config
+    global_time_config = get_global_time_config()
+    cycle_minutes = global_time_config.get('cycle_time_minutes', 60)
+    accounts_per_cycle = global_time_config.get('accounts_per_cycle', 1)
     is33mail = settings.get('is33mail', True)
     domain = settings.get('domain', '')
     

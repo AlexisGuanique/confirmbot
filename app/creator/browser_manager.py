@@ -10,7 +10,7 @@ def create_browser_manager_window(parent_root):
         get_all_browsers, create_browser, update_browser, 
         delete_browser, get_default_browser, get_browser_by_id
     )
-    from app.creator.ui_creator import create_new_window
+    from app.creator.ui_creator import create_new_window, create_time_config_window
     from app.utils.path_utils import get_browser_images_path, ensure_directory_exists
     
     # Crear la ventana
@@ -34,7 +34,47 @@ def create_browser_manager_window(parent_root):
         font=("Arial", 18, "bold"),
         text_color="black"
     )
-    title_label.pack(pady=(20, 30))
+    title_label.pack(pady=(20, 10))
+    
+    # ================= CONFIGURACIÓN GLOBAL DE TIEMPO =================
+    
+    # Frame para configuración global de tiempo
+    time_config_frame = ctk.CTkFrame(main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    time_config_frame.pack(fill="x", padx=20, pady=(0, 20))
+    
+    time_config_title = ctk.CTkLabel(
+        time_config_frame,
+        text="⏰ Configuración Global de Tiempo",
+        font=("Arial", 14, "bold"),
+        text_color="black"
+    )
+    time_config_title.pack(pady=(15, 5))
+    
+    time_config_subtitle = ctk.CTkLabel(
+        time_config_frame,
+        text="🌐 Esta configuración se aplica a TODOS los navegadores",
+        font=("Arial", 10),
+        text_color="gray"
+    )
+    time_config_subtitle.pack(pady=(0, 10))
+    
+    # Función para abrir configuración de tiempo global
+    def open_global_time_config():
+        """Abre la ventana de configuración global de tiempo"""
+        create_time_config_window(manager_window)
+    
+    # Botón para abrir configuración de tiempo global
+    time_config_button = ctk.CTkButton(
+        time_config_frame,
+        text="⏰ Configurar Tiempo Global",
+        command=open_global_time_config,
+        fg_color="#007bff",
+        text_color="white",
+        font=("Arial", 12, "bold"),
+        height=35,
+        width=200
+    )
+    time_config_button.pack(pady=(0, 15))
     
     # ================= SECCIÓN CREAR NUEVO NAVEGADOR =================
     
