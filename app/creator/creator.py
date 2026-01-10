@@ -1609,6 +1609,8 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
         is33mail = settings.get('is33mail', True) if settings else True
         
         if not is33mail:
+            # El dominio ya viene con el relleno aplicado desde _ejecutar_proceso_creator
+            # No aplicar relleno aquí para evitar doble relleno
             # Usar formato específico para dominio personalizado
             full_email = generate_email_with_domain_format(email)
             print(f"📧 Email generado con formato personalizado: {full_email} (dominio: {email})")
@@ -2920,24 +2922,44 @@ def _ejecutar_proceso_creator(active_browsers):
     global_time_config = get_global_time_config()
     time_config_type = global_time_config.get('time_config_type', 'manual')
     
-    # Si is33mail es false, usar domain directamente
+    # Si is33mail es false, usar dominios con rotación
     if not is33mail:
-        if not domain:
-            print("❌ Domain no configurado")
+        # Obtener todos los dominios activos
+        from app.database.database import get_all_domains
+        active_domains = get_all_domains(active_only=True)
+        
+        if not active_domains:
+            print("❌ No hay dominios configurados. Configura al menos un dominio en 'Gestión de Navegadores'.")
             return False
         
-        # Preparar el dominio con @ al inicio si no lo tiene
-        domain_email = domain if domain.startswith('@') else f"@{domain}"
+        # Aplicar relleno según configuración de cada dominio
+        from app.creator.computer_actions import apply_domain_fill
         
         # Obtener cantidad de cuentas a crear
+        # Seleccionar dominios aleatoriamente
+        import random
         if time_config_type in ['cycle', 'both']:
             accounts_per_cycle = global_time_config.get('accounts_per_cycle', 1)
-            email_ids = [domain_email] * accounts_per_cycle
-            print(f"🔄 Procesando {accounts_per_cycle} cuentas usando domain: {domain_email}")
+            # Generar dominios seleccionando aleatoriamente entre los disponibles
+            email_ids = []
+            for i in range(accounts_per_cycle):
+                # Seleccionar un dominio aleatorio
+                domain_data = random.choice(active_domains)
+                domain_base = domain_data['domain']
+                fill_domain = domain_data['fill_domain']
+                email_ids.append(apply_domain_fill(domain_base, fill_domain))
+            print(f"🔄 Procesando {accounts_per_cycle} cuentas usando {len(active_domains)} dominio(s) con selección aleatoria")
         else:
             accounts_to_create = settings.get('accounts_to_create', 1)
-            email_ids = [domain_email] * accounts_to_create
-            print(f"🔄 Procesando {accounts_to_create} cuentas usando domain: {domain_email}")
+            # Generar dominios seleccionando aleatoriamente entre los disponibles
+            email_ids = []
+            for i in range(accounts_to_create):
+                # Seleccionar un dominio aleatorio
+                domain_data = random.choice(active_domains)
+                domain_base = domain_data['domain']
+                fill_domain = domain_data['fill_domain']
+                email_ids.append(apply_domain_fill(domain_base, fill_domain))
+            print(f"🔄 Procesando {accounts_to_create} cuentas usando {len(active_domains)} dominio(s) con selección aleatoria")
     else:
         # Obtener emails según configuración (modo normal con 33mail)
         if time_config_type in ['cycle', 'both']:
@@ -3076,10 +3098,10 @@ def _ejecutar_proceso_creator(active_browsers):
     return True
 
 
-def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool = False, ciclo_minutes: int = None, active_browsers=None, browser_index_start: int = 0) -> tuple:
+def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool = False, ciclo_minutes: int = None, active_browsers=None, browser_index_start: int = 0, domain_index_start: int = 0) -> tuple:
     """
     Ejecuta el proceso de creación de cuentas con un objetivo específico
-    Rota entre navegadores activos
+    Rota entre navegadores activos y dominios
     """
     from app.database.database import (
         get_creator_coordinates, get_all_available_creator_emails_for_objective,
@@ -3124,14 +3146,14 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     settings = get_creator_setting(active_browsers[0]['id'])
     if not settings:
         print("❌ Sin configuración del navegador")
-        return 0, browser_index_start
+        return 0, browser_index_start, domain_index_start
     
     is33mail = settings.get('is33mail', True)
     domain = settings.get('domain', '')
     
     filepath = _inicializar_archivo_salida(objetivo_cuentas)
     if not filepath:
-        return 0, browser_index_start
+        return 0, browser_index_start, domain_index_start
     
     cuentas_creadas = 0
     emails_procesados = []  # Lista para trackear todos los emails procesados
@@ -3142,21 +3164,35 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     # Índice para rotar entre navegadores (usar el índice inicial pasado como parámetro)
     browser_index = browser_index_start
     
-    # Si is33mail es false, usar domain directamente
+    # Si is33mail es false, usar dominios con rotación
     if not is33mail:
-        if not domain:
-            print("❌ Domain no configurado")
-            return 0, browser_index_start
+        # Obtener todos los dominios activos
+        from app.database.database import get_all_domains
+        active_domains = get_all_domains(active_only=True)
         
-        # Preparar el dominio con @ al inicio si no lo tiene
-        domain_email = domain if domain.startswith('@') else f"@{domain}"
+        if not active_domains:
+            print("❌ No hay dominios configurados. Configura al menos un dominio en 'Gestión de Navegadores'.")
+            return 0, browser_index_start, domain_index_start
         
-        # Procesar directamente con el dominio
+        # Aplicar relleno según configuración de cada dominio
+        from app.creator.computer_actions import apply_domain_fill
+        
+        # Procesar directamente con selección aleatoria de dominios
+        import random
         while cuentas_creadas < objetivo_cuentas and intento <= 10:
             print(f"📧 Intento {intento} - {cuentas_creadas}/{objetivo_cuentas}")
             
-            # Usar el dominio directamente
-            email_ids = [domain_email] * (objetivo_cuentas - cuentas_creadas)
+            # Generar dominios seleccionando aleatoriamente entre los disponibles
+            cuentas_restantes = objetivo_cuentas - cuentas_creadas
+            email_ids = []
+            for i in range(cuentas_restantes):
+                # Seleccionar un dominio aleatorio de los disponibles
+                domain_data = random.choice(active_domains)
+                domain_base = domain_data['domain']
+                fill_domain = domain_data['fill_domain']
+                filled_domain = apply_domain_fill(domain_base, fill_domain)
+                email_ids.append(filled_domain)
+                print(f"📧 Dominio seleccionado aleatoriamente para cuenta {cuentas_creadas + i + 1}: {domain_base}")
             
             # Procesar emails
             for i, email_id in enumerate(email_ids, 1):
@@ -3336,7 +3372,8 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     _enviar_archivo_por_correo(filepath, objetivo_cuentas, cuentas_creadas, cuentas_realmente_fallidas, es_ciclo, ciclo_minutes, tiempo_inicio_proceso, browser_id=first_browser_id)
     
     # Retornar tanto las cuentas creadas como el índice del navegador actual para continuar la rotación
-    return cuentas_creadas, browser_index
+    # El dominio ahora se selecciona aleatoriamente, no necesitamos mantener el índice
+    return cuentas_creadas, browser_index, 0  # domain_index ya no se usa, pero mantenemos compatibilidad
 
 
 def _ejecutar_creator_en_ciclo(active_browsers):
@@ -3399,6 +3436,8 @@ def _ejecutar_creator_en_ciclo(active_browsers):
     ciclo = 1
     # Mantener el índice del navegador entre ciclos para continuar la rotación
     browser_index = 0
+    # El dominio ahora se selecciona aleatoriamente, no necesitamos mantener el índice
+    domain_index = 0  # Mantenido por compatibilidad pero no se usa
     
     try:
         while True:
@@ -3442,19 +3481,22 @@ def _ejecutar_creator_en_ciclo(active_browsers):
                     ciclo += 1
                     continue
             else:
-                # Verificar que el dominio esté configurado
-                if not domain:
-                    print("❌ Domain no configurado")
+                # Verificar que haya dominios configurados
+                from app.database.database import get_all_domains
+                active_domains = get_all_domains(active_only=True)
+                if not active_domains:
+                    print("❌ No hay dominios configurados. Configura al menos un dominio en 'Gestión de Navegadores'.")
                     break
-                print(f"🌐 Usando domain: {domain}")
+                print(f"🌐 Usando {len(active_domains)} dominio(s) con rotación automática")
             
             # Ejecutar proceso de creación, pasando el índice del navegador actual
-            cuentas_creadas, browser_index = _ejecutar_proceso_creator_con_objetivo(
+            # El dominio se selecciona aleatoriamente, no necesitamos pasar domain_index
+            resultado = _ejecutar_proceso_creator_con_objetivo(
                 accounts_per_cycle, es_ciclo=True, ciclo_minutes=cycle_minutes, 
-                active_browsers=active_browsers, browser_index_start=browser_index
+                active_browsers=active_browsers, browser_index_start=browser_index, domain_index_start=0
             )
+            cuentas_creadas, browser_index, _ = resultado
             
-            # Mostrar resultado
             if cuentas_creadas >= accounts_per_cycle:
                 print(f"🎉 Objetivo completado: {cuentas_creadas}/{accounts_per_cycle}")
             else:

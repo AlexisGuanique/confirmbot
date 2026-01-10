@@ -351,6 +351,104 @@ def generate_email_prefix():
     
     return prefix
 
+def generate_domain_fill():
+    """
+    Genera un relleno aleatorio para el dominio usando palabras coherentes + 3 números aleatorios.
+    El relleno nunca se repite gracias a la combinación aleatoria.
+    
+    Ejemplo: "creative123", "smart456", "tech789"
+    
+    Returns:
+        str: Relleno aleatorio (palabra + 3 números)
+    """
+    import random
+    import json
+    import os
+    
+    # Ruta del archivo de palabras
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    words_file = os.path.join(current_dir, "email_words.json")
+    
+    try:
+        # Cargar palabras desde el archivo JSON
+        with open(words_file, 'r', encoding='utf-8') as f:
+            words_data = json.load(f)
+        
+        # Combinar todas las categorías de palabras
+        all_words = []
+        for category, words in words_data.items():
+            all_words.extend(words)
+        
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        # Fallback a palabras básicas si hay error
+        all_words = [
+            "creative", "smart", "cool", "happy", "bright", "quick", "swift", "clever", "bold", "wise",
+            "tech", "pro", "ace", "star", "nova", "zen", "max", "neo", "ultra", "mega",
+            "blue", "red", "green", "gold", "silver", "dark", "light", "bright", "deep", "pure",
+            "alex", "mike", "john", "sarah", "emma", "david", "lisa", "chris", "anna", "mark"
+        ]
+    
+    # Seleccionar una palabra aleatoria
+    palabra = random.choice(all_words)
+    
+    # Generar 3 números aleatorios
+    numeros = ''.join([str(random.randint(0, 9)) for _ in range(3)])
+    
+    # Combinar palabra + números
+    fill = f"{palabra}{numeros}"
+    
+    return fill
+
+def apply_domain_fill(domain, fill_enabled=False):
+    """
+    Aplica relleno al dominio si está habilitado.
+    
+    Ejemplo:
+        - Sin relleno: @pepito.com -> @pepito.com
+        - Con relleno: @pepito.com -> @creative123.pepito.com
+    
+    Args:
+        domain (str): Dominio con o sin @ al inicio
+        fill_enabled (bool): Si se debe aplicar el relleno
+    
+    Returns:
+        str: Dominio con o sin relleno según la configuración
+    """
+    if not fill_enabled:
+        return domain
+    
+    # Asegurar que el dominio tenga @ al inicio
+    domain_clean = domain if domain.startswith('@') else f"@{domain}"
+    
+    # Remover el @ para trabajar con el dominio
+    domain_without_at = domain_clean[1:]
+    
+    # Verificar si el dominio ya tiene relleno (contiene un punto antes del dominio base)
+    # Si el dominio ya tiene relleno, no aplicar otro
+    # Un dominio con relleno tiene formato: relleno.dominio.com
+    # Un dominio sin relleno tiene formato: dominio.com
+    parts = domain_without_at.split('.')
+    
+    # Si tiene más de 2 partes (ej: relleno.dominio.com), probablemente ya tiene relleno
+    # Pero también podría ser un dominio como subdomain.dominio.com
+    # Para ser más seguro, verificamos si la primera parte parece ser un relleno
+    # (contiene números al final, que es característico del relleno)
+    if len(parts) > 2:
+        # Verificar si la primera parte parece ser un relleno (palabra + números)
+        first_part = parts[0]
+        # Si la primera parte termina con números (típico de relleno), asumimos que ya tiene relleno
+        if first_part and any(char.isdigit() for char in first_part[-3:]):
+            # Ya tiene relleno, retornar tal cual
+            return domain_clean
+    
+    # Generar el relleno
+    fill = generate_domain_fill()
+    
+    # Aplicar el relleno: @relleno.dominio (con punto entre relleno y dominio)
+    filled_domain = f"@{fill}.{domain_without_at}"
+    
+    return filled_domain
+
 def generate_email_with_domain_format(domain):
     """
     Genera un email con formato específico: nombre1apellido1numero1nombre2apellido2.puntoletrasnumeros@dominio

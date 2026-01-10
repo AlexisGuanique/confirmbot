@@ -334,7 +334,7 @@ def create_database():
             '''
         )
         
-        # 🔹 Tabla para configuración global de tiempo (hora programada y ciclo)
+        # 🔹 Tabla para configuración global de tiempo (hora programada y ciclo) y dominio
         cursor.execute(
             '''
             CREATE TABLE IF NOT EXISTS global_time_config (
@@ -343,7 +343,10 @@ def create_database():
                 timezone TEXT,
                 cycle_time_minutes INTEGER DEFAULT 60,
                 time_config_type TEXT DEFAULT 'manual',
-                accounts_per_cycle INTEGER DEFAULT 1
+                accounts_per_cycle INTEGER DEFAULT 1,
+                is33mail INTEGER DEFAULT 1,
+                domain TEXT,
+                fill_domain INTEGER DEFAULT 0
             )
             '''
         )
@@ -352,9 +355,39 @@ def create_database():
         cursor.execute("SELECT COUNT(*) FROM global_time_config")
         if cursor.fetchone()[0] == 0:
             cursor.execute('''
-                INSERT INTO global_time_config (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle)
-                VALUES (NULL, NULL, 60, 'manual', 1)
+                INSERT INTO global_time_config (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail, domain, fill_domain)
+                VALUES (NULL, NULL, 60, 'manual', 1, 1, NULL, 0)
             ''')
+        
+        # 🔄 MIGRACIÓN: Agregar campos is33mail, domain y fill_domain si no existen
+        cursor.execute("PRAGMA table_info(global_time_config)")
+        global_config_columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'is33mail' not in global_config_columns:
+            print("🔄 Agregando campo is33mail a global_time_config...")
+            cursor.execute("ALTER TABLE global_time_config ADD COLUMN is33mail INTEGER DEFAULT 1")
+        
+        if 'domain' not in global_config_columns:
+            print("🔄 Agregando campo domain a global_time_config...")
+            cursor.execute("ALTER TABLE global_time_config ADD COLUMN domain TEXT")
+        
+        if 'fill_domain' not in global_config_columns:
+            print("🔄 Agregando campo fill_domain a global_time_config...")
+            cursor.execute("ALTER TABLE global_time_config ADD COLUMN fill_domain INTEGER DEFAULT 0")
+        
+        # 🔹 Tabla para dominios (múltiples dominios con configuración de relleno)
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS domains (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain TEXT NOT NULL,
+                fill_domain INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
         
         # 🔄 MIGRACIÓN: Agregar browser_id a creator_setting si no existe
         print("🔄 Verificando migración de creator_setting para múltiples navegadores...")
@@ -1353,7 +1386,7 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
     """
     Guarda o actualiza la configuración del creator para un navegador específico
     NOTA: Los campos de tiempo (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle) 
-    ahora se ignoran aquí y deben guardarse usando save_global_time_config()
+    y dominio (is33mail, domain) ahora se ignoran aquí y deben guardarse usando save_global_time_config()
     
     Args:
         browser_id (int): ID del navegador
@@ -1366,8 +1399,8 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
         time_config_type (str): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
         accounts_per_cycle (int): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
         isInVps (bool): Si está ejecutándose en VPS (True) o máquina física (False) (opcional)
-        is33mail (bool): Si se usa 33mail (True) o no (False) (opcional)
-        domain (str): Dominio a utilizar (opcional)
+        is33mail (bool): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
+        domain (str): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -1380,17 +1413,16 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
         
         # Convertir boolean a integer para SQLite (True = 1, False = 0)
         isInVps_int = 1 if isInVps is True else (0 if isInVps is False else None)
-        is33mail_int = 1 if is33mail is True else (0 if is33mail is False else None)
         
-        # Insertar o actualizar (UPSERT usando REPLACE) - NO guardar campos de tiempo
+        # Insertar o actualizar (UPSERT usando REPLACE) - NO guardar campos de tiempo ni dominio
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, notification_email, isInVps, is33mail, domain)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (browser_id, user_agent, accounts_to_create, notification_email, isInVps_int, is33mail_int, domain))
+            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, notification_email, isInVps)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (browser_id, user_agent, accounts_to_create, notification_email, isInVps_int))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Notificación={notification_email}, isInVps={isInVps}, is33mail={is33mail}, domain={domain}")
+        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Notificación={notification_email}, isInVps={isInVps}")
         return True
         
     except Exception as e:
@@ -1416,7 +1448,7 @@ def get_creator_setting(browser_id):
         # Habilitar claves foráneas
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create, notification_email, isInVps, is33mail, domain FROM creator_setting WHERE browser_id = ?", (browser_id,))
+        cursor.execute("SELECT user_agent, accounts_to_create, notification_email, isInVps FROM creator_setting WHERE browser_id = ?", (browser_id,))
         row = cursor.fetchone()
         conn.close()
         
@@ -1426,12 +1458,7 @@ def get_creator_setting(browser_id):
             if row[3] is not None:
                 isInVps_bool = bool(row[3])
             
-            # Convertir integer a boolean para is33mail (None si no está configurado)
-            is33mail_bool = None
-            if row[4] is not None:
-                is33mail_bool = bool(row[4])
-            
-            # Obtener configuración global de tiempo
+            # Obtener configuración global de tiempo y dominio
             global_time_config = get_global_time_config()
             
             return {
@@ -1439,14 +1466,15 @@ def get_creator_setting(browser_id):
                 'accounts_to_create': row[1],
                 'notification_email': row[2],
                 'isInVps': isInVps_bool,  # Boolean o None
-                'is33mail': is33mail_bool,  # Boolean o None
-                'domain': row[5],  # String o None
-                # Campos de tiempo desde configuración global
+                # Campos de tiempo y dominio desde configuración global
                 'scheduled_time': global_time_config['scheduled_time'],
                 'timezone': global_time_config['timezone'],
                 'cycle_time_minutes': global_time_config['cycle_time_minutes'],
                 'time_config_type': global_time_config['time_config_type'],
-                'accounts_per_cycle': global_time_config['accounts_per_cycle']
+                'accounts_per_cycle': global_time_config['accounts_per_cycle'],
+                'is33mail': global_time_config['is33mail'],  # Boolean o None
+                'domain': global_time_config['domain'],  # String o None
+                'fill_domain': global_time_config['fill_domain']  # Boolean o None
             }
         return None
         
@@ -1489,10 +1517,10 @@ def clear_scheduled_time(browser_id):
         return False
 
 
-#! FUNCIONES DE CONFIGURACIÓN GLOBAL DE TIEMPO
-def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None):
+#! FUNCIONES DE CONFIGURACIÓN GLOBAL DE TIEMPO Y DOMINIO
+def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, is33mail=None, domain=None, fill_domain=None):
     """
-    Guarda o actualiza la configuración global de tiempo (hora programada y ciclo)
+    Guarda o actualiza la configuración global de tiempo (hora programada y ciclo) y dominio
     Esta configuración es global para todos los navegadores
     
     Args:
@@ -1501,6 +1529,9 @@ def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minut
         cycle_time_minutes (int): Tiempo en minutos para el ciclo (opcional)
         time_config_type (str): Tipo de configuración ('scheduled', 'cycle', 'both', 'manual')
         accounts_per_cycle (int): Cantidad de cuentas a crear por ciclo (opcional)
+        is33mail (bool): Si se usa 33mail (True) o no (False) (opcional)
+        domain (str): Dominio a utilizar (opcional)
+        fill_domain (bool): Si se debe rellenar el dominio (True) o no (False) (opcional)
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -1510,55 +1541,72 @@ def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minut
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         
+        # Convertir boolean a integer para SQLite (True = 1, False = 0)
+        is33mail_int = 1 if is33mail is True else (0 if is33mail is False else None)
+        fill_domain_int = 1 if fill_domain is True else (0 if fill_domain is False else None)
+        
         # Actualizar el único registro (siempre ID 1)
         cursor.execute('''
             UPDATE global_time_config 
             SET scheduled_time = ?, timezone = ?, cycle_time_minutes = ?, 
-                time_config_type = ?, accounts_per_cycle = ?
+                time_config_type = ?, accounts_per_cycle = ?, is33mail = ?, domain = ?, fill_domain = ?
             WHERE id = 1
-        ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle))
+        ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail_int, domain, fill_domain_int))
         
         # Si no existe ningún registro, crear uno
         if cursor.rowcount == 0:
             cursor.execute('''
-                INSERT INTO global_time_config (id, scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle)
-                VALUES (1, ?, ?, ?, ?, ?)
-            ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle))
+                INSERT INTO global_time_config (id, scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail, domain, fill_domain)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail_int, domain, fill_domain_int))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración global de tiempo guardada: Hora={scheduled_time}, Zona={timezone}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}")
+        print(f"✅ Configuración global guardada: Hora={scheduled_time}, Zona={timezone}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, is33mail={is33mail}, domain={domain}, fill_domain={fill_domain}")
         return True
         
     except Exception as e:
-        print(f"❌ Error al guardar configuración global de tiempo: {e}")
+        print(f"❌ Error al guardar configuración global: {e}")
         return False
 
 
 def get_global_time_config():
     """
-    Obtiene la configuración global de tiempo (hora programada y ciclo)
+    Obtiene la configuración global de tiempo (hora programada y ciclo) y dominio
     Esta configuración es global para todos los navegadores
     
     Returns:
-        dict: Diccionario con scheduled_time, timezone, cycle_time_minutes, time_config_type y accounts_per_cycle, 
-              o valores por defecto si no existe
+        dict: Diccionario con scheduled_time, timezone, cycle_time_minutes, time_config_type, 
+              accounts_per_cycle, is33mail y domain, o valores por defecto si no existe
     """
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle FROM global_time_config WHERE id = 1")
+        cursor.execute("SELECT scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail, domain, fill_domain FROM global_time_config WHERE id = 1")
         row = cursor.fetchone()
         conn.close()
         
         if row:
+            # Convertir integer a boolean para is33mail (None si no está configurado)
+            is33mail_bool = None
+            if row[5] is not None:
+                is33mail_bool = bool(row[5])
+            
+            # Convertir integer a boolean para fill_domain (None si no está configurado)
+            fill_domain_bool = None
+            if row[7] is not None:
+                fill_domain_bool = bool(row[7])
+            
             return {
                 'scheduled_time': row[0],
                 'timezone': row[1],
                 'cycle_time_minutes': row[2] if row[2] is not None else 60,
                 'time_config_type': row[3] if row[3] is not None else 'manual',
-                'accounts_per_cycle': row[4] if row[4] is not None else 1
+                'accounts_per_cycle': row[4] if row[4] is not None else 1,
+                'is33mail': is33mail_bool,  # Boolean o None
+                'domain': row[6],  # String o None
+                'fill_domain': fill_domain_bool  # Boolean o None
             }
         
         # Valores por defecto si no existe
@@ -1567,20 +1615,256 @@ def get_global_time_config():
             'timezone': None,
             'cycle_time_minutes': 60,
             'time_config_type': 'manual',
-            'accounts_per_cycle': 1
+            'accounts_per_cycle': 1,
+            'is33mail': True,  # Por defecto True
+            'domain': None,
+            'fill_domain': False  # Por defecto False
         }
         
     except Exception as e:
-        print(f"❌ Error al obtener configuración global de tiempo: {e}")
+        print(f"❌ Error al obtener configuración global: {e}")
         # Retornar valores por defecto en caso de error
         return {
             'scheduled_time': None,
             'timezone': None,
             'cycle_time_minutes': 60,
             'time_config_type': 'manual',
-            'accounts_per_cycle': 1
+            'accounts_per_cycle': 1,
+            'is33mail': True,  # Por defecto True
+            'domain': None,
+            'fill_domain': False  # Por defecto False
         }
 
+
+# =================================
+#         DOMAINS MANAGEMENT
+# =================================
+
+def create_domain(domain, fill_domain=False, is_active=True):
+    """
+    Crea un nuevo dominio
+    
+    Args:
+        domain (str): Dominio (con o sin @ al inicio)
+        fill_domain (bool): Si se debe aplicar relleno a este dominio
+        is_active (bool): Si el dominio está activo
+    
+    Returns:
+        int: ID del dominio creado, o None si hay error
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        # Asegurar que el dominio tenga @ al inicio
+        domain_clean = domain if domain.startswith('@') else f"@{domain}"
+        
+        # Verificar que no exista ya este dominio
+        cursor.execute("SELECT id FROM domains WHERE domain = ?", (domain_clean,))
+        if cursor.fetchone():
+            print(f"⚠️ El dominio {domain_clean} ya existe")
+            conn.close()
+            return None
+        
+        # Convertir boolean a integer
+        fill_domain_int = 1 if fill_domain else 0
+        is_active_int = 1 if is_active else 0
+        
+        cursor.execute('''
+            INSERT INTO domains (domain, fill_domain, is_active)
+            VALUES (?, ?, ?)
+        ''', (domain_clean, fill_domain_int, is_active_int))
+        
+        domain_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        print(f"✅ Dominio creado: {domain_clean} (ID: {domain_id}, Relleno: {fill_domain}, Activo: {is_active})")
+        return domain_id
+        
+    except Exception as e:
+        print(f"❌ Error al crear dominio: {e}")
+        return None
+
+def get_all_domains(active_only=False):
+    """
+    Obtiene todos los dominios
+    
+    Args:
+        active_only (bool): Si True, solo retorna dominios activos
+    
+    Returns:
+        list: Lista de diccionarios con información de los dominios
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        if active_only:
+            cursor.execute("SELECT id, domain, fill_domain, is_active FROM domains WHERE is_active = 1 ORDER BY id")
+        else:
+            cursor.execute("SELECT id, domain, fill_domain, is_active FROM domains ORDER BY id")
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        domains = []
+        for row in rows:
+            domains.append({
+                'id': row[0],
+                'domain': row[1],
+                'fill_domain': bool(row[2]),
+                'is_active': bool(row[3])
+            })
+        
+        return domains
+        
+    except Exception as e:
+        print(f"❌ Error al obtener dominios: {e}")
+        return []
+
+def get_domain_by_id(domain_id):
+    """
+    Obtiene un dominio por su ID
+    
+    Args:
+        domain_id (int): ID del dominio
+    
+    Returns:
+        dict: Información del dominio o None si no existe
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT id, domain, fill_domain, is_active FROM domains WHERE id = ?", (domain_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'id': row[0],
+                'domain': row[1],
+                'fill_domain': bool(row[2]),
+                'is_active': bool(row[3])
+            }
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error al obtener dominio: {e}")
+        return None
+
+def update_domain(domain_id, domain=None, fill_domain=None, is_active=None):
+    """
+    Actualiza un dominio
+    
+    Args:
+        domain_id (int): ID del dominio
+        domain (str, optional): Nuevo dominio (con o sin @ al inicio)
+        fill_domain (bool, optional): Nueva configuración de relleno
+        is_active (bool, optional): Nuevo estado activo/inactivo
+    
+    Returns:
+        bool: True si se actualizó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        updates = []
+        values = []
+        
+        if domain is not None:
+            domain_clean = domain if domain.startswith('@') else f"@{domain}"
+            # Verificar que no exista otro dominio con el mismo nombre
+            cursor.execute("SELECT id FROM domains WHERE domain = ? AND id != ?", (domain_clean, domain_id))
+            if cursor.fetchone():
+                print(f"⚠️ El dominio {domain_clean} ya existe en otro registro")
+                conn.close()
+                return False
+            updates.append("domain = ?")
+            values.append(domain_clean)
+        
+        if fill_domain is not None:
+            fill_domain_int = 1 if fill_domain else 0
+            updates.append("fill_domain = ?")
+            values.append(fill_domain_int)
+        
+        if is_active is not None:
+            is_active_int = 1 if is_active else 0
+            updates.append("is_active = ?")
+            values.append(is_active_int)
+        
+        if not updates:
+            conn.close()
+            return True  # No hay cambios
+        
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        values.append(domain_id)
+        
+        query = f"UPDATE domains SET {', '.join(updates)} WHERE id = ?"
+        cursor.execute(query, values)
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Dominio {domain_id} actualizado correctamente")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al actualizar dominio: {e}")
+        return False
+
+def delete_domain(domain_id):
+    """
+    Elimina un dominio
+    
+    Args:
+        domain_id (int): ID del dominio
+    
+    Returns:
+        bool: True si se eliminó correctamente, False en caso contrario
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM domains WHERE id = ?", (domain_id,))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Dominio {domain_id} eliminado correctamente")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al eliminar dominio: {e}")
+        return False
+
+def get_next_domain_for_rotation():
+    """
+    Obtiene el siguiente dominio activo para rotación.
+    Usa un contador simple basado en el timestamp para rotar entre dominios.
+    
+    Returns:
+        dict: Información del dominio siguiente, o None si no hay dominios activos
+    """
+    try:
+        domains = get_all_domains(active_only=True)
+        if not domains:
+            return None
+        
+        # Obtener el último dominio usado (almacenado en una tabla temporal o usar round-robin simple)
+        # Por simplicidad, usaremos round-robin basado en el tiempo
+        import time
+        index = int(time.time()) % len(domains)
+        return domains[index]
+        
+    except Exception as e:
+        print(f"❌ Error al obtener siguiente dominio: {e}")
+        return None
 
 # =================================
 #         BROWSER IMAGES

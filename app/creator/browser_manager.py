@@ -8,7 +8,9 @@ def create_browser_manager_window(parent_root):
     import shutil
     from app.database.database import (
         get_all_browsers, create_browser, update_browser, 
-        delete_browser, get_default_browser, get_browser_by_id
+        delete_browser, get_default_browser, get_browser_by_id,
+        get_global_time_config, save_global_time_config,
+        get_all_domains, create_domain, update_domain, delete_domain, get_domain_by_id
     )
     from app.creator.ui_creator import create_new_window, create_time_config_window
     from app.utils.path_utils import get_browser_images_path, ensure_directory_exists
@@ -75,6 +77,431 @@ def create_browser_manager_window(parent_root):
         width=200
     )
     time_config_button.pack(pady=(0, 15))
+    
+    # ================= CONFIGURACIÓN GLOBAL DE DOMINIOS =================
+    
+    # Frame para configuración global de dominios
+    domain_config_frame = ctk.CTkFrame(main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    domain_config_frame.pack(fill="x", padx=20, pady=(0, 20))
+    
+    domain_config_title = ctk.CTkLabel(
+        domain_config_frame,
+        text="📧 Gestión de Dominios",
+        font=("Arial", 14, "bold"),
+        text_color="black"
+    )
+    domain_config_title.pack(pady=(15, 5))
+    
+    domain_config_subtitle = ctk.CTkLabel(
+        domain_config_frame,
+        text="🌐 Los dominios se rotan automáticamente durante la ejecución",
+        font=("Arial", 10),
+        text_color="gray"
+    )
+    domain_config_subtitle.pack(pady=(0, 10))
+    
+    # Obtener configuración global actual para checkbox de 33mail
+    current_global_config = get_global_time_config()
+    
+    # Variable para el checkbox de 33mail (por defecto marcado = True)
+    mail33_var = ctk.IntVar(value=1)
+    
+    # Obtener valor actual de is33mail
+    current_is33mail = current_global_config.get('is33mail') if current_global_config else True
+    if current_is33mail is True:
+        mail33_var.set(1)
+    elif current_is33mail is False:
+        mail33_var.set(0)
+    else:
+        mail33_var.set(1)
+    
+    # Checkbox "Es con 33mail"
+    mail33_checkbox = ctk.CTkCheckBox(
+        domain_config_frame,
+        text="Es con 33mail",
+        font=("Arial", 11),
+        text_color="black",
+        variable=mail33_var
+    )
+    mail33_checkbox.pack(anchor="w", padx=20, pady=(0, 10))
+    
+    # Función para guardar configuración de 33mail
+    def save_33mail_config():
+        is33mail = True if mail33_var.get() == 1 else False
+        current_config = get_global_time_config()
+        
+        if save_global_time_config(
+            scheduled_time=current_config.get('scheduled_time'),
+            timezone=current_config.get('timezone'),
+            cycle_time_minutes=current_config.get('cycle_time_minutes'),
+            time_config_type=current_config.get('time_config_type'),
+            accounts_per_cycle=current_config.get('accounts_per_cycle'),
+            is33mail=is33mail
+        ):
+            pass  # Actualización silenciosa
+        else:
+            messagebox.showerror("Error", "❌ No se pudo guardar la configuración.")
+    
+    # Frame para crear nuevo dominio (solo visible si no se usa 33mail)
+    create_domain_frame = ctk.CTkFrame(domain_config_frame, fg_color="transparent")
+    
+    create_domain_title = ctk.CTkLabel(
+        create_domain_frame,
+        text="➕ Agregar Nuevo Dominio",
+        font=("Arial", 12, "bold"),
+        text_color="black"
+    )
+    create_domain_title.pack(anchor="w", padx=20, pady=(10, 5))
+    
+    # Frame para inputs de nuevo dominio
+    new_domain_inputs_frame = ctk.CTkFrame(create_domain_frame, fg_color="transparent")
+    new_domain_inputs_frame.pack(fill="x", padx=20, pady=(0, 10))
+    
+    # Input para el dominio
+    new_domain_entry = ctk.CTkEntry(
+        new_domain_inputs_frame,
+        placeholder_text="ejemplo: @gmail.com",
+        font=("Arial", 11),
+        height=35
+    )
+    new_domain_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+    
+    # Variable para el checkbox de rellenar dominio
+    new_fill_domain_var = ctk.IntVar(value=0)
+    
+    # Checkbox "Rellenar" para nuevo dominio
+    new_fill_domain_checkbox = ctk.CTkCheckBox(
+        new_domain_inputs_frame,
+        text="Rellenar",
+        font=("Arial", 11),
+        text_color="black",
+        variable=new_fill_domain_var
+    )
+    new_fill_domain_checkbox.pack(side="left", padx=(0, 10))
+    
+    # Función para crear nuevo dominio
+    def create_new_domain():
+        domain = new_domain_entry.get().strip()
+        if not domain:
+            messagebox.showwarning("Advertencia", "Por favor ingresa un dominio.")
+            return
+        
+        fill_domain = True if new_fill_domain_var.get() == 1 else False
+        
+        domain_id = create_domain(domain, fill_domain=fill_domain, is_active=True)
+        
+        if domain_id:
+            messagebox.showinfo("Éxito", f"✅ Dominio '{domain}' creado correctamente.")
+            new_domain_entry.delete(0, 'end')
+            new_fill_domain_var.set(0)
+            refresh_domains_table()
+        else:
+            messagebox.showerror("Error", f"❌ No se pudo crear el dominio. Verifica que no esté duplicado.")
+    
+    # Botón para crear dominio
+    create_domain_button = ctk.CTkButton(
+        new_domain_inputs_frame,
+        text="➕ Crear",
+        command=create_new_domain,
+        fg_color="#28a745",
+        text_color="white",
+        font=("Arial", 11, "bold"),
+        height=35,
+        width=100
+    )
+    create_domain_button.pack(side="left")
+    
+    # Contenedor de la tabla de dominios
+    domains_table_container = ctk.CTkFrame(domain_config_frame, fg_color="transparent")
+    
+    # Crear encabezados de la tabla de dominios
+    domains_header_frame = ctk.CTkFrame(domains_table_container, fg_color="#f0f0f0", corner_radius=0)
+    domains_header_frame.pack(fill="x")
+    
+    # Encabezados
+    domains_headers = ["Dominio", "Rellenar", "Activo", "Acciones"]
+    domains_header_widths = [200, 80, 60, 200]
+    domains_header_alignments = ["w", "center", "center", "center"]
+    
+    for i, (header, width, alignment) in enumerate(zip(domains_headers, domains_header_widths, domains_header_alignments)):
+        header_label = ctk.CTkLabel(
+            domains_header_frame,
+            text=header,
+            font=("Arial", 11, "bold"),
+            text_color="black",
+            width=width,
+            anchor=alignment
+        )
+        sticky_value = "w" if alignment == "w" else "ew"
+        header_label.grid(row=0, column=i, padx=3, pady=5, sticky=sticky_value)
+    
+    # Configurar columnas del header
+    for i in range(4):
+        domains_header_frame.grid_columnconfigure(i, weight=1)
+    
+    # Frame para las filas de dominios
+    domains_rows_frame = ctk.CTkFrame(domains_table_container, fg_color="transparent")
+    domains_rows_frame.pack(fill="both", expand=True)
+    
+    # Función para refrescar la tabla de dominios
+    def refresh_domains_table():
+        # Limpiar filas existentes
+        for widget in domains_rows_frame.winfo_children():
+            widget.destroy()
+        
+        # Obtener todos los dominios
+        domains = get_all_domains(active_only=False)
+        
+        if not domains:
+            # Mostrar mensaje si no hay dominios
+            no_domains_label = ctk.CTkLabel(
+                domains_rows_frame,
+                text="No hay dominios registrados. Agrega uno nuevo arriba.",
+                font=("Arial", 12),
+                text_color="gray"
+            )
+            no_domains_label.pack(pady=20)
+            return
+        
+        # Crear fila para cada dominio
+        for domain_data in domains:
+            row_frame = ctk.CTkFrame(domains_rows_frame, fg_color="white", corner_radius=0)
+            row_frame.pack(fill="x")
+            
+            # Dominio (editable)
+            domain_name_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+            domain_name_frame.grid(row=0, column=0, padx=3, pady=4, sticky="w")
+            
+            domain_name_label = ctk.CTkLabel(
+                domain_name_frame,
+                text=domain_data['domain'],
+                font=("Arial", 10),
+                text_color="black",
+                width=200,
+                anchor="w"
+            )
+            domain_name_label.pack(side="left")
+            
+            domain_name_entry = ctk.CTkEntry(
+                domain_name_frame,
+                font=("Arial", 10),
+                width=200,
+                height=25
+            )
+            domain_name_entry.insert(0, domain_data['domain'])
+            
+            # Checkbox para rellenar
+            fill_domain_var = ctk.IntVar(value=1 if domain_data['fill_domain'] else 0)
+            fill_checkbox = ctk.CTkCheckBox(
+                row_frame,
+                text="",
+                variable=fill_domain_var,
+                checkbox_width=16,
+                checkbox_height=16
+            )
+            fill_checkbox.grid(row=0, column=1, padx=3, pady=4)
+            
+            # Checkbox para activo
+            is_active_var = ctk.IntVar(value=1 if domain_data['is_active'] else 0)
+            active_checkbox = ctk.CTkCheckBox(
+                row_frame,
+                text="",
+                variable=is_active_var,
+                checkbox_width=16,
+                checkbox_height=16
+            )
+            active_checkbox.grid(row=0, column=2, padx=3, pady=4)
+            
+            # Frame para botones de acciones
+            actions_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+            actions_frame.grid(row=0, column=3, padx=3, pady=4)
+            
+            # Variable para rastrear si estamos editando
+            is_editing = {"value": False}
+            
+            # Botón de editar
+            edit_button = ctk.CTkButton(
+                actions_frame,
+                text="✏️ Editar",
+                fg_color="#ffc107",
+                text_color="black",
+                font=("Arial", 9),
+                width=60,
+                height=25
+            )
+            edit_button.pack(side="left", padx=(0, 3))
+            
+            # Botón de guardar (inicialmente oculto)
+            save_button = ctk.CTkButton(
+                actions_frame,
+                text="💾 Guardar",
+                fg_color="#28a745",
+                text_color="white",
+                font=("Arial", 9),
+                width=60,
+                height=25
+            )
+            
+            # Botón de cancelar (inicialmente oculto)
+            cancel_button = ctk.CTkButton(
+                actions_frame,
+                text="❌ Cancelar",
+                fg_color="#6c757d",
+                text_color="white",
+                font=("Arial", 9),
+                width=60,
+                height=25
+            )
+            
+            # Función para editar dominio
+            def create_edit_function(domain_id, old_domain, name_label_ref, name_entry_ref, is_editing_ref, edit_btn_ref, save_btn_ref, cancel_btn_ref):
+                def start_edit():
+                    if is_editing_ref["value"]:
+                        return
+                    
+                    is_editing_ref["value"] = True
+                    name_label_ref.pack_forget()
+                    name_entry_ref.pack(side="left")
+                    name_entry_ref.focus()
+                    name_entry_ref.select_range(0, 'end')
+                    
+                    edit_btn_ref.pack_forget()
+                    save_btn_ref.pack(side="left", padx=(0, 3))
+                    cancel_btn_ref.pack(side="left", padx=(0, 3))
+                
+                def save_edit():
+                    new_domain = name_entry_ref.get().strip()
+                    
+                    if not new_domain:
+                        messagebox.showwarning("Advertencia", "El dominio no puede estar vacío.")
+                        return
+                    
+                    if new_domain == old_domain:
+                        cancel_edit()
+                        return
+                    
+                    if update_domain(domain_id, domain=new_domain):
+                        messagebox.showinfo("Éxito", f"✅ Dominio actualizado correctamente.")
+                        refresh_domains_table()
+                    else:
+                        messagebox.showerror("Error", f"❌ No se pudo actualizar el dominio.")
+                
+                def cancel_edit():
+                    is_editing_ref["value"] = False
+                    name_entry_ref.pack_forget()
+                    name_label_ref.pack(side="left")
+                    name_entry_ref.delete(0, 'end')
+                    name_entry_ref.insert(0, old_domain)
+                    
+                    save_btn_ref.pack_forget()
+                    cancel_btn_ref.pack_forget()
+                    edit_btn_ref.pack(side="left", padx=(0, 3))
+                
+                def on_entry_return(event):
+                    save_edit()
+                
+                name_entry_ref.bind("<Return>", on_entry_return)
+                name_entry_ref.bind("<Escape>", lambda e: cancel_edit())
+                
+                return start_edit, save_edit, cancel_edit
+            
+            # Crear funciones de edición
+            start_edit_func, save_edit_func, cancel_edit_func = create_edit_function(
+                domain_data['id'], domain_data['domain'], domain_name_label, domain_name_entry,
+                is_editing, edit_button, save_button, cancel_button
+            )
+            
+            edit_button.configure(command=start_edit_func)
+            save_button.configure(command=save_edit_func)
+            cancel_button.configure(command=cancel_edit_func)
+            
+            # Función para actualizar rellenar
+            def create_update_fill_function(domain_id, var_ref):
+                def update_fill():
+                    fill_domain = var_ref.get() == 1
+                    if update_domain(domain_id, fill_domain=fill_domain):
+                        pass  # Actualización silenciosa
+                    else:
+                        messagebox.showerror("Error", "❌ No se pudo actualizar la configuración de relleno.")
+                        var_ref.set(1 if not fill_domain else 0)
+                return update_fill
+            
+            fill_checkbox.configure(command=create_update_fill_function(domain_data['id'], fill_domain_var))
+            
+            # Función para actualizar activo
+            def create_update_active_function(domain_id, var_ref):
+                def update_active():
+                    is_active = var_ref.get() == 1
+                    if update_domain(domain_id, is_active=is_active):
+                        pass  # Actualización silenciosa
+                    else:
+                        messagebox.showerror("Error", "❌ No se pudo actualizar el estado del dominio.")
+                        var_ref.set(1 if not is_active else 0)
+                return update_active
+            
+            active_checkbox.configure(command=create_update_active_function(domain_data['id'], is_active_var))
+            
+            # Botón de eliminar
+            def create_delete_function(domain_id, domain_name):
+                def delete_domain_func():
+                    result = messagebox.askyesno(
+                        "Confirmar Eliminación",
+                        f"¿Estás seguro de que quieres eliminar el dominio '{domain_name}'?\n\nEsta acción no se puede deshacer."
+                    )
+                    if result:
+                        if delete_domain(domain_id):
+                            messagebox.showinfo("Éxito", f"✅ Dominio '{domain_name}' eliminado correctamente.")
+                            refresh_domains_table()
+                        else:
+                            messagebox.showerror("Error", f"❌ No se pudo eliminar el dominio.")
+                return delete_domain_func
+            
+            delete_button = ctk.CTkButton(
+                actions_frame,
+                text="🗑️",
+                command=create_delete_function(domain_data['id'], domain_data['domain']),
+                fg_color="#dc3545",
+                text_color="white",
+                font=("Arial", 9),
+                width=20,
+                height=25
+            )
+            delete_button.pack(side="left", padx=(0, 3))
+            
+            # Configurar columnas de la fila
+            row_frame.grid_columnconfigure(0, weight=1, minsize=200)
+            row_frame.grid_columnconfigure(1, weight=0, minsize=80)
+            row_frame.grid_columnconfigure(2, weight=0, minsize=60)
+            row_frame.grid_columnconfigure(3, weight=1, minsize=200)
+    
+    # Función para mostrar/ocultar la sección de dominios según el checkbox de 33mail
+    def toggle_domains_section():
+        if mail33_var.get() == 0:
+            # Si no se usa 33mail, mostrar la sección de dominios
+            create_domain_frame.pack(fill="x", padx=20, pady=(0, 10))
+            domains_table_container.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+        else:
+            # Si se usa 33mail, ocultar la sección de dominios
+            create_domain_frame.pack_forget()
+            domains_table_container.pack_forget()
+    
+    # Actualizar el comando del checkbox
+    def toggle_33mail_with_domains():
+        save_33mail_config()
+        toggle_domains_section()
+    
+    mail33_checkbox.configure(command=toggle_33mail_with_domains)
+    
+    # Mostrar/ocultar según el estado inicial
+    if mail33_var.get() == 0:
+        create_domain_frame.pack(fill="x", padx=20, pady=(0, 10))
+        domains_table_container.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+    else:
+        create_domain_frame.pack_forget()
+        domains_table_container.pack_forget()
+    
+    # Cargar dominios inicialmente
+    refresh_domains_table()
     
     # ================= SECCIÓN CREAR NUEVO NAVEGADOR =================
     
