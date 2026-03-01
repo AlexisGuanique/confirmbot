@@ -8,6 +8,7 @@ def setup_ui(logged_in_user, on_login_success):
 
     from app.confirmabot.confirm_bot import run_checker, stop_bot, open_temp_chrome_profile as openProfileWithExtraExtension
     import threading
+    import time
     from app.confirmabot.utils.field_reader import parse_email_file  
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
     from app.creator.ui_creator import create_new_window
@@ -401,6 +402,139 @@ def setup_ui(logged_in_user, on_login_success):
         font=("Arial", 12)
     )
     config_bot_button.pack(pady=(0, 15))
+
+    # 👉 Función para abrir ventana de configuración del nombre del bot
+    def open_bot_name_config():
+        """Abre un modal para configurar el nombre del bot"""
+        from app.database.database import get_bot_connection_config, save_bot_connection_config
+        from app.auth.auth import connect_bot, sio
+        
+        name_window = ctk.CTkToplevel(root)
+        name_window.title("Configurar Nombre del Bot")
+        name_window.geometry("500x280")
+        name_window.resizable(False, False)
+        name_window.configure(fg_color="white")
+        
+        # Centrar la ventana
+        name_window.transient(root)
+        name_window.grab_set()
+        
+        # Frame principal
+        main_frame = ctk.CTkFrame(name_window, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=40, pady=30)
+        
+        # Título
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text="Configurar Nombre del Bot",
+            font=("Arial", 18, "bold"),
+            text_color="black"
+        )
+        title_label.pack(pady=(0, 25))
+        
+        # Input: Nombre del bot
+        name_label = ctk.CTkLabel(
+            main_frame,
+            text="Nombre del bot:",
+            text_color="black",
+            font=("Arial", 12, "bold")
+        )
+        name_label.pack(pady=(0, 8), anchor="w")
+        
+        name_entry = ctk.CTkEntry(
+            main_frame,
+            width=400,
+            height=40,
+            font=("Arial", 12),
+            placeholder_text="Ej: ConfirmaBot-MiPC"
+        )
+        name_entry.pack(pady=(0, 30))
+        
+        # Cargar nombre actual
+        bot_config = get_bot_connection_config()
+        if bot_config and bot_config.get("bot_name"):
+            name_entry.insert(0, bot_config["bot_name"])
+        
+        def save_bot_name():
+            """Guarda el nombre del bot y reconecta al WebSocket"""
+            new_name = name_entry.get().strip()
+            
+            if not new_name:
+                messagebox.showerror("Error", "El nombre del bot no puede estar vacío.")
+                return
+            
+            try:
+                # Guardar el nuevo nombre en la base de datos
+                bot_type = bot_config.get("bot_type", "creador") if bot_config else "creador"
+                success = save_bot_connection_config(new_name, bot_type)
+                
+                if success:
+                    # Desconectar WebSocket actual si está conectado
+                    if sio.connected:
+                        try:
+                            sio.emit('status_update', {'status': 'offline'})
+                            time.sleep(0.3)
+                            sio.disconnect()
+                            print("🔌 WebSocket desconectado para reconectar con nuevo nombre")
+                        except Exception as e:
+                            print(f"⚠️  Error al desconectar: {e}")
+                    
+                    # Reconectar con el nuevo nombre
+                    print(f"🔄 Reconectando con nuevo nombre: {new_name}")
+                    if connect_bot():
+                        messagebox.showinfo("Éxito", f"Nombre del bot actualizado a '{new_name}'.\n\nBot reconectado exitosamente.")
+                        name_window.destroy()
+                    else:
+                        messagebox.showwarning("Advertencia", f"Nombre guardado como '{new_name}', pero no se pudo reconectar al servidor.\n\nIntenta reconectar manualmente.")
+                        name_window.destroy()
+                else:
+                    messagebox.showerror("Error", "No se pudo guardar el nombre del bot.")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al guardar: {e}")
+        
+        # Botones
+        buttons_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        buttons_frame.pack(fill="x", pady=(20, 0))
+        
+        save_button = ctk.CTkButton(
+            buttons_frame,
+            text="Guardar",
+            command=save_bot_name,
+            fg_color="#007ACC",
+            hover_color="#005A9E",
+            width=140,
+            height=40,
+            font=("Arial", 13, "bold")
+        )
+        save_button.pack(side="left", padx=(0, 15))
+        
+        cancel_button = ctk.CTkButton(
+            buttons_frame,
+            text="Cancelar",
+            command=name_window.destroy,
+            fg_color="#6C757D",
+            hover_color="#5A6268",
+            width=140,
+            height=40,
+            font=("Arial", 13)
+        )
+        cancel_button.pack(side="left")
+        
+        # Permitir guardar con Enter
+        name_entry.bind("<Return>", lambda e: save_bot_name())
+        name_entry.focus()
+
+    # 👉 Botón para configurar nombre del bot
+    bot_name_button = ctk.CTkButton(
+        hostinger_frame,
+        text="Configurar Nombre del Bot",
+        command=open_bot_name_config,
+        fg_color="#9B59B6",
+        text_color="white",
+        font=("Arial", 12)
+    )
+    bot_name_button.pack(pady=(0, 15))
 
 
     # 👉 Checkboxes para opciones del bot (lado izquierdo - al final)

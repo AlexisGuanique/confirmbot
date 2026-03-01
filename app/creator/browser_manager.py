@@ -103,17 +103,18 @@ def create_browser_manager_window(parent_root):
     # Obtener configuración global actual para checkbox de 33mail
     current_global_config = get_global_time_config()
     
-    # Variable para el checkbox de 33mail (por defecto marcado = True)
-    mail33_var = ctk.IntVar(value=1)
+    # Obtener valor actual de is33mail (por defecto True si no existe)
+    current_is33mail = True  # Valor por defecto
+    if current_global_config:
+        is33mail_value = current_global_config.get('is33mail')
+        # Si is33mail es None, usar True por defecto
+        # Si es False (0), usar False
+        # Si es True (1), usar True
+        if is33mail_value is not None:
+            current_is33mail = bool(is33mail_value)
     
-    # Obtener valor actual de is33mail
-    current_is33mail = current_global_config.get('is33mail') if current_global_config else True
-    if current_is33mail is True:
-        mail33_var.set(1)
-    elif current_is33mail is False:
-        mail33_var.set(0)
-    else:
-        mail33_var.set(1)
+    # Variable para el checkbox de 33mail (inicializar con el valor correcto)
+    mail33_var = ctk.IntVar(value=1 if current_is33mail else 0)
     
     # Checkbox "Es con 33mail"
     mail33_checkbox = ctk.CTkCheckBox(

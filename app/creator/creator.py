@@ -96,6 +96,78 @@ def _son_cookies_similares(cookie1, cookie2):
         return False
 
 
+def execute_creator():
+    """
+    Función principal del creator que ejecuta todas las acciones.
+    Establece bot_running = True cuando se ejecuta desde la UI.
+    """
+    from app.database.database import get_creator_setting, get_global_time_config, get_active_browsers
+    import app.auth.auth as auth_module
+    
+    # Establecer bot_running = True cuando se ejecuta desde la UI
+    auth_module.bot_running = True
+    print("🚀 Iniciando Creator desde UI...")
+    
+    global _password_usado
+    _password_usado = ""
+    
+    try:
+        # Obtener navegadores activos
+        active_browsers = get_active_browsers()
+        if not active_browsers:
+            print("❌ No hay navegadores activos")
+            auth_module.bot_running = False
+            return
+        
+        # Obtener configuración del primer navegador
+        settings = get_creator_setting(active_browsers[0]['id'])
+        if not settings:
+            print("❌ Sin configuración del navegador")
+            auth_module.bot_running = False
+            return
+        
+        # Obtener configuración global de tiempo
+        global_time_config = get_global_time_config()
+        cycle_time_minutes = global_time_config.get('cycle_time_minutes', 60)
+        accounts_per_cycle = global_time_config.get('accounts_per_cycle', 1)
+        scheduled_time = global_time_config.get('scheduled_time')
+        time_config_type = global_time_config.get('time_config_type', 'manual')
+        
+        has_scheduled = scheduled_time and scheduled_time.strip() and time_config_type in ['scheduled', 'both']
+        # Permitir ciclo con 0 minutos (ejecución continua sin espera)
+        has_cycle = cycle_time_minutes is not None and cycle_time_minutes >= 0 and time_config_type in ['cycle', 'both']
+        
+        # Determinar modo de ejecución
+        if has_scheduled and has_cycle:
+            print("🔄 Ciclo + Hora programada")
+            if not _verificar_hora_programada():
+                auth_module.bot_running = False
+                return
+            _ejecutar_creator_en_ciclo(active_browsers)
+        elif has_cycle:
+            print("🔄 Solo ciclo")
+            _ejecutar_creator_en_ciclo(active_browsers)
+        elif has_scheduled:
+            print("🕐 Solo hora programada")
+            if not _verificar_hora_programada():
+                auth_module.bot_running = False
+                return
+            # Ejecutar con objetivo de 1 cuenta cuando es solo hora programada
+            _ejecutar_proceso_creator_con_objetivo(1, active_browsers=active_browsers)
+        else:
+            print("👤 Modo manual")
+            # Ejecutar con objetivo de 1 cuenta en modo manual
+            _ejecutar_proceso_creator_con_objetivo(1, active_browsers=active_browsers)
+    except Exception as e:
+        print(f"❌ Error en Creator: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Establecer bot_running = False al finalizar
+        auth_module.bot_running = False
+        print("✅ Creator finalizado")
+
+
 def observador_unificado(coordinates, email, password, filepath, browser_id=None, browser_name=None):
     """
     Observador unificado que detecta números, captchas y éxito en la creación de cuentas
@@ -118,6 +190,17 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
     estado = ObservadorEstado()
     
     while True:
+        # Verificar si se debe detener el bot
+        from app.auth.auth import bot_running
+        if not bot_running:
+            print("🛑 Señal de detención recibida en observador. Deteniendo...")
+            # Cerrar navegador antes de detenerse
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False, "detenido_por_usuario", {}
+        
         # Resetear flag de captcha bueno procesado en este ciclo
         estado.captcha_bueno_procesado_en_ciclo = False
         
@@ -168,6 +251,11 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_result is True:  # Máquina física: primera detección procesada, continuar
             continue
+        
+        # Verificar linkedin_error (error de carga de LinkedIn)
+        linkedin_error_result = _procesar_linkedin_error(coordinates, estado, browser_name=browser_name)
+        if linkedin_error_result is False:  # Error detectado - cerrar navegador y continuar con siguiente email
+            return False, "linkedin_error", {}
         
         # Verificar formato nuevo
         formato_nuevo_result = _procesar_formato_nuevo(coordinates, estado, browser_name=browser_name)
@@ -231,6 +319,17 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
     estado = ObservadorEstado()
     
     while True:
+        # Verificar si se debe detener el bot
+        from app.auth.auth import bot_running
+        if not bot_running:
+            print("🛑 Señal de detención recibida en observador. Deteniendo...")
+            # Cerrar navegador antes de detenerse
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False, "detenido_por_usuario", {}
+        
         # Resetear flag de captcha bueno procesado en este ciclo
         estado.captcha_bueno_procesado_en_ciclo = False
         
@@ -281,6 +380,11 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
             return False, "captcha_segundo_obstaculo", {"captcha_count": estado.captcha_count, "obstaculo_count": estado.obstaculo_count}
         elif captcha_result is True:  # Máquina física: primera detección procesada, continuar
             continue
+        
+        # Verificar linkedin_error (error de carga de LinkedIn)
+        linkedin_error_result = _procesar_linkedin_error(coordinates, estado, browser_name=browser_name)
+        if linkedin_error_result is False:  # Error detectado - cerrar navegador y continuar con siguiente email
+            return False, "linkedin_error", {}
         
         # Verificar formato nuevo
         formato_nuevo_result = _procesar_formato_nuevo(coordinates, estado, browser_name=browser_name)
@@ -554,6 +658,31 @@ def _procesar_proxy_error(coordinates, estado, browser_name=None):
             return True
     
     return True
+
+
+def _procesar_linkedin_error(coordinates, estado, browser_name=None):
+    """Procesa la detección de error de carga de LinkedIn - cierra navegador y sale para continuar con siguiente email"""
+    from app.creator.computer_actions import click_coordinates, wait_for_creator_image
+    import time
+    
+    linkedin_error_found = wait_for_creator_image("linkedin_error", max_attempts=1, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
+    
+    if not linkedin_error_found:
+        return None  # No hay error de LinkedIn que procesar
+    
+    estado.ciclos_sin_imagen = 0
+    print(f"⚠️ Error de carga de LinkedIn detectado - cerrando navegador y continuando con siguiente email")
+    
+    # Desactivar proxy inmediatamente al detectar error
+    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
+    
+    # Cerrar ventana y salir para continuar con siguiente email
+    close_window_coords = coordinates.get("close_window")
+    if close_window_coords:
+        click_coordinates(close_window_coords)
+        time.sleep(1)
+    
+    return False  # Salir del observador para continuar con siguiente email
 
 
 def _procesar_formato_nuevo(coordinates, estado, browser_name=None):
@@ -1260,13 +1389,44 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
             print(f"⚠️ Email ID {email_id} no encontrado")
             return False, "email_no_encontrado", {"email_id": email_id}
     
+    # Verificar si se debe detener el bot antes de comenzar
+    from app.auth.auth import bot_running
+    if not bot_running:
+        print("🛑 Señal de detención recibida. Deteniendo procesamiento de email...")
+        close_window_coords = coordinates.get("close_window")
+        if close_window_coords:
+            from app.creator.computer_actions import click_coordinates
+            click_coordinates(close_window_coords)
+            time.sleep(1)
+        return False, "detenido_por_usuario", {}
+    
     # Paso 1: Click en el navegador
     if not _click_brave(coordinates, browser_name=browser_name):
         return False, "error_click_brave", {}
     
+    # Verificar si se debe detener el bot
+    if not bot_running:
+        print("🛑 Señal de detención recibida. Deteniendo procesamiento de email...")
+        close_window_coords = coordinates.get("close_window")
+        if close_window_coords:
+            from app.creator.computer_actions import click_coordinates
+            click_coordinates(close_window_coords)
+            time.sleep(1)
+        return False, "detenido_por_usuario", {}
+    
     # Paso 2: Click en LinkedIn fav
     if not _click_linkedin_fav(coordinates):
         return False, "error_click_linkedin_fav", {}
+    
+    # Verificar si se debe detener el bot
+    if not bot_running:
+        print("🛑 Señal de detención recibida. Deteniendo procesamiento de email...")
+        close_window_coords = coordinates.get("close_window")
+        if close_window_coords:
+            from app.creator.computer_actions import click_coordinates
+            click_coordinates(close_window_coords)
+            time.sleep(1)
+        return False, "detenido_por_usuario", {}
     
     # Paso 3: Verificar carga de LinkedIn
     if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
@@ -1274,6 +1434,16 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
         _cerrar_ventana(coordinates)
         return False, "error_carga_linkedin", {}
+    
+    # Verificar si se debe detener el bot después de verificar LinkedIn
+    if not bot_running:
+        print("🛑 Señal de detención recibida. Deteniendo procesamiento de email...")
+        close_window_coords = coordinates.get("close_window")
+        if close_window_coords:
+            from app.creator.computer_actions import click_coordinates
+            click_coordinates(close_window_coords)
+            time.sleep(1)
+        return False, "detenido_por_usuario", {}
     
     # Verificar proxy error después de cargar LinkedIn
     _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
@@ -1314,12 +1484,36 @@ def _click_brave(coordinates, browser_name=None):
     
     max_intentos = 3
     
+    from app.auth.auth import bot_running
+    
     for intento in range(1, max_intentos + 1):
+        # Verificar si se debe detener el bot
+        if not bot_running:
+            print("🛑 Señal de detención recibida. Deteniendo clic en navegador...")
+            return False
+        
         # Hacer un solo clic, esperar medio segundo y presionar Enter
         click_coordinates(brave_coords, double_click=False)
-        time.sleep(0.5)
+        # Sleep interrumpible
+        sleep_interval = 0.1
+        slept = 0
+        while slept < 0.5:
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo clic en navegador...")
+                return False
+            time.sleep(sleep_interval)
+            slept += sleep_interval
+        
         press_key('enter')
-        time.sleep(2)
+        # Sleep interrumpible
+        sleep_interval = 0.5
+        slept = 0
+        while slept < 2:
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo clic en navegador...")
+                return False
+            time.sleep(sleep_interval)
+            slept += sleep_interval
         
         # Validar que la imagen del navegador apareció (busca en la carpeta específica del navegador)
         browser_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
@@ -1348,16 +1542,39 @@ def _click_brave(coordinates, browser_name=None):
 def _click_linkedin_fav(coordinates):
     """Hace clic en el favorito de LinkedIn"""
     from app.creator.computer_actions import click_coordinates
+    from app.auth.auth import bot_running
     import time
-    time.sleep(3)
+    
+    # Sleep interrumpible
+    sleep_interval = 0.5
+    slept = 0
+    while slept < 3:
+        if not bot_running:
+            print("🛑 Señal de detención recibida. Deteniendo clic en LinkedIn...")
+            return False
+        time.sleep(sleep_interval)
+        slept += sleep_interval
+    
     linkedin_coords = coordinates.get("linkedin_fav_click")
     if not linkedin_coords:
         return False
     
     click_coordinates(linkedin_coords)
-    time.sleep(3)
+    
+    # Sleep interrumpible
+    slept = 0
+    while slept < 3:
+        if not bot_running:
+            print("🛑 Señal de detención recibida. Deteniendo clic en LinkedIn...")
+            return False
+        time.sleep(sleep_interval)
+        slept += sleep_interval
     
     # Verificar proxy error después de abrir LinkedIn
+    if not bot_running:
+        print("🛑 Señal de detención recibida. Deteniendo clic en LinkedIn...")
+        return False
+    
     _verificar_y_cerrar_proxy_error(coordinates)
     
     return True
@@ -1379,8 +1596,21 @@ def _verificar_carga_linkedin(coordinates=None, browser_name=None):
     nombre_navegador = browser_name if browser_name else "navegador"
     print(f"🔍 Verificando carga de LinkedIn (Navegador: {nombre_navegador})")
     
-    # Esperar un momento inicial para que LinkedIn cargue completamente
-    time.sleep(3)
+    # Verificar si se debe detener el bot antes de comenzar
+    from app.auth.auth import bot_running
+    if not bot_running:
+        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+        return False
+    
+    # Esperar un momento inicial para que LinkedIn cargue completamente (sleep interrumpible)
+    sleep_interval = 0.5
+    slept = 0
+    while slept < 3:
+        if not bot_running:
+            print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+            return False
+        time.sleep(sleep_interval)
+        slept += sleep_interval
     
     max_attempts_per_cycle = 6
     max_reintentos = 3
@@ -1409,13 +1639,37 @@ def _verificar_carga_linkedin(coordinates=None, browser_name=None):
             return False
     
     for reintento in range(1, max_reintentos + 1):
+        # Verificar si se debe detener el bot
+        from app.auth.auth import bot_running
+        if not bot_running:
+            print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+            return False
+        
         # Buscar imágenes en cada ciclo hasta encontrar una o llegar al límite
         for attempt in range(1, max_attempts_per_cycle + 1):
+            # Verificar si se debe detener el bot
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                return False
+            
             # Intentar buscar cada imagen en este ciclo
             for image_name in linkedin_verification_images:
+                # Verificar si se debe detener el bot
+                if not bot_running:
+                    print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                    return False
+                
                 # Esperar un poco antes de buscar para dar tiempo a que cargue la página
                 if attempt == 1:
-                    time.sleep(1)
+                    # Sleep interrumpible
+                    sleep_interval = 0.5
+                    slept = 0
+                    while slept < 1:
+                        if not bot_running:
+                            print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                            return False
+                        time.sleep(sleep_interval)
+                        slept += sleep_interval
                 
                 verification_image = find_creator_image(image_name, confidence=confidence, browser_name=browser_name)
                 if verification_image:
@@ -1424,23 +1678,54 @@ def _verificar_carga_linkedin(coordinates=None, browser_name=None):
             
             # Si no se encontró ninguna imagen en este ciclo, esperar antes del siguiente
             if attempt < max_attempts_per_cycle:
-                time.sleep(delay_between_attempts)
+                # Sleep interrumpible
+                sleep_interval = 0.5
+                slept = 0
+                while slept < delay_between_attempts:
+                    if not bot_running:
+                        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                        return False
+                    time.sleep(sleep_interval)
+                    slept += sleep_interval
         
         # Si llegamos aquí, no se encontró ninguna imagen después de max_attempts_per_cycle intentos
         # Solo mostrar mensaje si no es el último reintento para reducir ruido en consola
         if reintento < max_reintentos:
             print(f"⚠️ No se encontró imagen después de {max_attempts_per_cycle} intentos")
         
+        # Verificar si se debe detener el bot antes de reiniciar
+        if not bot_running:
+            print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+            return False
+        
         # Si no es el último reintento, reiniciar el proceso
         if reintento < max_reintentos:
             print(f"🔄 Reiniciando proceso (reintento {reintento}/{max_reintentos})...")
+            
+            # Verificar si se debe detener el bot antes de reiniciar
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                return False
             
             # 1. Cerrar ventana
             close_window_coords = coordinates.get("close_window")
             if close_window_coords:
                 print(f"🔄 Cerrando ventana...")
                 click_coordinates(close_window_coords)
-                time.sleep(1)
+                # Sleep interrumpible
+                sleep_interval = 0.5
+                slept = 0
+                while slept < 1:
+                    if not bot_running:
+                        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                        return False
+                    time.sleep(sleep_interval)
+                    slept += sleep_interval
+            
+            # Verificar si se debe detener el bot después de cerrar ventana
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                return False
             
             # 2. Doble clic en el navegador con validación
             # Obtener nombre del navegador para mensajes
@@ -1450,31 +1735,72 @@ def _verificar_carga_linkedin(coordinates=None, browser_name=None):
             if brave_coords:
                 print(f"🔄 Haciendo doble clic en {nombre_navegador}...")
                 click_coordinates(brave_coords, double_click=True)
-                time.sleep(2)
+                # Sleep interrumpible
+                sleep_interval = 0.5
+                slept = 0
+                while slept < 2:
+                    if not bot_running:
+                        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                        return False
+                    time.sleep(sleep_interval)
+                    slept += sleep_interval
                 
                 # Validar que la imagen del navegador NO apareció (significa que el navegador se abrió correctamente)
                 browser_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
                 if browser_image_found:
                     print(f"⚠️ {nombre_navegador} todavía en pantalla de inicio, reintentando clic...")
                     click_coordinates(brave_coords, double_click=True)
-                    time.sleep(2)
+                    # Sleep interrumpible
+                    sleep_interval = 0.5
+                    slept = 0
+                    while slept < 2:
+                        if not bot_running:
+                            print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                            return False
+                        time.sleep(sleep_interval)
+                        slept += sleep_interval
                     browser_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
                     if browser_image_found:
                         print(f"❌ No se pudo abrir {nombre_navegador} correctamente")
                         return False
                 print(f"✅ {nombre_navegador} validado - clic realizado correctamente")
             
+            # Verificar si se debe detener el bot antes de hacer clic en LinkedIn
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                return False
+            
             # 3. Clic en LinkedIn fav
             linkedin_coords = coordinates.get("linkedin_fav_click")
             if linkedin_coords:
                 print(f"🔄 Haciendo clic en LinkedIn fav...")
                 click_coordinates(linkedin_coords)
-                # Esperar más tiempo para que LinkedIn cargue completamente
-                time.sleep(5)
+                # Esperar más tiempo para que LinkedIn cargue completamente (sleep interrumpible)
+                sleep_interval = 0.5
+                slept = 0
+                while slept < 5:
+                    if not bot_running:
+                        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                        return False
+                    time.sleep(sleep_interval)
+                    slept += sleep_interval
+            
+            # Verificar si se debe detener el bot antes de continuar
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                return False
             
             # 4. Continuar buscando imágenes en el siguiente reintento
             print(f"🔄 Continuando búsqueda de imágenes...")
-            time.sleep(1)
+            # Sleep interrumpible
+            sleep_interval = 0.5
+            slept = 0
+            while slept < 1:
+                if not bot_running:
+                    print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                    return False
+                time.sleep(sleep_interval)
+                slept += sleep_interval
         else:
             # Último reintento completado sin éxito
             print(f"❌ No se encontró ninguna imagen de verificación de LinkedIn después de {max_reintentos} reintentos")
@@ -2086,6 +2412,10 @@ def _determinar_emails_realmente_fallidos(emails_procesados, browser_id=None):
             if not tiene_exito:
                 # Buscar el último resultado fallido para obtener los detalles más recientes
                 ultimo_fallo = max(resultados, key=lambda x: x.get('contador', 0))
+                
+                # Excluir linkedin_error de la lista de fallidos (es un error transitorio)
+                if ultimo_fallo.get('motivo_fallo') == 'linkedin_error':
+                    continue
                 
                 cuenta_fallida = {
                     "email": email,
@@ -2796,309 +3126,7 @@ def _mostrar_error_navegadores_sin_configuracion(active_browsers_originales):
     root.destroy()
 
 
-def execute_creator():
-    """
-    Función principal del creator que ejecuta todas las acciones
-    Rota entre navegadores activos
-    """
-    from app.database.database import get_active_browsers, get_creator_setting
-    import time
-    
-    global _password_usado
-    _password_usado = ""
-    
-    # Obtener navegadores activos
-    active_browsers = get_active_browsers()
-    if not active_browsers:
-        print("❌ No hay navegadores activos. Por favor activa al menos un navegador.")
-        return
-    
-    print(f"🌐 Navegadores activos encontrados: {len(active_browsers)}")
-    for browser in active_browsers:
-        print(f"   - {browser['name']} (ID: {browser['id']})")
-    
-    # Guardar lista original para el mensaje de error
-    active_browsers_originales = active_browsers.copy()
-    
-    # Filtrar navegadores con configuración completa
-    active_browsers, navegadores_ignorados = _filtrar_navegadores_configurados(active_browsers)
-    
-    # Mostrar resumen de navegadores ignorados si los hay
-    if navegadores_ignorados:
-        print("\n" + "="*60)
-        print("⚠️  RESUMEN DE NAVEGADORES IGNORADOS")
-        print("="*60)
-        for item in navegadores_ignorados:
-            browser = item['browser']
-            motivo = item['motivo']
-            print(f"   ❌ {browser['name']} (ID: {browser['id']}) - {motivo}")
-        print("="*60 + "\n")
-    
-    if not active_browsers:
-        print("❌ No hay navegadores activos con configuración completa. Por favor configura al menos un navegador.")
-        _mostrar_error_navegadores_sin_configuracion(active_browsers_originales)
-        return
-    
-    print(f"✅ Navegadores configurados válidos: {len(active_browsers)}")
-    for browser in active_browsers:
-        print(f"   ✓ {browser['name']} (ID: {browser['id']})")
-    
-    # Obtener configuración global de tiempo
-    from app.database.database import get_global_time_config
-    global_time_config = get_global_time_config()
-    
-    time_config_type = global_time_config.get('time_config_type', 'manual')
-    scheduled_time = global_time_config.get('scheduled_time')
-    cycle_time_minutes = global_time_config.get('cycle_time_minutes', 60)
-    
-    has_scheduled = scheduled_time and scheduled_time.strip()
-    # El ciclo se considera habilitado aunque los minutos sean 0
-    has_cycle = global_time_config.get('time_config_type') in ['cycle', 'both']
-    
-    # Determinar modo de ejecución
-    if has_scheduled and has_cycle:
-        print("🔄 Ciclo + Hora programada")
-        if not _verificar_hora_programada():
-            return
-        _ejecutar_creator_en_ciclo(active_browsers)
-    elif has_cycle:
-        print("🔄 Solo ciclo")
-        _ejecutar_creator_en_ciclo(active_browsers)
-    elif has_scheduled:
-        print("🕐 Solo hora programada")
-        if not _verificar_hora_programada():
-            return
-        _ejecutar_proceso_creator(active_browsers)
-    else:
-        print("👤 Modo manual")
-        _ejecutar_proceso_creator(active_browsers)
-
-
-def _ejecutar_proceso_creator(active_browsers):
-    """
-    Ejecuta el proceso de creación de cuentas una sola vez
-    Rota entre navegadores activos
-    """
-    from app.database.database import (
-        get_creator_coordinates, get_all_available_creator_emails, get_next_creator_emails, 
-        get_creator_setting, update_creator_email_progress, fetch_and_save_emails_for_cycle,
-        reset_creator_email_progress
-    )
-    import time
-    
-    # Guardar lista original para el mensaje de error
-    active_browsers_originales = active_browsers.copy()
-    
-    # Filtrar navegadores con configuración completa
-    active_browsers, navegadores_ignorados = _filtrar_navegadores_configurados(active_browsers)
-    
-    # Mostrar resumen de navegadores ignorados si los hay
-    if navegadores_ignorados:
-        print("\n" + "="*60)
-        print("⚠️  RESUMEN DE NAVEGADORES IGNORADOS")
-        print("="*60)
-        for item in navegadores_ignorados:
-            browser = item['browser']
-            motivo = item['motivo']
-            print(f"   ❌ {browser['name']} (ID: {browser['id']}) - {motivo}")
-        print("="*60 + "\n")
-    
-    if not active_browsers:
-        print("❌ No hay navegadores con configuración completa para procesar")
-        _mostrar_error_navegadores_sin_configuracion(active_browsers_originales)
-        return False
-    
-    # Obtener configuración del primer navegador (para is33mail y domain)
-    settings = get_creator_setting(active_browsers[0]['id'])
-    if not settings:
-        print("❌ Sin configuración del navegador")
-        return False
-    
-    is33mail = settings.get('is33mail', True)
-    domain = settings.get('domain', '')
-    
-    # Obtener configuración global de tiempo
-    from app.database.database import get_global_time_config
-    global_time_config = get_global_time_config()
-    time_config_type = global_time_config.get('time_config_type', 'manual')
-    
-    # Si is33mail es false, usar dominios con rotación
-    if not is33mail:
-        # Obtener todos los dominios activos
-        from app.database.database import get_all_domains
-        active_domains = get_all_domains(active_only=True)
-        
-        if not active_domains:
-            print("❌ No hay dominios configurados. Configura al menos un dominio en 'Gestión de Navegadores'.")
-            return False
-        
-        # Aplicar relleno según configuración de cada dominio
-        from app.creator.computer_actions import apply_domain_fill
-        
-        # Obtener cantidad de cuentas a crear
-        # Seleccionar dominios aleatoriamente
-        import random
-        if time_config_type in ['cycle', 'both']:
-            accounts_per_cycle = global_time_config.get('accounts_per_cycle', 1)
-            # Generar dominios seleccionando aleatoriamente entre los disponibles
-            email_ids = []
-            for i in range(accounts_per_cycle):
-                # Seleccionar un dominio aleatorio
-                domain_data = random.choice(active_domains)
-                domain_base = domain_data['domain']
-                fill_domain = domain_data['fill_domain']
-                email_ids.append(apply_domain_fill(domain_base, fill_domain))
-            print(f"🔄 Procesando {accounts_per_cycle} cuentas usando {len(active_domains)} dominio(s) con selección aleatoria")
-        else:
-            accounts_to_create = settings.get('accounts_to_create', 1)
-            # Generar dominios seleccionando aleatoriamente entre los disponibles
-            email_ids = []
-            for i in range(accounts_to_create):
-                # Seleccionar un dominio aleatorio
-                domain_data = random.choice(active_domains)
-                domain_base = domain_data['domain']
-                fill_domain = domain_data['fill_domain']
-                email_ids.append(apply_domain_fill(domain_base, fill_domain))
-            print(f"🔄 Procesando {accounts_to_create} cuentas usando {len(active_domains)} dominio(s) con selección aleatoria")
-    else:
-        # Obtener emails según configuración (modo normal con 33mail)
-        if time_config_type in ['cycle', 'both']:
-            accounts_per_cycle = global_time_config.get('accounts_per_cycle', 1)
-            email_ids = get_next_creator_emails(accounts_per_cycle)
-            print(f"🔄 Procesando {accounts_per_cycle} cuentas")
-        else:
-            print("🌐 Obteniendo emails del servidor...")
-            resultado = fetch_and_save_emails_for_cycle(100)
-            
-            if resultado == "NO_EMAILS_AVAILABLE":
-                print("📭 No hay más emails disponibles en el servidor")
-                # Mostrar messagebox y detener el bot
-                import tkinter as tk
-                from tkinter import messagebox
-                root = tk.Tk()
-                root.withdraw()
-                messagebox.showwarning(
-                    "Sin Emails Disponibles", 
-                    "Te quedaste sin emails en la base de datos.\n\nEl bot se detendrá."
-                )
-                root.destroy()
-                return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
-            elif not resultado:
-                print("❌ Error al obtener emails")
-                return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
-                
-            email_ids = get_all_available_creator_emails()
-            print(f"🔄 Procesando {len(email_ids)} cuentas")
-    
-    if not email_ids:
-        print("❌ Sin emails disponibles")
-        if is33mail:
-            reset_creator_email_progress()
-        return False
-    
-    filepath = _inicializar_archivo_salida(len(email_ids))
-    if not filepath:
-        return
-    
-    # Procesar emails rotando entre navegadores activos
-    emails_exitosos = 0
-    emails_procesados = []  # Lista para trackear todos los emails procesados
-    from datetime import datetime
-    tiempo_inicio_proceso = datetime.now()
-    
-    # Índice para rotar entre navegadores
-    browser_index = 0
-    
-    for i, email_id in enumerate(email_ids, 1):
-        # Seleccionar navegador activo (rotación)
-        current_browser = active_browsers[browser_index]
-        browser_id = current_browser['id']
-        browser_name = current_browser['name']
-        
-        print("#########################################################")
-        print(f"🌐 Usando navegador: {browser_name} (ID: {browser_id})")
-        _ejecutar_modo_avion()
-        print(f"📧 {i}/{len(email_ids)}")
-        
-        # Obtener coordenadas del navegador actual
-        coordinates = get_creator_coordinates(browser_id)
-        if not coordinates:
-            print(f"❌ Sin coordenadas para navegador {browser_name}")
-            # Rotar al siguiente navegador
-            browser_index = (browser_index + 1) % len(active_browsers)
-            continue
-        
-        # Obtener email antes de procesarlo
-        if is33mail:
-            from app.database.database import get_creator_email_by_id
-            current_email = get_creator_email_by_id(email_id)
-        else:
-            # En modo domain, email_id es el email directamente
-            current_email = email_id
-        
-        exito, motivo_fallo, detalles = procesar_email_individual_con_detalle(
-            email_id, coordinates, filepath, i, len(email_ids), 
-            browser_id=browser_id, browser_name=browser_name
-        )
-        
-        # Trackear el resultado del procesamiento
-        email_resultado = {
-            "email_id": email_id,
-            "email": current_email if current_email else (email_id if isinstance(email_id, str) else f"email_id_{email_id}"),
-            "exito": exito,
-            "motivo_fallo": motivo_fallo,
-            "detalles": detalles,
-            "contador": i,
-            "browser_name": browser_name
-        }
-        emails_procesados.append(email_resultado)
-        
-        if exito:
-            emails_exitosos += 1
-            print(f"✅ Cuenta {emails_exitosos} (Navegador: {browser_name})")
-        else:
-            print(f"❌ Falló - {motivo_fallo} (Navegador: {browser_name})")
-        
-        # Solo actualizar progreso si estamos usando 33mail
-        if is33mail:
-            update_creator_email_progress(email_id, emails_exitosos)
-        
-        # Rotar al siguiente navegador para el próximo email
-        browser_index = (browser_index + 1) % len(active_browsers)
-        
-        if i < len(email_ids):
-            time.sleep(1)
-    
-    print(f"🎉 Completado: {emails_exitosos}/{len(email_ids)}")
-    _actualizar_encabezado_con_exitos(filepath, len(email_ids), emails_exitosos)
-    
-    # Obtener browser_id del primer navegador activo para funciones auxiliares
-    first_browser_id = active_browsers[0]['id'] if active_browsers else None
-    
-    # Determinar emails realmente fallidos (no usados exitosamente)
-    cuentas_realmente_fallidas = _determinar_emails_realmente_fallidos(emails_procesados, browser_id=first_browser_id)
-    
-    # Guardar solo emails realmente fallidos en el servidor
-    if cuentas_realmente_fallidas:
-        print(f"💾 Guardando {len(cuentas_realmente_fallidas)} emails realmente fallidos en el servidor...")
-        print("📧 EMAILS REALMENTE FALLIDOS:")
-        for i, cuenta in enumerate(cuentas_realmente_fallidas, 1):
-            print(f"  {i}. {cuenta['email']} - {cuenta['motivo_fallo']}")
-        _guardar_cuentas_fallidas_en_servidor(cuentas_realmente_fallidas)
-    else:
-        print("✅ No hay emails realmente fallidos para reportar")
-    
-    # Guardar cuentas en servidor (INDEPENDIENTE del email)
-    if emails_exitosos > 0:
-        _guardar_cuentas_en_servidor(filepath)
-    
-    # Enviar correo de informe (opcional)
-    _enviar_archivo_por_correo(filepath, len(email_ids), emails_exitosos, cuentas_realmente_fallidas, False, None, tiempo_inicio_proceso, browser_id=first_browser_id)
-    
-    return True
-
-
-def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool = False, ciclo_minutes: int = None, active_browsers=None, browser_index_start: int = 0, domain_index_start: int = 0) -> tuple:
+def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, ciclo_minutes=None, active_browsers=None, browser_index_start=0, domain_index_start=0):
     """
     Ejecuta el proceso de creación de cuentas con un objetivo específico
     Rota entre navegadores activos y dominios
@@ -3180,6 +3208,25 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
         # Procesar directamente con selección aleatoria de dominios
         import random
         while cuentas_creadas < objetivo_cuentas and intento <= 10:
+            # Verificar si se debe detener el bot
+            from app.auth.auth import bot_running
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo creator...")
+                # Cerrar navegador antes de detenerse
+                current_browser = active_browsers[browser_index] if active_browsers else None
+                if current_browser:
+                    browser_id = current_browser['id']
+                    browser_name = current_browser.get('name', 'navegador')
+                    coordinates = get_creator_coordinates(browser_id)
+                    if coordinates:
+                        close_window_coords = coordinates.get("close_window")
+                        if close_window_coords:
+                            from app.creator.computer_actions import click_coordinates
+                            print(f"🔄 Cerrando navegador {browser_name}...")
+                            click_coordinates(close_window_coords)
+                            time.sleep(1)
+                return cuentas_creadas, browser_index, 0
+            
             print(f"📧 Intento {intento} - {cuentas_creadas}/{objetivo_cuentas}")
             
             # Generar dominios seleccionando aleatoriamente entre los disponibles
@@ -3196,6 +3243,24 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
             
             # Procesar emails
             for i, email_id in enumerate(email_ids, 1):
+                # Verificar si se debe detener el bot
+                if not bot_running:
+                    print("🛑 Señal de detención recibida. Deteniendo creator...")
+                    # Cerrar navegador antes de detenerse
+                    current_browser = active_browsers[browser_index] if active_browsers else None
+                    if current_browser:
+                        browser_id = current_browser['id']
+                        browser_name = current_browser.get('name', 'navegador')
+                        coordinates = get_creator_coordinates(browser_id)
+                        if coordinates:
+                            close_window_coords = coordinates.get("close_window")
+                            if close_window_coords:
+                                from app.creator.computer_actions import click_coordinates
+                                print(f"🔄 Cerrando navegador {browser_name}...")
+                                click_coordinates(close_window_coords)
+                                time.sleep(1)
+                    return cuentas_creadas, browser_index, 0
+                
                 if cuentas_creadas >= objetivo_cuentas:
                     break
                 
@@ -3241,6 +3306,8 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
                 if exito:
                     cuentas_creadas += 1
                     print(f"✅ Cuenta {cuentas_creadas} (Navegador: {browser_name})")
+                elif motivo_fallo == "linkedin_error":
+                    print(f"⚠️ Error de carga de LinkedIn - continuando con siguiente email (Navegador: {browser_name})")
                 else:
                     print(f"❌ Falló - {motivo_fallo} (Navegador: {browser_name})")
                 
@@ -3254,6 +3321,25 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
     else:
         # Modo normal con 33mail
         while cuentas_creadas < objetivo_cuentas and intento <= 10:
+            # Verificar si se debe detener el bot
+            from app.auth.auth import bot_running
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo creator...")
+                # Cerrar navegador antes de detenerse
+                current_browser = active_browsers[browser_index] if active_browsers else None
+                if current_browser:
+                    browser_id = current_browser['id']
+                    browser_name = current_browser.get('name', 'navegador')
+                    coordinates = get_creator_coordinates(browser_id)
+                    if coordinates:
+                        close_window_coords = coordinates.get("close_window")
+                        if close_window_coords:
+                            from app.creator.computer_actions import click_coordinates
+                            print(f"🔄 Cerrando navegador {browser_name}...")
+                            click_coordinates(close_window_coords)
+                            time.sleep(1)
+                return cuentas_creadas, browser_index, 0
+            
             print(f"📧 Intento {intento} - {cuentas_creadas}/{objetivo_cuentas}")
             
             # Obtener emails disponibles
@@ -3286,6 +3372,24 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas: int, es_ciclo: bool
         
             # Procesar emails
             for i, email_id in enumerate(email_ids, 1):
+                # Verificar si se debe detener el bot
+                if not bot_running:
+                    print("🛑 Señal de detención recibida. Deteniendo creator...")
+                    # Cerrar navegador antes de detenerse
+                    current_browser = active_browsers[browser_index] if active_browsers else None
+                    if current_browser:
+                        browser_id = current_browser['id']
+                        browser_name = current_browser.get('name', 'navegador')
+                        coordinates = get_creator_coordinates(browser_id)
+                        if coordinates:
+                            close_window_coords = coordinates.get("close_window")
+                            if close_window_coords:
+                                from app.creator.computer_actions import click_coordinates
+                                print(f"🔄 Cerrando navegador {browser_name}...")
+                                click_coordinates(close_window_coords)
+                                time.sleep(1)
+                    return cuentas_creadas, browser_index, 0
+                
                 if cuentas_creadas >= objetivo_cuentas:
                     break
                 
@@ -3430,7 +3534,10 @@ def _ejecutar_creator_en_ciclo(active_browsers):
     is33mail = settings.get('is33mail', True)
     domain = settings.get('domain', '')
     
-    print(f"🔄 Ciclo: {cycle_minutes}min - Objetivo: {accounts_per_cycle} cuentas")
+    if cycle_minutes == 0:
+        print(f"🔄 Ciclo: 0min (continuo) - Objetivo: {accounts_per_cycle} cuentas por ciclo")
+    else:
+        print(f"🔄 Ciclo: {cycle_minutes}min - Objetivo: {accounts_per_cycle} cuentas")
     print("💡 Ctrl+C para detener")
     
     ciclo = 1
@@ -3441,6 +3548,26 @@ def _ejecutar_creator_en_ciclo(active_browsers):
     
     try:
         while True:
+            # Verificar si se debe detener el bot
+            from app.auth.auth import bot_running
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo creator...")
+                # Cerrar navegador antes de detenerse
+                current_browser = active_browsers[browser_index] if active_browsers else None
+                if current_browser:
+                    browser_id = current_browser['id']
+                    browser_name = current_browser.get('name', 'navegador')
+                    from app.database.database import get_creator_coordinates
+                    coordinates = get_creator_coordinates(browser_id)
+                    if coordinates:
+                        close_window_coords = coordinates.get("close_window")
+                        if close_window_coords:
+                            from app.creator.computer_actions import click_coordinates
+                            print(f"🔄 Cerrando navegador {browser_name}...")
+                            click_coordinates(close_window_coords)
+                            time.sleep(1)
+                break
+            
             print("########################################################")
             print(f"\n🔄 CICLO #{ciclo}")
             
@@ -3477,7 +3604,35 @@ def _ejecutar_creator_en_ciclo(active_browsers):
                     break
                 elif not resultado:
                     print(f"❌ Error - Esperando {cycle_minutes}min...")
-                    time.sleep(cycle_minutes * 60)
+                    # Sleep interrumpible para poder detener el bot durante la espera
+                    sleep_seconds = cycle_minutes * 60
+                    sleep_interval = 1
+                    slept = 0
+                    while slept < sleep_seconds:
+                        from app.auth.auth import bot_running
+                        if not bot_running:
+                            print("🛑 Señal de detención recibida durante la espera. Deteniendo creator...")
+                            # Cerrar navegador antes de detenerse
+                            current_browser = active_browsers[browser_index] if active_browsers else None
+                            if current_browser:
+                                browser_id = current_browser['id']
+                                browser_name = current_browser.get('name', 'navegador')
+                                from app.database.database import get_creator_coordinates
+                                coordinates = get_creator_coordinates(browser_id)
+                                if coordinates:
+                                    close_window_coords = coordinates.get("close_window")
+                                    if close_window_coords:
+                                        from app.creator.computer_actions import click_coordinates
+                                        print(f"🔄 Cerrando navegador {browser_name}...")
+                                        click_coordinates(close_window_coords)
+                                        time.sleep(1)
+                            break
+                        time.sleep(sleep_interval)
+                        slept += sleep_interval
+                    
+                    if not bot_running:
+                        break
+                    
                     ciclo += 1
                     continue
             else:
@@ -3502,11 +3657,74 @@ def _ejecutar_creator_en_ciclo(active_browsers):
             else:
                 print(f"⚠️ Objetivo parcial: {cuentas_creadas}/{accounts_per_cycle}")
             
-            print(f"⏰ Esperando {cycle_minutes}min...")
-            time.sleep(cycle_minutes * 60)
+            # Si cycle_minutes es 0, continuar inmediatamente sin espera
+            if cycle_minutes == 0:
+                print(f"⚡ Ciclo de 0 minutos - continuando inmediatamente con siguiente ciclo...")
+            else:
+                print(f"⏰ Esperando {cycle_minutes}min...")
+                # Sleep interrumpible para poder detener el bot durante la espera
+                sleep_seconds = cycle_minutes * 60
+                sleep_interval = 1  # Verificar cada segundo
+                slept = 0
+                while slept < sleep_seconds:
+                    # Verificar si se debe detener el bot
+                    from app.auth.auth import bot_running
+                    if not bot_running:
+                        print("🛑 Señal de detención recibida durante la espera. Deteniendo creator...")
+                        # Cerrar navegador antes de detenerse
+                        current_browser = active_browsers[browser_index] if active_browsers else None
+                        if current_browser:
+                            browser_id = current_browser['id']
+                            browser_name = current_browser.get('name', 'navegador')
+                            from app.database.database import get_creator_coordinates
+                            coordinates = get_creator_coordinates(browser_id)
+                            if coordinates:
+                                close_window_coords = coordinates.get("close_window")
+                                if close_window_coords:
+                                    from app.creator.computer_actions import click_coordinates
+                                    print(f"🔄 Cerrando navegador {browser_name}...")
+                                    click_coordinates(close_window_coords)
+                                    time.sleep(1)
+                        break
+                    time.sleep(sleep_interval)
+                    slept += sleep_interval
+            
+            # Si se detuvo durante el sleep, salir del loop
+            from app.auth.auth import bot_running
+            if not bot_running:
+                break
+            
             ciclo += 1
             
     except KeyboardInterrupt:
         print(f"\n🛑 Detenido - {ciclo - 1} ciclos completados")
+        # Cerrar navegador antes de detenerse
+        current_browser = active_browsers[browser_index] if active_browsers else None
+        if current_browser:
+            browser_id = current_browser['id']
+            browser_name = current_browser.get('name', 'navegador')
+            from app.database.database import get_creator_coordinates
+            coordinates = get_creator_coordinates(browser_id)
+            if coordinates:
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    from app.creator.computer_actions import click_coordinates
+                    print(f"🔄 Cerrando navegador {browser_name}...")
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)
     except Exception as e:
         print(f"\n❌ Error: {e}")
+        # Cerrar navegador antes de detenerse
+        current_browser = active_browsers[browser_index] if active_browsers else None
+        if current_browser:
+            browser_id = current_browser['id']
+            browser_name = current_browser.get('name', 'navegador')
+            from app.database.database import get_creator_coordinates
+            coordinates = get_creator_coordinates(browser_id)
+            if coordinates:
+                close_window_coords = coordinates.get("close_window")
+                if close_window_coords:
+                    from app.creator.computer_actions import click_coordinates
+                    print(f"🔄 Cerrando navegador {browser_name}...")
+                    click_coordinates(close_window_coords)
+                    time.sleep(1)

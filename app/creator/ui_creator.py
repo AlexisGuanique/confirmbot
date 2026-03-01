@@ -805,7 +805,7 @@ def create_new_window(parent_root, browser_id=None):
         "brave_image",
         "captcha_error",
         "proxy_error",
-        "formato_nuevo",
+        "linkedin_error",
     ]
     
     # Crear encabezados de la tabla de imágenes

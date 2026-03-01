@@ -23,12 +23,14 @@ Si prefieres usar PyInstaller directamente:
 
 **Versión normal (sin consola):**
 ```bash
-pyinstaller --onefile --windowed --icon="favicon.ico" --name=ConfirmaBotHostinger main.py
+
 ```
 
 **Versión DEBUG (con consola):**
 ```bash
-pyinstaller --onefile --icon="favicon.ico" --name=TuPapaBot-Debug main.py
+
+pyinstaller --onefile --windowed --icon="favicon.ico" --name=ConfirmabotCentral main.py
+pyinstaller --onefile --icon="favicon.ico" --name=ConfirmabotCentral-Debug main.py
 ```
 
 ## Estructura de Carpetas

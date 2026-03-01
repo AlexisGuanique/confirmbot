@@ -103,6 +103,24 @@ def create_database():
             except Exception as e:
                 print(f"⚠️ Error en migración emails_per_batch: {e}")
         
+        # Migración 5: Agregar bot_name y bot_type si no existen
+        if 'bot_name' not in existing_columns:
+            print("🔄 Aplicando migración: agregando columna bot_name...")
+            try:
+                cursor.execute("ALTER TABLE bot_settings ADD COLUMN bot_name TEXT")
+                print("✅ Migración bot_name aplicada exitosamente")
+            except Exception as e:
+                print(f"⚠️ Error en migración bot_name: {e}")
+        
+        if 'bot_type' not in existing_columns:
+            print("🔄 Aplicando migración: agregando columna bot_type...")
+            try:
+                cursor.execute("ALTER TABLE bot_settings ADD COLUMN bot_type TEXT DEFAULT 'creador'")
+                print("✅ Migración bot_type aplicada exitosamente")
+            except Exception as e:
+                print(f"⚠️ Error en migración bot_type: {e}")
+        
+        conn.commit()
         print("✅ Verificación de migraciones de bot_settings completada")
 
         cursor.execute(
@@ -768,6 +786,73 @@ def get_bot_settings():
     except Exception as e:
         print(f"❌ Error al obtener configuración: {e}")
         return None
+
+
+def save_bot_connection_config(bot_name, bot_type='creador'):
+    """Guarda la configuración de conexión del bot (nombre y tipo)
+    Nota: Se guarda como 'creador' para compatibilidad con la API"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Asegurar que siempre se guarde como 'creador' para la API
+        if bot_type == 'confirmador':
+            bot_type = 'creador'
+        
+        cursor.execute("SELECT id FROM bot_settings LIMIT 1")
+        existing = cursor.fetchone()
+        
+        if existing:
+            cursor.execute('''
+                UPDATE bot_settings
+                SET bot_name = ?, bot_type = ?
+                WHERE id = ?
+            ''', (bot_name, bot_type, existing[0]))
+        else:
+            # Si no existe configuración, crear una con valores por defecto
+            cursor.execute('''
+                INSERT INTO bot_settings (iterations, pause_minutes, bot_name, bot_type)
+                VALUES (?, ?, ?, ?)
+            ''', (1, 20, bot_name, bot_type))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Configuración de conexión guardada: {bot_name} ({bot_type})")
+        return True
+    except Exception as e:
+        print(f"❌ Error al guardar configuración de conexión: {e}")
+        return False
+
+
+def get_bot_connection_config():
+    """Obtiene la configuración de conexión del bot (nombre y tipo)
+    Nota: Este bot se conecta como tipo 'creador' para compatibilidad con la API"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT bot_name, bot_type FROM bot_settings LIMIT 1")
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row and row[0]:
+            # Si el tipo guardado es 'confirmador', usar 'creador' para la conexión
+            bot_type = row[1] if row[1] else "creador"
+            if bot_type == "confirmador":
+                bot_type = "creador"
+            return {
+                "bot_name": row[0],
+                "bot_type": bot_type
+            }
+        return {
+            "bot_name": "ConfirmaBot",
+            "bot_type": "creador"  # Se conecta como 'creador' para compatibilidad con la API
+        }
+    except Exception as e:
+        print(f"❌ Error al obtener configuración de conexión: {e}")
+        return {
+            "bot_name": "ConfirmaBot",
+            "bot_type": "creador"
+        }
 
 
 
@@ -1540,6 +1625,27 @@ def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minut
         conn = sqlite3.connect(DB_PATH)
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
+        
+        # Obtener configuración actual directamente de la base de datos para preservar valores que no se están actualizando
+        cursor.execute("SELECT is33mail, domain, fill_domain FROM global_time_config WHERE id = 1")
+        current_row = cursor.fetchone()
+        
+        # Preservar valores existentes si no se proporcionan nuevos valores
+        if is33mail is None:
+            if current_row and current_row[0] is not None:
+                is33mail = bool(current_row[0])
+            else:
+                is33mail = True  # Valor por defecto
+        if domain is None:
+            if current_row and current_row[1] is not None:
+                domain = current_row[1]
+            else:
+                domain = None
+        if fill_domain is None:
+            if current_row and current_row[2] is not None:
+                fill_domain = bool(current_row[2])
+            else:
+                fill_domain = False  # Valor por defecto
         
         # Convertir boolean a integer para SQLite (True = 1, False = 0)
         is33mail_int = 1 if is33mail is True else (0 if is33mail is False else None)
