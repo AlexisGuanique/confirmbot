@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import pyautogui
 import time
@@ -353,13 +354,12 @@ def generate_email_prefix():
 
 def generate_domain_fill():
     """
-    Genera un relleno aleatorio para el dominio usando palabras coherentes + 3 números aleatorios.
-    El relleno nunca se repite gracias a la combinación aleatoria.
+    Relleno de subdominio: palabra (solo letras) + tres dígitos aleatorios 0-9.
     
-    Ejemplo: "creative123", "smart456", "tech789"
+    Ejemplo: "creative847", "smart032"
     
     Returns:
-        str: Relleno aleatorio (palabra + 3 números)
+        str: Letras minúsculas + exactamente 3 dígitos
     """
     import random
     import json
@@ -388,16 +388,11 @@ def generate_domain_fill():
             "alex", "mike", "john", "sarah", "emma", "david", "lisa", "chris", "anna", "mark"
         ]
     
-    # Seleccionar una palabra aleatoria
     palabra = random.choice(all_words)
-    
-    # Generar 3 números aleatorios
-    numeros = ''.join([str(random.randint(0, 9)) for _ in range(3)])
-    
-    # Combinar palabra + números
-    fill = f"{palabra}{numeros}"
-    
-    return fill
+    if isinstance(palabra, str):
+        palabra = "".join(c for c in palabra.lower() if c.isalpha()) or "mail"
+    digitos = "".join(str(random.randint(0, 9)) for _ in range(3))
+    return f"{palabra}{digitos}"
 
 def apply_domain_fill(domain, fill_enabled=False):
     """
@@ -405,7 +400,7 @@ def apply_domain_fill(domain, fill_enabled=False):
     
     Ejemplo:
         - Sin relleno: @pepito.com -> @pepito.com
-        - Con relleno: @pepito.com -> @creative123.pepito.com
+        - Con relleno: @pepito.com -> @creative847.pepito.com
     
     Args:
         domain (str): Dominio con o sin @ al inicio
@@ -434,11 +429,12 @@ def apply_domain_fill(domain, fill_enabled=False):
     # Para ser más seguro, verificamos si la primera parte parece ser un relleno
     # (contiene números al final, que es característico del relleno)
     if len(parts) > 2:
-        # Verificar si la primera parte parece ser un relleno (palabra + números)
         first_part = parts[0]
-        # Si la primera parte termina con números (típico de relleno), asumimos que ya tiene relleno
-        if first_part and any(char.isdigit() for char in first_part[-3:]):
-            # Ya tiene relleno, retornar tal cual
+        # Ya rellenado: palabra + 3 dígitos (nuevo formato)
+        if first_part and re.fullmatch(r"[a-z]{3,30}\d{3}", first_part):
+            return domain_clean
+        # Compatibilidad: relleno antiguo solo letras largo
+        if first_part and first_part.isalpha() and len(first_part) >= 8:
             return domain_clean
     
     # Generar el relleno
@@ -448,6 +444,154 @@ def apply_domain_fill(domain, fill_enabled=False):
     filled_domain = f"@{fill}.{domain_without_at}"
     
     return filled_domain
+
+
+_RANDOM_DOMAIN_TLDS = (
+    "com", "net", "org", "io", "co", "app", "dev", "live", "tech",
+    "studio", "digital", "global", "cloud", "online", "network", "group",
+)
+# Lista por defecto si el usuario no configura terminaciones (Gestión de navegadores)
+DEFAULT_RANDOM_DOMAIN_TLDS = _RANDOM_DOMAIN_TLDS
+
+# Etiquetas TLD: com, co.uk (hasta 3 segmentos alfanuméricos)
+_RANDOM_TLD_PATTERN = re.compile(
+    r"^([a-z0-9]{2,24})(\.[a-z0-9]{2,24}){0,2}$"
+)
+
+
+def parse_configured_random_tlds(raw):
+    """
+    Parsea texto del usuario (com, .net; gov | co.uk) en lista de TLDs válidos.
+    None o vacío -> None (usar _RANDOM_DOMAIN_TLDS en el caller).
+    """
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    seen = set()
+    out = []
+    for part in re.split(r"[\s,;|/]+", s):
+        p = part.strip().lower()
+        if not p:
+            continue
+        if p.startswith("."):
+            p = p[1:]
+        if _RANDOM_TLD_PATTERN.fullmatch(p) and p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out if out else None
+
+
+def _normalize_single_tld(tld):
+    if not tld or not isinstance(tld, str):
+        return None
+    p = tld.strip().lower()
+    if p.startswith("."):
+        p = p[1:]
+    if _RANDOM_TLD_PATTERN.fullmatch(p):
+        return p
+    return None
+
+
+def _load_terminos_tecnicos_json():
+    """Términos tech desde email_words.json (categoría terminos_tecnicos)."""
+    import json
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    words_file = os.path.join(current_dir, "email_words.json")
+    try:
+        with open(words_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        raw = data.get("terminos_tecnicos") or []
+        return [
+            "".join(c for c in w.lower() if c.isalpha())
+            for w in raw
+            if isinstance(w, str) and w.strip()
+        ]
+    except (FileNotFoundError, json.JSONDecodeError, TypeError):
+        return ["tech", "node", "cloud", "data", "code", "web", "api", "dev", "net", "hub", "core", "edge"]
+
+
+# Sufijos y raíces cortas con “olor” a producto tech (complementan terminos_tecnicos)
+_TECH_DOMAIN_FRAGMENTS = (
+    "ex", "io", "ly", "fy", "hub", "api", "dev", "net", "pro", "neo", "zen", "bit", "hex", "lab",
+    "sys", "tec", "vox", "tch", "ops", "max", "web", "app", "core", "edge", "node", "data", "grid",
+    "code", "byte", "pix", "sdk", "sql", "iot", "vpn", "cdn", "rpc", "gpu", "cpu", "jwt", "ssl",
+    "tls", "nfc", "ocr", "log", "bin", "key", "tag", "mux", "bot", "dns", "rtc", "gui", "cli", "rx",
+    "tx", "nx", "vm", "os", "ai", "ml", "ui", "ux", "qa", "ci", "cd",
+)
+
+
+def _random_short_name_stub():
+    """Nombre / apodo muy corto en inglés (4–6 letras), estilo louis / fraddy."""
+    fake = Faker("en_US")
+    name = "".join(c for c in fake.first_name().lower() if c.isalpha())
+    if len(name) < 4:
+        name = name + "".join(c for c in fake.first_name().lower() if c.isalpha())
+    if len(name) < 4:
+        name = (name + "alex")[:6]
+    target = random.randint(4, 6)
+    if len(name) > target:
+        if random.random() < 0.45 and len(name) >= 5:
+            cut = random.randint(4, min(6, len(name)))
+            name = name[:cut]
+        else:
+            name = name[:target]
+    # A veces consonante doble tipo fraddy (solo consonantes, sin tocar vocales)
+    if random.random() < 0.18 and len(name) >= 4:
+        i = random.randint(1, len(name) - 2)
+        ch = name[i]
+        if ch.isalpha() and ch not in "aeiou" and ch != name[i + 1] and ch != name[i - 1]:
+            name = name[: i + 1] + ch + name[i + 1 :]
+    name = "".join(c for c in name if c.isalpha())
+    if len(name) < 4:
+        name = (name + "ian")[:6]
+    return name[:6]
+
+
+def _random_tech_stub_for_domain():
+    """Fragmento corto tech (2–5 letras): sufijos tipo ex/io/tch o trozos de terminos_tecnicos."""
+    terms = _load_terminos_tecnicos_json()
+    terms = [t for t in terms if len(t) >= 2]
+    if random.random() < 0.55:
+        return random.choice(_TECH_DOMAIN_FRAGMENTS)
+    if not terms:
+        return random.choice(_TECH_DOMAIN_FRAGMENTS)
+    w = random.choice(terms)
+    if len(w) <= 4:
+        return w
+    if len(w) == 5:
+        return w if random.random() < 0.55 else w[:4]
+    ln = random.randint(2, min(4, len(w)))
+    start = random.randint(0, len(w) - ln)
+    return w[start : start + ln]
+
+
+def generate_random_email_domain(tld=None):
+    """
+    Dominio sintético corto: nombre breve + fragmento tech (ej. louistch.gov, fraddyex.com).
+
+    Args:
+        tld: TLD fijo (ej. 'com', 'co.uk'). None = elige al azar entre _RANDOM_DOMAIN_TLDS.
+
+    Returns:
+        str: @slug.tld
+    """
+    name_part = _random_short_name_stub()
+    tech_part = _random_tech_stub_for_domain()
+    slug = (name_part + tech_part).lower()
+    slug = "".join(c for c in slug if c.isalpha())
+    if len(slug) < 6:
+        slug = (slug + random.choice(_TECH_DOMAIN_FRAGMENTS))[:10]
+    if len(slug) > 14:
+        slug = slug[:14]
+    fixed = _normalize_single_tld(tld) if tld else None
+    if fixed:
+        chosen = fixed
+    else:
+        chosen = random.choice(_RANDOM_DOMAIN_TLDS)
+    return f"@{slug}.{chosen}"
+
 
 def generate_email_with_domain_format(domain):
     """

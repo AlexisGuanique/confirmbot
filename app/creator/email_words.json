@@ -1,4 +1,11 @@
 {
+  "empresa": [
+    "summit", "vertex", "meridian", "catalyst", "pillar", "horizon", "nexus", "forge", "beacon", "momentum",
+    "pinnacle", "vantage", "granite", "cornerstone", "blueprint", "synergy", "clarity", "apex", "atlas", "prism",
+    "harbor", "pacific", "riverside", "cedar", "oak", "marble", "stellar", "quantum", "vector", "matrix",
+    "fusion", "pulse", "signal", "crescent", "compass", "anchor", "keystone", "ledger", "cobalt", "silverline",
+    "northwind", "redwood", "ironwood", "crosswind", "fairview", "highland", "brookside", "meadowbrook", "stonegate", "clearwater"
+  ],
   "nombres": [
     "alex", "mike", "john", "sarah", "emma", "david", "lisa", "chris", "anna", "mark",
     "julia", "peter", "maria", "james", "sophie", "daniel", "laura", "robert", "nina", "thomas",
@@ -12,7 +19,11 @@
   "terminos_tecnicos": [
     "tech", "pro", "ace", "star", "nova", "zen", "max", "neo", "ultra", "mega",
     "cyber", "digital", "virtual", "quantum", "photon", "laser", "pixel", "byte", "code", "data",
-    "cloud", "web", "net", "link", "hub", "core", "edge", "node", "grid", "mesh"
+    "cloud", "web", "net", "link", "hub", "core", "edge", "node", "grid", "mesh",
+    "stack", "async", "fetch", "cache", "queue", "stream", "signal", "logic", "build", "deploy",
+    "micro", "macro", "fiber", "radar", "sonic", "codec", "frame", "block", "chain", "token",
+    "socket", "thread", "kernel", "driver", "router", "switch", "proxy", "tunnel", "packet", "binary",
+    "script", "module", "vector", "matrix", "tensor", "neural", "cluster", "daemon", "cron", "batch"
   ],
   "colores": [
     "blue", "red", "green", "gold", "silver", "dark", "light", "bright", "deep", "pure",

@@ -1558,7 +1558,7 @@ def _click_linkedin_fav(coordinates):
     linkedin_coords = coordinates.get("linkedin_fav_click")
     if not linkedin_coords:
         return False
-    
+    time.sleep(5)
     click_coordinates(linkedin_coords)
     
     # Sleep interrumpible
@@ -1934,7 +1934,8 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
             settings = None
         is33mail = settings.get('is33mail', True) if settings else True
         
-        if not is33mail:
+        random_domains = settings.get('random_domains', False) if settings else False
+        if (not is33mail) or random_domains:
             # El dominio ya viene con el relleno aplicado desde _ejecutar_proceso_creator
             # No aplicar relleno aquí para evitar doble relleno
             # Usar formato específico para dominio personalizado
@@ -3177,6 +3178,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, cic
         return 0, browser_index_start, domain_index_start
     
     is33mail = settings.get('is33mail', True)
+    random_domains = settings.get('random_domains', False)
     domain = settings.get('domain', '')
     
     filepath = _inicializar_archivo_salida(objetivo_cuentas)
@@ -3192,21 +3194,22 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, cic
     # Índice para rotar entre navegadores (usar el índice inicial pasado como parámetro)
     browser_index = browser_index_start
     
-    # Si is33mail es false, usar dominios con rotación
-    if not is33mail:
-        # Obtener todos los dominios activos
+    # Dominios desde BD o generados al vuelo (sin 33mail)
+    if random_domains or not is33mail:
         from app.database.database import get_all_domains
-        active_domains = get_all_domains(active_only=True)
-        
-        if not active_domains:
-            print("❌ No hay dominios configurados. Configura al menos un dominio en 'Gestión de Navegadores'.")
-            return 0, browser_index_start, domain_index_start
-        
-        # Aplicar relleno según configuración de cada dominio
-        from app.creator.computer_actions import apply_domain_fill
-        
-        # Procesar directamente con selección aleatoria de dominios
+        from app.creator.computer_actions import apply_domain_fill, generate_random_email_domain
         import random
+        
+        active_domains = None
+        if not random_domains:
+            active_domains = get_all_domains(active_only=True)
+            if not active_domains:
+                print("❌ No hay dominios configurados. Configura al menos un dominio en 'Gestión de Navegadores'.")
+                return 0, browser_index_start, domain_index_start
+        
+        fill_global = bool(settings.get('fill_domain'))
+        user_random_tlds = settings.get('random_tld_list') or []
+        
         while cuentas_creadas < objetivo_cuentas and intento <= 10:
             # Verificar si se debe detener el bot
             from app.auth.auth import bot_running
@@ -3233,13 +3236,25 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, cic
             cuentas_restantes = objetivo_cuentas - cuentas_creadas
             email_ids = []
             for i in range(cuentas_restantes):
-                # Seleccionar un dominio aleatorio de los disponibles
-                domain_data = random.choice(active_domains)
-                domain_base = domain_data['domain']
-                fill_domain = domain_data['fill_domain']
-                filled_domain = apply_domain_fill(domain_base, fill_domain)
-                email_ids.append(filled_domain)
-                print(f"📧 Dominio seleccionado aleatoriamente para cuenta {cuentas_creadas + i + 1}: {domain_base}")
+                if random_domains:
+                    if user_random_tlds:
+                        # Incluir `intento` para rotar TLD entre reintentos (antes i=0 repetía siempre el primero)
+                        tld_pick = user_random_tlds[
+                            (intento - 1 + cuentas_creadas + i) % len(user_random_tlds)
+                        ]
+                        domain_base = generate_random_email_domain(tld=tld_pick)
+                    else:
+                        domain_base = generate_random_email_domain()
+                    filled_domain = apply_domain_fill(domain_base, fill_global)
+                    email_ids.append(filled_domain)
+                    print(f"📧 Dominio aleatorio para cuenta {cuentas_creadas + i + 1}: {filled_domain}")
+                else:
+                    domain_data = random.choice(active_domains)
+                    domain_base = domain_data['domain']
+                    fill_domain = domain_data['fill_domain']
+                    filled_domain = apply_domain_fill(domain_base, fill_domain)
+                    email_ids.append(filled_domain)
+                    print(f"📧 Dominio seleccionado aleatoriamente para cuenta {cuentas_creadas + i + 1}: {domain_base}")
             
             # Procesar emails
             for i, email_id in enumerate(email_ids, 1):
@@ -3532,6 +3547,7 @@ def _ejecutar_creator_en_ciclo(active_browsers):
     cycle_minutes = global_time_config.get('cycle_time_minutes', 60)
     accounts_per_cycle = global_time_config.get('accounts_per_cycle', 1)
     is33mail = settings.get('is33mail', True)
+    random_domains = settings.get('random_domains', False)
     domain = settings.get('domain', '')
     
     if cycle_minutes == 0:
@@ -3577,8 +3593,8 @@ def _ejecutar_creator_en_ciclo(active_browsers):
             # Enviar notificación de inicio de ciclo
             _enviar_notificacion_inicio_ciclo(ciclo, accounts_per_cycle, cycle_minutes, browser_id=first_browser_id)
             
-            # Si is33mail es false, no solicitar emails del servidor
-            if is33mail:
+            # Solo 33mail pide emails al servidor; dominios propios o aleatorios no
+            if is33mail and not random_domains:
                 # Limpiar emails del ciclo anterior
                 if ciclo > 1:
                     print("🧹 Limpiando emails...")
@@ -3636,13 +3652,15 @@ def _ejecutar_creator_en_ciclo(active_browsers):
                     ciclo += 1
                     continue
             else:
-                # Verificar que haya dominios configurados
-                from app.database.database import get_all_domains
-                active_domains = get_all_domains(active_only=True)
-                if not active_domains:
-                    print("❌ No hay dominios configurados. Configura al menos un dominio en 'Gestión de Navegadores'.")
-                    break
-                print(f"🌐 Usando {len(active_domains)} dominio(s) con rotación automática")
+                if random_domains:
+                    print("🌐 Usando dominios aleatorios generados localmente (email_words.json + TLDs)")
+                else:
+                    from app.database.database import get_all_domains
+                    active_domains = get_all_domains(active_only=True)
+                    if not active_domains:
+                        print("❌ No hay dominios configurados. Configura al menos un dominio en 'Gestión de Navegadores'.")
+                        break
+                    print(f"🌐 Usando {len(active_domains)} dominio(s) con rotación automática")
             
             # Ejecutar proceso de creación, pasando el índice del navegador actual
             # El dominio se selecciona aleatoriamente, no necesitamos pasar domain_index

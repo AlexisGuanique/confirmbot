@@ -14,6 +14,28 @@ DB_DIR = os.path.join(BASE_DIR, "app", "database")
 DB_PATH = os.path.join(DB_DIR, "cookies.db")
 
 
+def _sync_random_tlds_global_column(conn=None):
+    """
+    Copia las filas de random_tld_entries a global_time_config.random_domain_tlds (CSV).
+    Si conn se pasa (p. ej. create_database), no hace commit.
+    """
+    close_after = conn is None
+    if conn is None:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT tld FROM random_tld_entries ORDER BY sort_order ASC, id ASC")
+        rows = cursor.fetchall()
+        joined = ",".join(r[0] for r in rows) if rows else None
+        cursor.execute("UPDATE global_time_config SET random_domain_tlds = ? WHERE id = 1", (joined,))
+        if close_after:
+            conn.commit()
+    finally:
+        if close_after:
+            conn.close()
+
+
 def create_database():
     os.makedirs(DB_DIR, exist_ok=True)
 
@@ -393,6 +415,14 @@ def create_database():
             print("🔄 Agregando campo fill_domain a global_time_config...")
             cursor.execute("ALTER TABLE global_time_config ADD COLUMN fill_domain INTEGER DEFAULT 0")
         
+        if 'random_domains' not in global_config_columns:
+            print("🔄 Agregando campo random_domains a global_time_config...")
+            cursor.execute("ALTER TABLE global_time_config ADD COLUMN random_domains INTEGER DEFAULT 0")
+        
+        if 'random_domain_tlds' not in global_config_columns:
+            print("🔄 Agregando campo random_domain_tlds a global_time_config...")
+            cursor.execute("ALTER TABLE global_time_config ADD COLUMN random_domain_tlds TEXT")
+        
         # 🔹 Tabla para dominios (múltiples dominios con configuración de relleno)
         cursor.execute(
             '''
@@ -406,6 +436,39 @@ def create_database():
             )
             '''
         )
+        
+        # 🔹 Terminaciones TLD para dominios aleatorios (tabla editable en UI)
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS random_tld_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tld TEXT NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
+        
+        cursor.execute("SELECT COUNT(*) FROM random_tld_entries")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("SELECT random_domain_tlds FROM global_time_config WHERE id = 1")
+            _r = cursor.fetchone()
+            if _r and _r[0]:
+                try:
+                    from app.creator.computer_actions import parse_configured_random_tlds
+                    _parts = parse_configured_random_tlds(_r[0]) or []
+                except Exception:
+                    _parts = []
+                for _i, _t in enumerate(_parts):
+                    try:
+                        cursor.execute(
+                            "INSERT INTO random_tld_entries (tld, sort_order) VALUES (?, ?)",
+                            (_t, _i),
+                        )
+                    except sqlite3.IntegrityError:
+                        pass
+        
+        _sync_random_tlds_global_column(conn)
         
         # 🔄 MIGRACIÓN: Agregar browser_id a creator_setting si no existe
         print("🔄 Verificando migración de creator_setting para múltiples navegadores...")
@@ -1559,7 +1622,10 @@ def get_creator_setting(browser_id):
                 'accounts_per_cycle': global_time_config['accounts_per_cycle'],
                 'is33mail': global_time_config['is33mail'],  # Boolean o None
                 'domain': global_time_config['domain'],  # String o None
-                'fill_domain': global_time_config['fill_domain']  # Boolean o None
+                'fill_domain': global_time_config['fill_domain'],  # Boolean o None
+                'random_domains': global_time_config.get('random_domains', False),
+                'random_domain_tlds': global_time_config.get('random_domain_tlds'),
+                'random_tld_list': get_random_tld_strings_ordered(),
             }
         return None
         
@@ -1603,7 +1669,7 @@ def clear_scheduled_time(browser_id):
 
 
 #! FUNCIONES DE CONFIGURACIÓN GLOBAL DE TIEMPO Y DOMINIO
-def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, is33mail=None, domain=None, fill_domain=None):
+def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, is33mail=None, domain=None, fill_domain=None, random_domains=None, random_domain_tlds=...):
     """
     Guarda o actualiza la configuración global de tiempo (hora programada y ciclo) y dominio
     Esta configuración es global para todos los navegadores
@@ -1617,6 +1683,9 @@ def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minut
         is33mail (bool): Si se usa 33mail (True) o no (False) (opcional)
         domain (str): Dominio a utilizar (opcional)
         fill_domain (bool): Si se debe rellenar el dominio (True) o no (False) (opcional)
+        random_domains (bool): Si se generan dominios aleatorios locales en lugar de 33mail o la tabla domains (opcional)
+        random_domain_tlds (str|None): Texto com,net,gov para TLDs de dominios aleatorios; None limpia el campo (usa lista por defecto).
+            Omitir el argumento (dejar default) conserva el valor guardado.
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -1627,7 +1696,7 @@ def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minut
         cursor = conn.cursor()
         
         # Obtener configuración actual directamente de la base de datos para preservar valores que no se están actualizando
-        cursor.execute("SELECT is33mail, domain, fill_domain FROM global_time_config WHERE id = 1")
+        cursor.execute("SELECT is33mail, domain, fill_domain, random_domains, random_domain_tlds FROM global_time_config WHERE id = 1")
         current_row = cursor.fetchone()
         
         # Preservar valores existentes si no se proporcionan nuevos valores
@@ -1646,29 +1715,40 @@ def save_global_time_config(scheduled_time=None, timezone=None, cycle_time_minut
                 fill_domain = bool(current_row[2])
             else:
                 fill_domain = False  # Valor por defecto
+        if random_domains is None:
+            if current_row and len(current_row) > 3 and current_row[3] is not None:
+                random_domains = bool(current_row[3])
+            else:
+                random_domains = False
+        if random_domain_tlds is ...:
+            if current_row and len(current_row) > 4:
+                random_domain_tlds = current_row[4]
+            else:
+                random_domain_tlds = None
         
         # Convertir boolean a integer para SQLite (True = 1, False = 0)
         is33mail_int = 1 if is33mail is True else (0 if is33mail is False else None)
         fill_domain_int = 1 if fill_domain is True else (0 if fill_domain is False else None)
+        random_domains_int = 1 if random_domains is True else (0 if random_domains is False else None)
         
         # Actualizar el único registro (siempre ID 1)
         cursor.execute('''
             UPDATE global_time_config 
             SET scheduled_time = ?, timezone = ?, cycle_time_minutes = ?, 
-                time_config_type = ?, accounts_per_cycle = ?, is33mail = ?, domain = ?, fill_domain = ?
+                time_config_type = ?, accounts_per_cycle = ?, is33mail = ?, domain = ?, fill_domain = ?, random_domains = ?, random_domain_tlds = ?
             WHERE id = 1
-        ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail_int, domain, fill_domain_int))
+        ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail_int, domain, fill_domain_int, random_domains_int, random_domain_tlds))
         
         # Si no existe ningún registro, crear uno
         if cursor.rowcount == 0:
             cursor.execute('''
-                INSERT INTO global_time_config (id, scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail, domain, fill_domain)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail_int, domain, fill_domain_int))
+                INSERT INTO global_time_config (id, scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail, domain, fill_domain, random_domains, random_domain_tlds)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail_int, domain, fill_domain_int, random_domains_int, random_domain_tlds))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración global guardada: Hora={scheduled_time}, Zona={timezone}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, is33mail={is33mail}, domain={domain}, fill_domain={fill_domain}")
+        print(f"✅ Configuración global guardada: Hora={scheduled_time}, Zona={timezone}, Ciclo={cycle_time_minutes}min, Tipo={time_config_type}, CuentasPorCiclo={accounts_per_cycle}, is33mail={is33mail}, domain={domain}, fill_domain={fill_domain}, random_domains={random_domains}, random_domain_tlds={random_domain_tlds}")
         return True
         
     except Exception as e:
@@ -1689,7 +1769,7 @@ def get_global_time_config():
         conn = sqlite3.connect(DB_PATH)
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail, domain, fill_domain FROM global_time_config WHERE id = 1")
+        cursor.execute("SELECT scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle, is33mail, domain, fill_domain, random_domains, random_domain_tlds FROM global_time_config WHERE id = 1")
         row = cursor.fetchone()
         conn.close()
         
@@ -1704,6 +1784,12 @@ def get_global_time_config():
             if row[7] is not None:
                 fill_domain_bool = bool(row[7])
             
+            random_domains_bool = False
+            if len(row) > 8 and row[8] is not None:
+                random_domains_bool = bool(row[8])
+            
+            random_tlds_str = row[9] if len(row) > 9 else None
+            
             return {
                 'scheduled_time': row[0],
                 'timezone': row[1],
@@ -1712,7 +1798,9 @@ def get_global_time_config():
                 'accounts_per_cycle': row[4] if row[4] is not None else 1,
                 'is33mail': is33mail_bool,  # Boolean o None
                 'domain': row[6],  # String o None
-                'fill_domain': fill_domain_bool  # Boolean o None
+                'fill_domain': fill_domain_bool,  # Boolean o None
+                'random_domains': random_domains_bool,
+                'random_domain_tlds': random_tlds_str
             }
         
         # Valores por defecto si no existe
@@ -1724,7 +1812,9 @@ def get_global_time_config():
             'accounts_per_cycle': 1,
             'is33mail': True,  # Por defecto True
             'domain': None,
-            'fill_domain': False  # Por defecto False
+            'fill_domain': False,  # Por defecto False
+            'random_domains': False,
+            'random_domain_tlds': None
         }
         
     except Exception as e:
@@ -1738,7 +1828,9 @@ def get_global_time_config():
             'accounts_per_cycle': 1,
             'is33mail': True,  # Por defecto True
             'domain': None,
-            'fill_domain': False  # Por defecto False
+            'fill_domain': False,  # Por defecto False
+            'random_domains': False,
+            'random_domain_tlds': None
         }
 
 
@@ -1948,6 +2040,116 @@ def delete_domain(domain_id):
     except Exception as e:
         print(f"❌ Error al eliminar dominio: {e}")
         return False
+
+
+# =================================
+#    TERMINACIONES TLD (dominios aleatorios)
+# =================================
+
+def get_random_tld_entries():
+    """
+    Lista todas las terminaciones configuradas para dominios aleatorios (orden de rotación).
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, tld, sort_order FROM random_tld_entries ORDER BY sort_order ASC, id ASC"
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return [{"id": r[0], "tld": r[1], "sort_order": r[2]} for r in rows]
+    except Exception as e:
+        print(f"❌ Error al obtener terminaciones TLD: {e}")
+        return []
+
+
+def get_random_tld_strings_ordered():
+    """Lista de strings TLD en orden; vacía = el creator usa TLD aleatorio cada vez."""
+    return [e["tld"] for e in get_random_tld_entries()]
+
+
+def add_random_tld_entry(raw_tld):
+    """
+    Añade una terminación (com, co.uk, ...). Devuelve id o None si inválida o duplicada.
+    """
+    try:
+        from app.creator.computer_actions import _normalize_single_tld
+
+        tld = _normalize_single_tld((raw_tld or "").strip())
+        if not tld:
+            return None
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM random_tld_entries")
+        next_order = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO random_tld_entries (tld, sort_order) VALUES (?, ?)",
+            (tld, next_order),
+        )
+        conn.commit()
+        new_id = cursor.lastrowid
+        conn.close()
+        _sync_random_tlds_global_column()
+        print(f"✅ TLD añadido: {tld} (id={new_id})")
+        return new_id
+    except sqlite3.IntegrityError:
+        print(f"⚠️ La terminación '{raw_tld}' ya existe")
+        return None
+    except Exception as e:
+        print(f"❌ Error al añadir TLD: {e}")
+        return None
+
+
+def update_random_tld_entry(entry_id, raw_tld):
+    """Actualiza el texto de una terminación. True si OK."""
+    try:
+        from app.creator.computer_actions import _normalize_single_tld
+
+        tld = _normalize_single_tld((raw_tld or "").strip())
+        if not tld:
+            return False
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("UPDATE random_tld_entries SET tld = ? WHERE id = ?", (tld, entry_id))
+        if cursor.rowcount == 0:
+            conn.close()
+            return False
+        conn.commit()
+        conn.close()
+        _sync_random_tlds_global_column()
+        print(f"✅ TLD {entry_id} actualizado a {tld}")
+        return True
+    except sqlite3.IntegrityError:
+        print("⚠️ Ya existe otra fila con ese TLD")
+        return False
+    except Exception as e:
+        print(f"❌ Error al actualizar TLD: {e}")
+        return False
+
+
+def delete_random_tld_entry(entry_id):
+    """Elimina una terminación. True si OK."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM random_tld_entries WHERE id = ?", (entry_id,))
+        if cursor.rowcount == 0:
+            conn.close()
+            return False
+        conn.commit()
+        conn.close()
+        _sync_random_tlds_global_column()
+        print(f"✅ TLD {entry_id} eliminado")
+        return True
+    except Exception as e:
+        print(f"❌ Error al eliminar TLD: {e}")
+        return False
+
 
 def get_next_domain_for_rotation():
     """
