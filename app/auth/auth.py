@@ -9,13 +9,24 @@ import requests
 import time
 import sys
 import threading
-from app.database.database import save_user, delete_logged_in_user, get_logged_in_user, save_bot_connection_config, get_bot_connection_config
+from app.utils.server_config import AUTH_API_BASE_URL, BACKEND_BASE_URL
+from app.database.database import (
+    save_user,
+    delete_logged_in_user,
+    get_logged_in_user,
+    save_bot_connection_config,
+    get_bot_connection_config,
+    set_active_browser_by_name,
+    set_creator_user_agent_by_browser_name,
+    get_all_browsers,
+    get_domain_sync_payload,
+    apply_remote_domain_config,
+)
 
 # Configuración
-BASE_API_URL = "http://34.29.59.97/api/auth"
-LOGIN_URL = f"{BASE_API_URL}/login"
-VERIFY_TOKEN_URL = f"{BASE_API_URL}/verify-token"
-WS_URL = "http://34.29.59.97"  # URL base para WebSocket
+LOGIN_URL = f"{AUTH_API_BASE_URL}/login"
+VERIFY_TOKEN_URL = f"{AUTH_API_BASE_URL}/verify-token"
+WS_URL = BACKEND_BASE_URL  # URL base para WebSocket
 
 # Crear cliente SocketIO
 sio = socketio.Client()
@@ -68,6 +79,132 @@ def get_bot_config():
     """Obtiene la configuración del bot desde la base de datos"""
     config = get_bot_connection_config()
     return config.get("bot_name", "ConfirmaBot"), config.get("bot_type", "creador")
+
+
+def apply_remote_browser_if_present(command_payload):
+    """
+    Aplica el navegador enviado desde servidor para centralizar configuración por instancia.
+
+    Returns:
+        tuple[bool, str | None]: (True, None) si está OK o no hay navegador remoto;
+        (False, mensaje_error) si el navegador remoto no existe localmente.
+    """
+    preferred_browser = (command_payload.get('preferred_browser') or '').strip()
+    if not preferred_browser:
+        return True, None
+
+    ok, message = set_active_browser_by_name(preferred_browser)
+    if ok:
+        print(f"🌐 {message}")
+        return True, None
+    else:
+        print(f"⚠️ {message}")
+        try:
+            available = [b.get("name", "") for b in get_all_browsers() if b.get("name")]
+            available = [name for name in available if name]
+            available_text = ", ".join(available) if available else "Ninguno"
+        except Exception:
+            available_text = "No disponible"
+
+        alert_message = (
+            "El navegador seleccionado en el servidor no está configurado en este bot.\n\n"
+            f"Navegador solicitado: {preferred_browser}\n"
+            f"Navegadores disponibles en esta máquina: {available_text}\n\n"
+            "Configura este navegador en el bot o selecciona otro en el servidor."
+        )
+        _show_browser_not_available_messagebox(alert_message)
+        return False, alert_message
+
+
+def _show_browser_not_available_messagebox(message_text):
+    """Muestra alerta local cuando el navegador remoto no existe en esta máquina."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        def _show():
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showerror("Navegador no configurado", message_text)
+            root.destroy()
+
+        threading.Thread(target=_show, daemon=True).start()
+    except Exception as e:
+        print(f"⚠️  No se pudo mostrar messagebox: {e}")
+
+
+def apply_remote_user_agent_if_present(command_payload):
+    """
+    Aplica User-Agent enviado por servidor para el navegador seleccionado.
+    """
+    preferred_browser = (command_payload.get('preferred_browser') or '').strip()
+    remote_user_agent = (command_payload.get('remote_user_agent') or '').strip()
+
+    if not preferred_browser:
+        return True, None
+
+    if not remote_user_agent:
+        msg = (
+            "No se recibió User-Agent desde el servidor para el navegador seleccionado.\n\n"
+            f"Navegador: {preferred_browser}\n"
+            "Configura el User-Agent en 'Config Bots' del servidor."
+        )
+        _show_browser_not_available_messagebox(msg)
+        return False, msg
+
+    ok, message = set_creator_user_agent_by_browser_name(preferred_browser, remote_user_agent)
+    if ok:
+        print(f"🌐 {message}")
+        return True, None
+
+    print(f"⚠️ {message}")
+    _show_browser_not_available_messagebox(message)
+    return False, message
+
+
+def sync_available_browsers_to_server(force=False):
+    """Envía al servidor el catálogo local de navegadores configurados."""
+    # Durante el callback `connect` puede ocurrir que `sio.connected` aún no esté
+    # en True aunque la conexión ya esté en curso. `force=True` evita perder ese primer envío.
+    if not force and not sio.connected:
+        return
+
+    try:
+        browsers = get_all_browsers()
+        browser_names = [b.get("name", "").strip() for b in browsers if b.get("name")]
+        browser_names = [name for name in browser_names if name]
+        sio.emit('sync_available_browsers', {'browsers': browser_names})
+        print(f"📤 Catálogo de navegadores enviado al servidor ({len(browser_names)} elementos)")
+    except Exception as e:
+        print(f"⚠️  No se pudo sincronizar catálogo de navegadores: {e}")
+
+
+def sync_domain_config_to_server(force=False):
+    """Envía al servidor la configuración local de dominios/TLD."""
+    if not force and not sio.connected:
+        return
+    try:
+        payload = get_domain_sync_payload()
+        sio.emit('sync_domain_config', payload)
+        domains_count = len(payload.get("domains", []))
+        tlds_count = len(payload.get("random_tlds", []))
+        print(f"📤 Configuración de dominios enviada al servidor ({domains_count} dominios, {tlds_count} tlds)")
+    except Exception as e:
+        print(f"⚠️  No se pudo sincronizar configuración de dominios: {e}")
+
+
+def apply_remote_domain_config_if_present(command_payload):
+    """Aplica configuración remota de dominios enviada por servidor."""
+    remote_cfg = command_payload.get('remote_domain_config')
+    if not remote_cfg:
+        return True, None
+    ok, message = apply_remote_domain_config(remote_cfg)
+    if ok:
+        print(f"🌐 {message}")
+        return True, None
+    _show_browser_not_available_messagebox(message or "No se pudo aplicar dominios remotos")
+    return False, message
 
 
 def login(username, password):
@@ -185,6 +322,20 @@ def connect():
             print("   📤 Estado 'stopped' enviado al servidor")
     except Exception as e:
         print(f"   ⚠️  Error al enviar status_update: {e}")
+    # Primer intento inmediato al conectar.
+    sync_available_browsers_to_server(force=True)
+    sync_domain_config_to_server(force=True)
+
+    # Reintento corto para asegurar envío cuando el transporte termina de estabilizar.
+    def _retry_sync_catalog():
+        try:
+            time.sleep(1.0)
+            sync_available_browsers_to_server(force=True)
+            sync_domain_config_to_server(force=True)
+        except Exception:
+            pass
+
+    sio.start_background_task(_retry_sync_catalog)
 
 
 @sio.event
@@ -221,8 +372,36 @@ def command(data):
     bot_id = data.get('bot_id')
     
     print(f"📨 Comando recibido: {cmd} (bot_id: {bot_id})")
-    
+
     if cmd == 'start':
+        domain_ok, domain_error = apply_remote_domain_config_if_present(data)
+        if not domain_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'start',
+                'success': False,
+                'message': domain_error
+            })
+            return
+        browser_ok, browser_error = apply_remote_browser_if_present(data)
+        if not browser_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'start',
+                'success': False,
+                'message': browser_error
+            })
+            return
+        ua_ok, ua_error = apply_remote_user_agent_if_present(data)
+        if not ua_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'start',
+                'success': False,
+                'message': ua_error
+            })
+            return
+
         if bot_running:
             print("⚠️  El bot ya está corriendo. No se puede iniciar otro.")
             sio.emit('action_completed', {
@@ -253,6 +432,34 @@ def command(data):
         })
         
     elif cmd == 'execute_creator':
+        domain_ok, domain_error = apply_remote_domain_config_if_present(data)
+        if not domain_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'execute_creator',
+                'success': False,
+                'message': domain_error
+            })
+            return
+        browser_ok, browser_error = apply_remote_browser_if_present(data)
+        if not browser_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'execute_creator',
+                'success': False,
+                'message': browser_error
+            })
+            return
+        ua_ok, ua_error = apply_remote_user_agent_if_present(data)
+        if not ua_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'execute_creator',
+                'success': False,
+                'message': ua_error
+            })
+            return
+
         if bot_running:
             print("⚠️  El bot ya está corriendo. No se puede iniciar otro.")
             sio.emit('action_completed', {

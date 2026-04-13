@@ -1,0 +1,4 @@
+id,version,description,applied_at
+1,1,Agregar columna white_captcha_click a creator_coordinates,2025-11-24 17:16:54
+2,2,Eliminar columna duplicada close_captcha_white_click,2025-11-24 17:16:54
+3,3,Agregar columna white_captcha_click después de eliminar duplicada,2025-11-24 17:16:54

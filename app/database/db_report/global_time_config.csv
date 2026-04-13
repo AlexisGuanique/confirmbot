@@ -1,0 +1,2 @@
+id,scheduled_time,timezone,cycle_time_minutes,time_config_type,accounts_per_cycle,is33mail,domain,fill_domain,random_domains,random_domain_tlds
+1,,,0,cycle,1,0,,1,1,"com,gov"

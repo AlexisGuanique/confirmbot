@@ -1,0 +1,11 @@
+id,browser_id,user_agent,accounts_to_create,scheduled_time,timezone,notification_email,google_sheets_enabled,google_sheets_name,google_credentials_file,cycle_time_minutes,time_config_type,accounts_per_cycle,isInVps,is33mail,domain
+16,6,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 OPR/124.0.0.0",1,,,guaniqued@gmail.com,0,,,0,cycle,1,1,0,@gmail.com
+18,7,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 CCleaner/142.0.0.0",1,,,guaniqued@gmail.com,0,,,0,cycle,1,1,0,@gmail.com
+20,8,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",1,,,guaniqued@gmail.com,0,,,0,cycle,1,1,0,@gmail.com
+21,9,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",1,,,guaniqued@gmail.com,0,,,60,scheduled,1,1,0,@gmail.com
+23,2,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",1,,,guaniqued@gmail.com,0,,,60,scheduled,1,0,0,@gmail.com
+24,3,Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0,1,,,guaniqued@gmail.com,0,,,60,scheduled,1,0,0,@gmail.comcc
+25,4,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",1,,,guaniqued@gmail.com,0,,,60,scheduled,1,0,0,@gmail.com
+28,5,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",1,,,guaniqued@gmail.com,0,,,60,scheduled,1,0,1,
+29,10,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0",1,,,guaniqued@gmail.com,0,,,60,scheduled,1,0,1,
+30,1,"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",1,,,guaniqued@gmail.com,0,,,60,scheduled,1,0,1,

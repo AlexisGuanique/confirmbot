@@ -179,6 +179,7 @@ def _enviar_emails_a_base_datos(emails_verificados, total_emails, emails_exitoso
     """
     try:
         from app.utils.http_utils import post
+        from app.utils.server_config import build_api_url
         
         # Obtener datos del usuario desde la base de datos
         user_data = get_user_data()
@@ -192,7 +193,7 @@ def _enviar_emails_a_base_datos(emails_verificados, total_emails, emails_exitoso
             return False
         
         # Preparar datos para la API
-        url = f"http://34.29.59.97/api/emails/save/{user_id}"
+        url = build_api_url(f"/api/emails/save/{user_id}")
         headers = {
             'Content-Type': 'application/json'
         }
@@ -227,6 +228,7 @@ def _obtener_total_emails_base_datos():
     """
     try:
         from app.utils.http_utils import post
+        from app.utils.server_config import build_api_url
         import time
         
         # Obtener datos del usuario desde la base de datos
@@ -241,7 +243,7 @@ def _obtener_total_emails_base_datos():
             return 0
         
         # Preparar datos para la API
-        url = f"http://34.29.59.97/api/emails/count/{user_id}"
+        url = build_api_url(f"/api/emails/count/{user_id}")
         headers = {
             'Content-Type': 'application/json'
         }

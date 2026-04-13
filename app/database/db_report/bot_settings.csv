@@ -1,0 +1,2 @@
+id,iterations,pause_minutes,enable_adb,enable_proxy,emails_per_batch,bot_name,bot_type
+1,5,20,0,1,5,computadora Personal,creador

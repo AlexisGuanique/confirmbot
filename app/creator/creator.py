@@ -2780,6 +2780,7 @@ def _obtener_conteo_cuentas_servidor():
     try:
         from app.database.database import get_user_data
         from app.utils.http_utils import post
+        from app.utils.server_config import build_api_url
         import json
         
         # Obtener datos del usuario logueado
@@ -2801,7 +2802,7 @@ def _obtener_conteo_cuentas_servidor():
         }
         
         # URL del servidor
-        url = f"http://34.29.59.97/api/accounts/count/{user_id}"
+        url = build_api_url(f"/api/accounts/count/{user_id}")
         
         # Headers
         headers = {
@@ -2838,6 +2839,7 @@ def _guardar_cuentas_en_servidor(filepath):
     try:
         from app.database.database import get_user_data
         from app.utils.http_utils import post
+        from app.utils.server_config import build_api_url
         import json
         
         # Obtener datos del usuario logueado
@@ -2866,7 +2868,7 @@ def _guardar_cuentas_en_servidor(filepath):
         }
         
         # URL del servidor
-        url = f"http://34.29.59.97/api/accounts/save/{user_id}"
+        url = build_api_url(f"/api/accounts/save/{user_id}")
         
         # Headers
         headers = {
@@ -2906,6 +2908,7 @@ def _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas):
     try:
         from app.database.database import get_user_data
         from app.utils.http_utils import post
+        from app.utils.server_config import build_api_url
         import json
         
         if not cuentas_fallidas:
@@ -2935,7 +2938,7 @@ def _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas):
         }
         
         # URL del servidor para emails fallidos
-        url = f"http://34.29.59.97/api/emails/save/{user_id}"
+        url = build_api_url(f"/api/emails/save/{user_id}")
         
         # Headers
         headers = {

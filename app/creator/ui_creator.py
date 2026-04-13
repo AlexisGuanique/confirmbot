@@ -141,11 +141,12 @@ def create_new_window(parent_root, browser_id=None):
     # Función para obtener el conteo de emails globales del servidor
     def get_global_email_count():
         try:
+            from app.utils.server_config import build_api_url
             user_data = get_user_data()
             if not user_data:
                 return None
                 
-            url = f"http://34.29.59.97/api/emails/count/{user_data['id']}"
+            url = build_api_url(f"/api/emails/count/{user_data['id']}")
             headers = {"Content-Type": "application/json"}
             body = {"access_token": user_data['access_token']}
             
@@ -202,51 +203,37 @@ def create_new_window(parent_root, browser_id=None):
     )
     title_label.pack(pady=(20, 30))
     
-    # ================= SECCIÓN USER AGENT =================
+    # ================= SECCIÓN CONFIG LOCAL DEL CREATOR =================
     
-    # Título de la sección User Agent
+    # Título de la sección local (sin User-Agent)
     user_agent_title = ctk.CTkLabel(
         main_scroll_frame,
-        text="🌐 Configuración de User Agent",
+        text="⚙️ Configuración local del Creator",
         font=("Arial", 16, "bold"),
         text_color="black"
     )
     user_agent_title.pack(pady=(0, 15))
     
-    # Frame para el User Agent
+    # Frame para configuración local
     user_agent_frame = ctk.CTkFrame(main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
     user_agent_frame.pack(fill="x", padx=20, pady=(0, 20))
     
     # Obtener configuración actual para este navegador
     current_settings = get_creator_setting(browser_id)
-    current_user_agent = current_settings.get('user_agent', '') if current_settings else ''
     
-    # Frame para los inputs (User Agent y Hora Programada)
+    # Frame para los inputs locales
     inputs_frame = ctk.CTkFrame(user_agent_frame, fg_color="transparent")
     inputs_frame.pack(fill="x", padx=20, pady=(15, 10))
-    
-    # === USER AGENT ===
-    # Label para el User Agent
-    user_agent_label = ctk.CTkLabel(
+
+    user_agent_info = ctk.CTkLabel(
         inputs_frame,
-        text="User Agent:",
-        font=("Arial", 12, "bold"),
-        text_color="black"
-    )
-    user_agent_label.pack(anchor="w")
-    
-    # Input para el User Agent
-    user_agent_entry = ctk.CTkEntry(
-        inputs_frame,
-        placeholder_text="Ingresa tu User Agent aquí...",
+        text="El User-Agent ahora se configura desde el servidor (Config Bots) por navegador.",
         font=("Arial", 11),
-        height=35
+        text_color="gray",
+        wraplength=540,
+        justify="left",
     )
-    user_agent_entry.pack(fill="x", pady=(5, 15))
-    
-    # Insertar el valor actual si existe
-    if current_user_agent:
-        user_agent_entry.insert(0, current_user_agent)
+    user_agent_info.pack(anchor="w", pady=(0, 10))
     
     # === EMAIL DE NOTIFICACIÓN ===
     # Label para el Email de Notificación
@@ -337,7 +324,6 @@ def create_new_window(parent_root, browser_id=None):
     
     # Función para guardar configuración completa
     def save_creator_settings():
-        user_agent = user_agent_entry.get().strip()
         notification_email = notification_email_entry.get().strip()
         
         # Obtener valor de tipo de máquina
@@ -346,10 +332,6 @@ def create_new_window(parent_root, browser_id=None):
             isInVps = True
         elif fisica_var.get() == 1:
             isInVps = False
-        
-        if not user_agent:
-            messagebox.showwarning("Advertencia", "Por favor ingresa un User Agent válido.")
-            return
         
         # Validar email de notificación si se proporciona
         if notification_email:
@@ -363,9 +345,10 @@ def create_new_window(parent_root, browser_id=None):
         
         # Guardar configuración (preservar configuración de tiempo existente)
         # NOTA: is33mail y domain ahora se configuran globalmente en "Gestión de Navegadores"
+        user_agent_to_keep = current_settings.get('user_agent', '') if current_settings else ''
         if save_creator_setting(
             browser_id=browser_id,
-            user_agent=user_agent, 
+            user_agent=user_agent_to_keep,
             accounts_to_create=1, 
             scheduled_time=current_settings.get('scheduled_time') if current_settings else None,
             timezone=current_settings.get('timezone') if current_settings else None,
@@ -375,13 +358,13 @@ def create_new_window(parent_root, browser_id=None):
             accounts_per_cycle=current_settings.get('accounts_per_cycle') if current_settings else None,
             isInVps=isInVps
         ):
-            success_msg = f"✅ Configuración guardada correctamente.\n\nUser Agent: {user_agent}"
+            success_msg = "✅ Configuración guardada correctamente."
             if notification_email:
                 success_msg += f"\nEmail de notificación: {notification_email}"
             if isInVps is not None:
                 machine_type_text = "VPS" if isInVps else "Máquina Física"
                 success_msg += f"\nTipo de Máquina: {machine_type_text}"
-            success_msg += f"\n\n💡 Para configurar el tiempo y dominio (global), ve a 'Gestión de Navegadores'"
+            success_msg += "\n\n💡 Para configurar User-Agent por navegador, usa 'Config Bots' en el servidor."
             messagebox.showinfo("Éxito", success_msg)
         else:
             messagebox.showerror("Error", "❌ No se pudo guardar la configuración.")

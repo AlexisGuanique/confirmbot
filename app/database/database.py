@@ -1,6 +1,7 @@
 import os
 import sys
 import sqlite3
+from app.utils.server_config import build_api_url
 
 
 
@@ -1225,6 +1226,102 @@ def get_browser_by_id(browser_id):
         return None
 
 
+def set_active_browser_by_name(browser_name):
+    """
+    Activa solo el navegador indicado por nombre (case-insensitive)
+    y desactiva los demás.
+
+    Args:
+        browser_name (str): Nombre del navegador a activar
+
+    Returns:
+        tuple: (bool, str) -> (éxito, mensaje)
+    """
+    try:
+        if not browser_name or not str(browser_name).strip():
+            return False, "Nombre de navegador vacío"
+
+        target_name = str(browser_name).strip()
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM browsers
+            WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+            LIMIT 1
+            """,
+            (target_name,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False, f"Navegador '{target_name}' no existe en la configuración local"
+
+        selected_id, selected_name = row[0], row[1]
+
+        cursor.execute("UPDATE browsers SET isActive = 0 WHERE isActive != 0")
+        cursor.execute("UPDATE browsers SET isActive = 1 WHERE id = ?", (selected_id,))
+
+        conn.commit()
+        conn.close()
+        return True, f"Navegador remoto aplicado: {selected_name}"
+    except Exception as e:
+        return False, f"Error activando navegador remoto: {e}"
+
+
+def set_creator_user_agent_by_browser_name(browser_name, user_agent):
+    """
+    Actualiza el User-Agent del creator para el navegador indicado por nombre.
+    Mantiene el resto de configuración existente.
+    """
+    try:
+        if not browser_name or not str(browser_name).strip():
+            return False, "Nombre de navegador vacío"
+        if not user_agent or not str(user_agent).strip():
+            return False, "User-Agent vacío"
+
+        target_name = str(browser_name).strip()
+        ua_value = str(user_agent).strip()
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM browsers
+            WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+            LIMIT 1
+            """,
+            (target_name,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return False, f"Navegador '{target_name}' no existe en la configuración local"
+
+        browser_id, browser_real_name = row[0], row[1]
+        current = get_creator_setting(browser_id) or {}
+
+        ok = save_creator_setting(
+            browser_id=browser_id,
+            user_agent=ua_value,
+            accounts_to_create=current.get('accounts_to_create', 1),
+            notification_email=current.get('notification_email'),
+            isInVps=current.get('isInVps'),
+        )
+        if not ok:
+            return False, f"No se pudo guardar User-Agent para {browser_real_name}"
+
+        return True, f"User-Agent remoto aplicado para {browser_real_name}"
+    except Exception as e:
+        return False, f"Error aplicando User-Agent remoto: {e}"
+
+
 def update_browser(browser_id, name=None, isActive=None):
     """
     Actualiza un navegador
@@ -2068,6 +2165,84 @@ def get_random_tld_entries():
 def get_random_tld_strings_ordered():
     """Lista de strings TLD en orden; vacía = el creator usa TLD aleatorio cada vez."""
     return [e["tld"] for e in get_random_tld_entries()]
+
+
+def get_domain_sync_payload():
+    """Construye payload completo de dominios para sincronizar con servidor."""
+    cfg = get_global_time_config() or {}
+    return {
+        "global_config": {
+            "is33mail": bool(cfg.get("is33mail", True)),
+            "random_domains": bool(cfg.get("random_domains", False)),
+            "fill_domain": bool(cfg.get("fill_domain", False)),
+            "domain": cfg.get("domain"),
+        },
+        "domains": get_all_domains(active_only=False),
+        "random_tlds": get_random_tld_entries(),
+    }
+
+
+def apply_remote_domain_config(remote_payload):
+    """
+    Aplica configuración de dominios recibida desde servidor de forma atómica.
+    Reemplaza tabla `domains` y `random_tld_entries`, y actualiza `global_time_config`.
+    """
+    try:
+        if not isinstance(remote_payload, dict):
+            return False, "Payload remoto inválido"
+
+        global_cfg = remote_payload.get("global_config") or {}
+        domains = remote_payload.get("domains") or []
+        random_tlds = remote_payload.get("random_tlds") or []
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM domains")
+        for item in domains:
+            if not isinstance(item, dict):
+                continue
+            domain = (item.get("domain") or "").strip()
+            if not domain:
+                continue
+            if not domain.startswith("@"):
+                domain = f"@{domain}"
+            fill_domain = 1 if bool(item.get("fill_domain", False)) else 0
+            is_active = 1 if bool(item.get("is_active", True)) else 0
+            cursor.execute(
+                "INSERT INTO domains (domain, fill_domain, is_active) VALUES (?, ?, ?)",
+                (domain, fill_domain, is_active),
+            )
+
+        cursor.execute("DELETE FROM random_tld_entries")
+        from app.creator.computer_actions import _normalize_single_tld
+        for index, item in enumerate(random_tlds):
+            raw_tld = item.get("tld") if isinstance(item, dict) else item
+            tld = _normalize_single_tld((raw_tld or "").strip())
+            if not tld:
+                continue
+            cursor.execute(
+                "INSERT OR IGNORE INTO random_tld_entries (tld, sort_order) VALUES (?, ?)",
+                (tld, index),
+            )
+
+        conn.commit()
+        conn.close()
+        _sync_random_tlds_global_column()
+
+        ok = save_global_time_config(
+            is33mail=bool(global_cfg.get("is33mail", True)),
+            random_domains=bool(global_cfg.get("random_domains", False)),
+            fill_domain=bool(global_cfg.get("fill_domain", False)),
+            domain=(global_cfg.get("domain") or None),
+        )
+        if not ok:
+            return False, "No se pudo guardar configuración global de dominios"
+        return True, "Configuración de dominios remota aplicada"
+    except Exception as e:
+        print(f"❌ Error al aplicar configuración remota de dominios: {e}")
+        return False, str(e)
 
 
 def add_random_tld_entry(raw_tld):
@@ -2917,7 +3092,7 @@ def fetch_emails_from_server(count: int) -> list:
         access_token = user_data['access_token']
         
         # Construir URL con el ID del usuario
-        url = f"http://34.29.59.97/api/emails/next/{user_id}"
+        url = build_api_url(f"/api/emails/next/{user_id}")
         headers = {
             "Content-Type": "application/json"
         }
