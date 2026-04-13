@@ -17,6 +17,7 @@ from app.database.database import (
     save_bot_connection_config,
     get_bot_connection_config,
     set_active_browser_by_name,
+    set_active_browsers_by_names,
     set_creator_user_agent_by_browser_name,
     get_all_browsers,
     get_domain_sync_payload,
@@ -89,6 +90,29 @@ def apply_remote_browser_if_present(command_payload):
         tuple[bool, str | None]: (True, None) si está OK o no hay navegador remoto;
         (False, mensaje_error) si el navegador remoto no existe localmente.
     """
+    raw_list = command_payload.get("preferred_browsers")
+    if isinstance(raw_list, list) and len(raw_list) > 0:
+        ok, message = set_active_browsers_by_names(raw_list)
+        if ok:
+            if message:
+                print(f"🌐 {message}")
+            return True, None
+        print(f"⚠️ {message}")
+        try:
+            available = [b.get("name", "") for b in get_all_browsers() if b.get("name")]
+            available = [name for name in available if name]
+            available_text = ", ".join(available) if available else "Ninguno"
+        except Exception:
+            available_text = "No disponible"
+        alert_message = (
+            "Los navegadores seleccionados en el servidor no coinciden con esta máquina.\n\n"
+            f"Detalle: {message}\n"
+            f"Navegadores disponibles en este bot: {available_text}\n\n"
+            "Ajusta la selección en el servidor o configura los perfiles en confirmbot."
+        )
+        _show_browser_not_available_messagebox(alert_message)
+        return False, message
+
     preferred_browser = (command_payload.get('preferred_browser') or '').strip()
     if not preferred_browser:
         return True, None
@@ -138,6 +162,42 @@ def apply_remote_user_agent_if_present(command_payload):
     """
     Aplica User-Agent enviado por servidor para el navegador seleccionado.
     """
+    raw_list = command_payload.get("preferred_browsers")
+    raw_uas = command_payload.get("remote_user_agents")
+    if (
+        isinstance(raw_list, list)
+        and len(raw_list) > 0
+        and isinstance(raw_uas, dict)
+    ):
+        missing_ua: list[str] = []
+        for name in raw_list:
+            bn = str(name).strip()
+            if not bn:
+                continue
+            ua = (raw_uas.get(bn) or raw_uas.get(name) or "").strip()
+            if not ua:
+                missing_ua.append(bn)
+        if missing_ua:
+            msg = (
+                "Faltan User-Agent en el servidor para estos navegadores: "
+                + ", ".join(missing_ua)
+                + "\n\nConfigúralos en Config Bots (api_login)."
+            )
+            _show_browser_not_available_messagebox(msg)
+            return False, msg
+        for name in raw_list:
+            bn = str(name).strip()
+            if not bn:
+                continue
+            ua = (raw_uas.get(bn) or raw_uas.get(name) or "").strip()
+            ok, message = set_creator_user_agent_by_browser_name(bn, ua)
+            if not ok:
+                print(f"⚠️ {message}")
+                _show_browser_not_available_messagebox(message)
+                return False, message
+            print(f"🌐 {message}")
+        return True, None
+
     preferred_browser = (command_payload.get('preferred_browser') or '').strip()
     remote_user_agent = (command_payload.get('remote_user_agent') or '').strip()
 

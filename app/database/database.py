@@ -1272,6 +1272,77 @@ def set_active_browser_by_name(browser_name):
         return False, f"Error activando navegador remoto: {e}"
 
 
+def set_active_browsers_by_names(browser_names):
+    """
+    Activa exactamente los navegadores indicados (por nombre, case-insensitive)
+    y desactiva el resto. Si falta algún nombre en la BD local, no modifica activos.
+
+    Args:
+        browser_names: lista de nombres (orden conservado para mensajes)
+
+    Returns:
+        tuple: (bool, str) -> (éxito, mensaje)
+    """
+    try:
+        if not browser_names:
+            return True, None
+
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for x in browser_names:
+            s = str(x).strip()
+            if not s:
+                continue
+            k = s.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            cleaned.append(s)
+
+        if not cleaned:
+            return True, None
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+
+        resolved_ids: list[tuple[int, str]] = []
+        missing: list[str] = []
+        for name in cleaned:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM browsers
+                WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))
+                LIMIT 1
+                """,
+                (name,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                missing.append(name)
+            else:
+                resolved_ids.append((row[0], row[1]))
+
+        if missing:
+            conn.close()
+            return False, (
+                "Los siguientes navegadores del servidor no existen en este bot: "
+                + ", ".join(missing)
+            )
+
+        cursor.execute("UPDATE browsers SET isActive = 0 WHERE isActive != 0")
+        for bid, _ in resolved_ids:
+            cursor.execute("UPDATE browsers SET isActive = 1 WHERE id = ?", (bid,))
+
+        conn.commit()
+        conn.close()
+        labels = ", ".join(real for _, real in resolved_ids)
+        return True, f"Navegadores remotos aplicados: {labels}"
+    except Exception as e:
+        return False, f"Error activando navegadores remotos: {e}"
+
+
 def set_creator_user_agent_by_browser_name(browser_name, user_agent):
     """
     Actualiza el User-Agent del creator para el navegador indicado por nombre.

@@ -13,6 +13,15 @@ def create_browser_manager_window(parent_root):
     )
     from app.creator.ui_creator import create_new_window, create_time_config_window
     from app.utils.path_utils import get_browser_images_path, ensure_directory_exists
+
+    def _push_browser_catalog_to_server():
+        """Notifica al servidor la lista actual de navegadores (mismo evento que al conectar)."""
+        try:
+            from app.auth.auth import sync_available_browsers_to_server, sio
+            if getattr(sio, "connected", False):
+                sync_available_browsers_to_server(force=True)
+        except Exception as e:
+            print(f"⚠️ No se pudo sincronizar navegadores con el servidor: {e}")
     
     # Crear la ventana
     manager_window = ctk.CTkToplevel(parent_root)
@@ -189,6 +198,7 @@ def create_browser_manager_window(parent_root):
             messagebox.showinfo("Éxito", f"✅ Navegador '{name}' creado correctamente.\n\n📁 Directorio de imágenes creado: {os.path.basename(browser_images_path)}")
             name_entry.delete(0, 'end')
             refresh_browsers_table()
+            _push_browser_catalog_to_server()
         else:
             messagebox.showerror("Error", f"❌ No se pudo crear el navegador. Verifica que el nombre no esté duplicado.")
     
@@ -436,6 +446,7 @@ def create_browser_manager_window(parent_root):
                         
                         messagebox.showinfo("Éxito", f"✅ Nombre del navegador actualizado correctamente.\n\n📁 Directorio: {os.path.basename(new_path)}")
                         refresh_browsers_table()
+                        _push_browser_catalog_to_server()
                     else:
                         messagebox.showerror("Error", f"❌ No se pudo actualizar el nombre del navegador.")
                 
@@ -513,6 +524,7 @@ def create_browser_manager_window(parent_root):
                         if delete_browser(browser_id):
                             messagebox.showinfo("Éxito", f"✅ Navegador '{browser_name}' eliminado correctamente.")
                             refresh_browsers_table()
+                            _push_browser_catalog_to_server()
                         else:
                             messagebox.showerror("Error", f"❌ No se pudo eliminar el navegador.")
                 return delete_browser_func
