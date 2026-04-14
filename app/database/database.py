@@ -2302,7 +2302,14 @@ def apply_remote_domain_config(remote_payload):
         conn.close()
         _sync_random_tlds_global_column()
 
+        # No pisar ciclo/hora programada: save_global_time_config usa 'manual' por defecto y NULL en el resto.
+        cfg_before = get_global_time_config() or {}
         ok = save_global_time_config(
+            scheduled_time=cfg_before.get("scheduled_time"),
+            timezone=cfg_before.get("timezone"),
+            cycle_time_minutes=cfg_before.get("cycle_time_minutes"),
+            time_config_type=cfg_before.get("time_config_type", "manual"),
+            accounts_per_cycle=cfg_before.get("accounts_per_cycle"),
             is33mail=bool(global_cfg.get("is33mail", True)),
             random_domains=bool(global_cfg.get("random_domains", False)),
             fill_domain=bool(global_cfg.get("fill_domain", False)),

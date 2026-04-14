@@ -22,6 +22,7 @@ from app.database.database import (
     get_all_browsers,
     get_domain_sync_payload,
     apply_remote_domain_config,
+    save_global_time_config,
 )
 
 # Configuración
@@ -265,6 +266,54 @@ def apply_remote_domain_config_if_present(command_payload):
         return True, None
     _show_browser_not_available_messagebox(message or "No se pudo aplicar dominios remotos")
     return False, message
+
+
+def apply_remote_creator_time_config_if_present(command_payload):
+    """
+    Aplica ciclo / hora programada del creator enviados por el servidor (SQLite global_time_config).
+    Solo actúa si el payload incluye remote_creator_time_config.
+    """
+    remote = command_payload.get("remote_creator_time_config")
+    if not remote or not isinstance(remote, dict):
+        return True, None
+    t = (remote.get("time_config_type") or "manual").strip().lower()
+    if t not in ("manual", "scheduled", "cycle", "both"):
+        t = "manual"
+    st = remote.get("scheduled_time")
+    tz = remote.get("timezone")
+    if st is not None and not str(st).strip():
+        st = None
+    if tz is not None and not str(tz).strip():
+        tz = None
+    cm = remote.get("cycle_time_minutes")
+    apc = remote.get("accounts_per_cycle")
+    try:
+        if cm is not None:
+            cm = int(cm)
+    except (TypeError, ValueError):
+        cm = None
+    try:
+        if apc is not None:
+            apc = int(apc)
+    except (TypeError, ValueError):
+        apc = None
+    try:
+        ok = save_global_time_config(
+            scheduled_time=st,
+            timezone=tz,
+            cycle_time_minutes=cm,
+            time_config_type=t,
+            accounts_per_cycle=apc,
+        )
+    except Exception as e:
+        print(f"Advertencia: error aplicando tiempo/ciclo del creator remoto: {e}")
+        return False, str(e)
+    if ok:
+        print(
+            f"Configuración de creator remota aplicada: tipo={t}, ciclo={cm} min, cuentas/ciclo={apc}"
+        )
+        return True, None
+    return False, "No se pudo guardar la configuración de tiempo remota"
 
 
 def login(username, password):
@@ -517,6 +566,16 @@ def command(data):
                 'action': 'execute_creator',
                 'success': False,
                 'message': ua_error
+            })
+            return
+
+        time_ok, time_error = apply_remote_creator_time_config_if_present(data)
+        if not time_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'execute_creator',
+                'success': False,
+                'message': time_error or 'Error al aplicar tiempo/ciclo remoto',
             })
             return
 
