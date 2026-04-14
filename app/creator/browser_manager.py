@@ -11,7 +11,7 @@ def create_browser_manager_window(parent_root):
         delete_browser, get_default_browser, get_browser_by_id,
         get_global_time_config,
     )
-    from app.creator.ui_creator import create_new_window, create_time_config_window
+    from app.creator.ui_creator import create_new_window
     from app.utils.path_utils import get_browser_images_path, ensure_directory_exists
 
     def _push_browser_catalog_to_server():
@@ -45,47 +45,54 @@ def create_browser_manager_window(parent_root):
         text_color="black"
     )
     title_label.pack(pady=(20, 10))
-    
-    # ================= CONFIGURACIÓN GLOBAL DE TIEMPO =================
-    
-    # Frame para configuración global de tiempo
+
+    current_global_config = get_global_time_config() or {}
+
+    # ================= CICLO Y HORA (SERVIDOR — SOLO LECTURA) =================
     time_config_frame = ctk.CTkFrame(main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black")
     time_config_frame.pack(fill="x", padx=20, pady=(0, 20))
-    
+
     time_config_title = ctk.CTkLabel(
         time_config_frame,
-        text="⏰ Configuración Global de Tiempo",
+        text="Ciclo y hora programada",
         font=("Arial", 14, "bold"),
         text_color="black"
     )
     time_config_title.pack(pady=(15, 5))
-    
+
     time_config_subtitle = ctk.CTkLabel(
         time_config_frame,
-        text="🌐 Esta configuración se aplica a TODOS los navegadores",
+        text="Se configura en el servidor (panel web, configuración global de bots). Al ejecutar el creator desde la web se aplica en esta PC.",
         font=("Arial", 10),
-        text_color="gray"
+        text_color="gray",
+        wraplength=520,
+        justify="left",
     )
-    time_config_subtitle.pack(pady=(0, 10))
-    
-    # Función para abrir configuración de tiempo global
-    def open_global_time_config():
-        """Abre la ventana de configuración global de tiempo"""
-        create_time_config_window(manager_window)
-    
-    # Botón para abrir configuración de tiempo global
-    time_config_button = ctk.CTkButton(
+    time_config_subtitle.pack(pady=(0, 10), padx=20, anchor="w")
+
+    tct = current_global_config.get("time_config_type") or "manual"
+    ctm = current_global_config.get("cycle_time_minutes")
+    apc = current_global_config.get("accounts_per_cycle")
+    st = current_global_config.get("scheduled_time") or "—"
+    tz = current_global_config.get("timezone") or "—"
+    time_info = (
+        "Valores locales (última sincronización / ejecución remota):\n\n"
+        f"Modo: {tct}\n"
+        f"Minutos entre ciclos: {ctm if ctm is not None else '—'}\n"
+        f"Cuentas por ciclo: {apc if apc is not None else '—'}\n"
+        f"Hora programada: {st}\n"
+        f"Zona: {tz}"
+    )
+    time_info_label = ctk.CTkLabel(
         time_config_frame,
-        text="⏰ Configurar Tiempo Global",
-        command=open_global_time_config,
-        fg_color="#007bff",
-        text_color="white",
-        font=("Arial", 12, "bold"),
-        height=35,
-        width=200
+        text=time_info,
+        font=("Arial", 11),
+        text_color="black",
+        justify="left",
+        anchor="w",
     )
-    time_config_button.pack(pady=(0, 15))
-    
+    time_info_label.pack(fill="x", padx=20, pady=(0, 15))
+
     # ================= DOMINIOS (SOLO LECTURA - GESTIONADOS EN SERVIDOR) =================
     domain_config_frame = ctk.CTkFrame(
         main_scroll_frame, fg_color="white", corner_radius=5, border_width=2, border_color="black"
@@ -108,7 +115,6 @@ def create_browser_manager_window(parent_root):
     )
     domain_config_subtitle.pack(pady=(0, 10))
 
-    current_global_config = get_global_time_config() or {}
     is33mail = bool(current_global_config.get("is33mail", True))
     random_domains = bool(current_global_config.get("random_domains", False))
     fill_domain = bool(current_global_config.get("fill_domain", False))
