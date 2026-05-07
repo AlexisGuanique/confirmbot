@@ -3,7 +3,13 @@ import time
 import random
 import string
 import pyautogui
-from app.database.database import get_click_coordinates, get_nopecha_key
+from app.database.database import (
+    get_click_coordinates,
+    get_nopecha_key,
+    get_bot_settings,
+    get_default_browser,
+    get_creator_coordinates,
+)
 import pyperclip
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -12,8 +18,15 @@ from selenium.common.exceptions import ElementClickInterceptedException, Timeout
 import sys
 from tkinter import messagebox
 from app.confirmabot.utils.proxy_tool_safe import SafeProxyController as ProxyController
+from app.creator.computer_actions import click_coordinates
 
 fake = Faker()
+
+def _mail_proxy_coords_dict():
+    b = get_default_browser()
+    if not b:
+        return None
+    return get_creator_coordinates(b["id"])
 
 def generate_custom_username():
 
@@ -30,6 +43,36 @@ def generate_secure_password(length=10):
 
 def mail_actions(driver, domain, enable_proxy=True, force_disable_proxy=False):
     try:
+        mail_proxy_windows_on = False
+        mail_proxy_coords_on = False
+
+        def _mail_proxy_shutdown():
+            nonlocal mail_proxy_windows_on, mail_proxy_coords_on
+            if mail_proxy_windows_on:
+                try:
+                    proxy_controller = ProxyController()
+                    try:
+                        proxy_controller.disable_proxy()
+                        proxy_controller.refresh_internet_settings()
+                    finally:
+                        proxy_controller.close()
+                except Exception:
+                    pass
+                mail_proxy_windows_on = False
+            if mail_proxy_coords_on:
+                try:
+                    coords = _mail_proxy_coords_dict()
+                    if coords:
+                        ext = coords.get("proxy_extension_click")
+                        dis = coords.get("disable_proxy_click")
+                        if ext and dis:
+                            click_coordinates(ext)
+                            time.sleep(0.5)
+                            click_coordinates(dis)
+                except Exception:
+                    pass
+                mail_proxy_coords_on = False
+
         # 👉 Abrir Google para mantener la ventana visible y luego ejecutar los clics
         #driver.get("https://www.google.com/")
         # Asegurar que la ventana esté maximizada y en foco antes de los clics
@@ -172,32 +215,60 @@ def mail_actions(driver, domain, enable_proxy=True, force_disable_proxy=False):
         except TimeoutException:
             print("⚠️ Timeout esperando que desaparezca overlay de captcha. Podría interferir posteriormente.")
 
-        # 🌐 REACTIVAR PROXY antes de llenar los inputs (si está habilitado y no forzado a deshabilitar)
-        if enable_proxy and not force_disable_proxy:
-            print("🌐 Reactivando proxy antes de llenar formulario...")
+        settings = get_bot_settings() or {}
+        use_proxy_flow = (
+            enable_proxy
+            and not force_disable_proxy
+            and settings.get("enable_proxy")
+            and (
+                settings.get("proxy_via_windows")
+                or settings.get("proxy_via_coordinates")
+            )
+        )
+        use_win = use_proxy_flow and bool(settings.get("proxy_via_windows"))
+        use_coord = use_proxy_flow and bool(settings.get("proxy_via_coordinates"))
+
+        if use_win:
+            print("🌐 Reactivando proxy de Windows antes de llenar formulario...")
             try:
                 proxy_controller = ProxyController()
-                # Solo reactivar el proxy sin cambiar la configuración existente
                 success = proxy_controller.enable_proxy_only()
                 if success:
                     proxy_controller.refresh_internet_settings()
-                    print("✅ Proxy activado (versión segura)")
-                    
-                    # Esperar tiempo mínimo para que el proxy se reactive
-                    print("⏳ Esperando que el proxy se reactive...")
-                    time.sleep(1)  # Reducido a 1 segundo
-                    print("✅ Proxy listo, continuando con el formulario...")
+                    mail_proxy_windows_on = True
+                    print("✅ Proxy de Windows activado")
+                    time.sleep(1)
                 else:
-                    print("⚠️ No se pudo activar proxy, continuando sin proxy...")
+                    print("⚠️ No se pudo activar proxy de Windows, continuando...")
                 proxy_controller.close()
-                
             except Exception as e:
-                print(f"⚠️ Error con proxy: {e}, continuando sin proxy...")
+                print(f"⚠️ Error con proxy Windows: {e}, continuando...")
+        elif use_coord:
+            print("🌐 Activando proxy por coordenadas (creator) antes del formulario...")
+            try:
+                coords = _mail_proxy_coords_dict()
+                if not coords:
+                    print("⚠️ Sin coordenadas del creator para proxy")
+                else:
+                    ext = coords.get("proxy_extension_click")
+                    act = coords.get("activate_proxy_click")
+                    if ext and act:
+                        click_coordinates(ext)
+                        time.sleep(1)
+                        click_coordinates(act)
+                        mail_proxy_coords_on = True
+                        print("✅ Proxy por coordenadas activado")
+                    else:
+                        print("⚠️ Faltan coordenadas proxy en configuración del creator")
+            except Exception as e:
+                print(f"⚠️ Error proxy por coordenadas: {e}")
         else:
             if force_disable_proxy:
                 print("⏭️ Proxy deshabilitado forzadamente (para evitar cuelgues)")
-            else:
+            elif not enable_proxy or not settings.get("enable_proxy"):
                 print("⏭️ Proxy deshabilitado por configuración")
+            else:
+                print("⏭️ Ningún modo de proxy seleccionado en la app")
 
         # 👉 Generar datos
         username = generate_custom_username()
@@ -261,42 +332,26 @@ def mail_actions(driver, domain, enable_proxy=True, force_disable_proxy=False):
             )
             print("✅ Registro completado exitosamente")
             
-            # 🌐 DESACTIVAR PROXY después del éxito (si estaba habilitado)
-            if enable_proxy:
+            if mail_proxy_windows_on or mail_proxy_coords_on:
                 print("🌐 Desactivando proxy después del éxito...")
-                proxy_controller = ProxyController()
-                try:
-                    proxy_controller.disable_proxy()
-                    proxy_controller.refresh_internet_settings()
-                finally:
-                    proxy_controller.close()
-                time.sleep(1)  # Esperar un momento para que el proxy se desactive
-            
+                _mail_proxy_shutdown()
+                time.sleep(1)
+
         except TimeoutException:
-            # 🌐 DESACTIVAR PROXY incluso si hay timeout (por seguridad, si estaba habilitado)
-            if enable_proxy:
+            if mail_proxy_windows_on or mail_proxy_coords_on:
                 print("🌐 Desactivando proxy por timeout...")
-                proxy_controller = ProxyController()
-                try:
-                    proxy_controller.disable_proxy()
-                    proxy_controller.refresh_internet_settings()
-                finally:
-                    proxy_controller.close()
+                _mail_proxy_shutdown()
             raise Exception("Timeout esperando confirmación de registro.")
 
         return True, final_email, generated_email
 
     except Exception as e:
         print(f"❌ Error durante las acciones en mail: {e}")
-        # 🌐 DESACTIVAR PROXY en caso de error (por seguridad)
         print("🌐 Desactivando proxy por error...")
         try:
-            proxy_controller = ProxyController()
-            try:
-                proxy_controller.disable_proxy()
-                proxy_controller.refresh_internet_settings()
-            finally:
-                proxy_controller.close()
-        except:
-            pass  # Ignorar errores al desactivar proxy
+            _mail_proxy_shutdown()
+        except NameError:
+            pass
+        except Exception:
+            pass
         return False, None, None

@@ -283,8 +283,8 @@ def generate_random_name():
     Genera un nombre aleatorio de 2 palabras usando faker - nombres en inglés (Estados Unidos)
     """
     fake = Faker('en_US')  # Usar inglés de Estados Unidos para nombres
-    first_name = fake.first_name()
-    second_name = fake.first_name()
+    first_name = fake.first_name().lower()
+    second_name = fake.first_name().lower()
     return f"{first_name} {second_name}"
 
 def generate_random_lastname():
@@ -292,8 +292,8 @@ def generate_random_lastname():
     Genera un apellido aleatorio de 2 palabras usando faker - apellidos en inglés (Estados Unidos)
     """
     fake = Faker('en_US')  # Usar inglés de Estados Unidos para apellidos
-    first_lastname = fake.last_name()
-    second_lastname = fake.last_name()
+    first_lastname = fake.last_name().lower()
+    second_lastname = fake.last_name().lower()
     return f"{first_lastname} {second_lastname}"
 
 def generate_email_prefix():
@@ -327,7 +327,7 @@ def generate_email_prefix():
             "blue", "red", "green", "gold", "silver", "dark", "light", "bright", "deep", "pure"
         ]
     
-    # Generar prefijo combinando 1-2 palabras + números
+    # Generar prefijo combinando 1-2 palabras + números (+ opcional _/- + sufijo alfanumérico)
     num_palabras = random.randint(1, 2)
     palabras_seleccionadas = random.sample(all_words, num_palabras)
     
@@ -340,26 +340,30 @@ def generate_email_prefix():
     
     # Combinar base + números
     prefix = base + numeros
+    if random.random() < 0.8:
+        sep = random.choice("_-")
+        tail_len = random.randint(3, 5)
+        tail = "".join(
+            random.choice(string.ascii_lowercase + string.digits) for _ in range(tail_len)
+        )
+        prefix = prefix + sep + tail
     
-    # Asegurar que tenga entre 10-18 caracteres (aumentado para acomodar más números)
+    # Asegurar que tenga entre 10-24 caracteres (margen por _/- y sufijo)
     if len(prefix) < 10:
-        # Agregar más números si es muy corto
         extra_digitos = 10 - len(prefix)
         prefix += ''.join([str(random.randint(0, 9)) for _ in range(extra_digitos)])
-    elif len(prefix) > 18:
-        # Truncar si es muy largo
-        prefix = prefix[:18]
+    elif len(prefix) > 24:
+        prefix = prefix[:24]
     
     return prefix
 
 def generate_domain_fill():
     """
-    Relleno de subdominio: palabra (solo letras) + tres dígitos aleatorios 0-9.
-    
-    Ejemplo: "creative847", "smart032"
+    Relleno de subdominio con estilos variados, ejemplo:
+    "julio-839", "893-juliio", "julio839", "jul83o9".
     
     Returns:
-        str: Letras minúsculas + exactamente 3 dígitos
+        str: Etiqueta DNS en minúsculas con letras/números/guion
     """
     import random
     import json
@@ -391,8 +395,51 @@ def generate_domain_fill():
     palabra = random.choice(all_words)
     if isinstance(palabra, str):
         palabra = "".join(c for c in palabra.lower() if c.isalpha()) or "mail"
-    digitos = "".join(str(random.randint(0, 9)) for _ in range(3))
-    return f"{palabra}{digitos}"
+    else:
+        palabra = "mail"
+
+    # Mantener longitud razonable para etiqueta de subdominio
+    if len(palabra) < 4:
+        palabra = (palabra + "mail")[:6]
+    elif len(palabra) > 8:
+        palabra = palabra[:8]
+
+    # Variación visual (ej. "juliio")
+    if random.random() < 0.35 and len(palabra) >= 4:
+        idx = random.randint(1, len(palabra) - 2)
+        palabra = (palabra[: idx + 1] + palabra[idx] + palabra[idx + 1 :])[:9]
+
+    d3 = "".join(str(random.randint(0, 9)) for _ in range(3))
+    d2 = "".join(str(random.randint(0, 9)) for _ in range(2))
+    d1 = str(random.randint(0, 9))
+
+    # Formatos solicitados:
+    # 1) palabra-839
+    # 2) 893-palabra
+    # 3) palabra839
+    # 4) pal83ab9ra (letras+números mezclados)
+    style = random.choice(("word-hyphen-digits", "digits-hyphen-word", "word-digits", "mixed"))
+
+    if style == "word-hyphen-digits":
+        label = f"{palabra}-{d3}"
+    elif style == "digits-hyphen-word":
+        label = f"{d3}-{palabra}"
+    elif style == "word-digits":
+        label = f"{palabra}{d3}"
+    else:
+        left = palabra[: max(2, len(palabra) // 2)]
+        right = palabra[max(2, len(palabra) // 2) :]
+        label = f"{left}{d2}{right}{d1}"
+
+    # Sanitizar por seguridad para etiqueta DNS
+    label = "".join(c for c in label.lower() if c.isalnum() or c == "-").strip("-")
+    if not label:
+        return f"mail-{d3}"
+    if label.startswith("-"):
+        label = f"m{label}"
+    if label.endswith("-"):
+        label = f"{label}x"
+    return label[:63]
 
 def apply_domain_fill(domain, fill_enabled=False):
     """
@@ -422,22 +469,23 @@ def apply_domain_fill(domain, fill_enabled=False):
     # Si el dominio ya tiene relleno, no aplicar otro
     # Un dominio con relleno tiene formato: relleno.dominio.com
     # Un dominio sin relleno tiene formato: dominio.com
-    parts = domain_without_at.split('.')
+    parts = domain_without_at.split(".")
     
-    # Si tiene más de 2 partes (ej: relleno.dominio.com), probablemente ya tiene relleno
-    # Pero también podría ser un dominio como subdomain.dominio.com
-    # Para ser más seguro, verificamos si la primera parte parece ser un relleno
-    # (contiene números al final, que es característico del relleno)
-    if len(parts) > 2:
+    def _looks_like_generated_fill_label(label):
+        if not label:
+            return False
+        if label.isalpha() and len(label) >= 8:
+            return True
+        return bool(re.fullmatch(r"[a-z]{3,30}-?\d{3}", label))
+    
+    # Ya hay subdominio de relleno: relleno.dominio.tld (3+ segmentos y la 1ª parte es el relleno)
+    if len(parts) >= 3:
         first_part = parts[0]
-        # Ya rellenado: palabra + 3 dígitos (nuevo formato)
-        if first_part and re.fullmatch(r"[a-z]{3,30}\d{3}", first_part):
-            return domain_clean
-        # Compatibilidad: relleno antiguo solo letras largo
-        if first_part and first_part.isalpha() and len(first_part) >= 8:
+        if _looks_like_generated_fill_label(first_part):
             return domain_clean
     
-    # Generar el relleno
+    # Dominio base solo dominio.tld (2 segmentos): relleno.dominio.tld tras aplicar
+    # Dominios multi-etiqueta sin nuestro relleno (poco frecuente) también reciben un solo prefijo
     fill = generate_domain_fill()
     
     # Aplicar el relleno: @relleno.dominio (con punto entre relleno y dominio)
@@ -567,75 +615,90 @@ def _random_tech_stub_for_domain():
     return w[start : start + ln]
 
 
+def _random_second_level_host_label(max_len=11):
+    """
+    Una sola etiqueta de segundo nivel (sin puntos): letras, dígitos y a lo más un guión.
+    El subdominio de relleno lo añade apply_domain_fill si el usuario activa rellenar dominio.
+
+    Ej.: xo1-std, wlyjb63f
+    """
+    word = "".join(random.choice(string.ascii_lowercase) for _ in range(random.randint(3, 5)))
+    digits = "".join(str(random.randint(0, 9)) for _ in range(2))
+    if random.random() < 0.55 and len(word) >= 4:
+        i = random.randint(2, len(word) - 1)
+        body = f"{word[:i]}-{word[i:]}{digits}"
+    else:
+        body = word + digits
+    if random.random() < 0.4:
+        extra = "".join(random.choice(string.ascii_lowercase) for _ in range(2))
+        body = (body + extra)[:max_len]
+    label = "".join(c for c in body if c.isalnum() or c == "-").strip("-")
+    if not label or not label[0].isalpha():
+        label = "mx" + (label or "01")
+    if label.endswith("-"):
+        label = label[:-1] + "x"
+    label = label[:max_len].rstrip("-")
+    if len(label) < 4:
+        label = ("zone" + str(random.randint(10, 99)))[:max_len]
+    return label
+
+
 def generate_random_email_domain(tld=None):
     """
-    Dominio sintético corto: nombre breve + fragmento tech (ej. louistch.gov, fraddyex.com).
+    Dominio sintético SIN subdominio propio: solo @dominio.tld.
+    Si en la app activas «rellenar dominio», se antepone un único subdominio (generate_domain_fill).
+
+    Ej.: @xo1-std.co  |  con relleno: @gold028.xo1-std.co
 
     Args:
         tld: TLD fijo (ej. 'com', 'co.uk'). None = elige al azar entre _RANDOM_DOMAIN_TLDS.
 
     Returns:
-        str: @slug.tld
+        str: @host.tld (dos segmentos bajo @; TLD puede ser co.uk)
     """
-    name_part = _random_short_name_stub()
-    tech_part = _random_tech_stub_for_domain()
-    slug = (name_part + tech_part).lower()
-    slug = "".join(c for c in slug if c.isalpha())
-    if len(slug) < 6:
-        slug = (slug + random.choice(_TECH_DOMAIN_FRAGMENTS))[:10]
-    if len(slug) > 14:
-        slug = slug[:14]
+    host = _random_second_level_host_label(max_len=11)
     fixed = _normalize_single_tld(tld) if tld else None
     if fixed:
         chosen = fixed
     else:
         chosen = random.choice(_RANDOM_DOMAIN_TLDS)
-    return f"@{slug}.{chosen}"
+    return f"@{host}.{chosen}"
 
 
 def generate_email_with_domain_format(domain):
     """
-    Genera un email con formato específico: nombre1apellido1numero1nombre2apellido2.puntoletrasnumeros@dominio
-    
-    Ejemplo: fernandaganavarro3886perez.b9i5@gmail.com
+    Genera un email para dominio personalizado / aleatorio con nombre y apellido reales.
+
+    Ejemplo: stevensavage@xo1-std.com
     
     Args:
         domain: Dominio del email (con o sin @ al inicio)
     
     Returns:
-        str: Email completo con el formato especificado
+        str: Email completo con formato NombreApellido@dominio
     """
-    import random
-    import string
-    
     # Asegurar que el dominio tenga @ al inicio
     if not domain.startswith('@'):
         domain = f"@{domain}"
     
-    # Generar nombres y apellidos usando Faker
+    # Generar nombre y apellido reales usando Faker
     fake = Faker('en_US')
-    
-    # Primera parte: nombre1 + apellido1 + número (4 dígitos)
-    nombre1 = fake.first_name().lower()
-    apellido1 = fake.last_name().lower()
-    numero1 = ''.join([str(random.randint(0, 9)) for _ in range(4)])
-    parte1 = f"{nombre1}{apellido1}{numero1}"
-    
-    # Segunda parte: nombre2/apellido2 (puede ser nombre o apellido)
-    # Usar aleatoriamente un nombre o apellido
-    if random.choice([True, False]):
-        parte2 = fake.first_name().lower()
-    else:
-        parte2 = fake.last_name().lower()
-    
-    # Tercera parte: punto + combinación de letras y números (4 caracteres)
-    caracteres = string.ascii_lowercase + string.digits
-    parte3 = ''.join(random.choice(caracteres) for _ in range(4))
-    
-    # Combinar todo: parte1 + parte2 + . + parte3 + dominio
-    email = f"{parte1}{parte2}.{parte3}{domain}"
-    
-    return email
+
+    def _clean_person_name(text):
+        cleaned = "".join(c for c in text if c.isalpha() and c.isascii())
+        return cleaned.lower() if cleaned else ""
+
+    first_name = _clean_person_name(fake.first_name())
+    last_name = _clean_person_name(fake.last_name())
+
+    # Fallback defensivo por si Faker devolviera algo no usable
+    if not first_name:
+        first_name = "steven"
+    if not last_name:
+        last_name = "savage"
+
+    local = f"{first_name}{last_name}"
+    return f"{local}{domain}"
 
 def get_clipboard_content():
     """

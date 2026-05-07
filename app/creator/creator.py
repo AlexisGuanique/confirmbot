@@ -95,6 +95,16 @@ def _son_cookies_similares(cookie1, cookie2):
     except Exception as e:
         return False
 
+_password_usado = ""
+_proxy_activado_por_click = False
+_proxy_modo_usado = None  # "coordinates" | "windows" | None — cómo se activó el proxy en esta sesión
+_session_creator_user_agent = ""  # UA del pool si bot_settings activa la extensión antes de LinkedIn
+
+
+def _get_session_creator_user_agent():
+    global _session_creator_user_agent
+    return _session_creator_user_agent
+
 
 def execute_creator():
     """
@@ -108,8 +118,11 @@ def execute_creator():
     auth_module.bot_running = True
     print("🚀 Iniciando Creator desde UI...")
     
-    global _password_usado
+    global _password_usado, _proxy_activado_por_click, _proxy_modo_usado, _session_creator_user_agent
     _password_usado = ""
+    _proxy_activado_por_click = False
+    _proxy_modo_usado = None
+    _session_creator_user_agent = ""
     
     try:
         # Obtener navegadores activos
@@ -178,8 +191,7 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
     import json
     
     print("👁️ Observando número, captcha rojo, captcha blanco o éxito...")
-    # Asegurar que el proxy esté desactivado al inicio del observador (no se necesita durante la observación)
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
+    # El proxy permanece activo durante toda la cuenta (se enciende antes del fav de LinkedIn).
     time.sleep(5)
     
     # Configuración del observador
@@ -219,7 +231,7 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
         if _verificar_timeout(start_time, timeout_seconds, coordinates):
             return False, "timeout", {"tiempo_transcurrido": time.time() - start_time, "timeout_seconds": timeout_seconds}
         
-        # Verificar captcha bueno PRIMERO (solo desactiva proxy)
+        # Verificar captcha bueno PRIMERO
         captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado, browser_name=browser_name)
         if captcha_bueno_result is True:  # Procesado correctamente, continuar
             continue
@@ -274,10 +286,16 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
         # Verificar éxito
         exito_result = _procesar_exito(coordinates, email, password, filepath, browser_id=browser_id, browser_name=browser_name)
         if exito_result is not None:
-            # Si es un fallo de cookie, cerrar ventana antes de retornar
+            # Si es un fallo de cookie o user agent, cerrar ventana antes de retornar
             if isinstance(exito_result, tuple) and len(exito_result) >= 2:
-                if exito_result[0] is False and exito_result[1] in ["cookie_vacia", "cookie_invalida", "cookie_duplicada", "max_intentos_cookie"]:
-                    print("❌ Fallo en obtención de cookie - cerrando ventana")
+                if exito_result[0] is False and exito_result[1] in [
+                    "cookie_vacia",
+                    "cookie_invalida",
+                    "cookie_duplicada",
+                    "max_intentos_cookie",
+                    "user_agent_no_encontrado",
+                ]:
+                    print("❌ Fallo en obtención de cookie o user agent - cerrando ventana")
                     close_window_coords = coordinates.get("close_window")
                     if close_window_coords:
                         click_coordinates(close_window_coords)
@@ -291,8 +309,7 @@ def observador_unificado(coordinates, email, password, filepath, browser_id=None
         elif captcha_blanco_result is True:  # Procesado correctamente, continuar
             continue
         
-        # Pausa entre ciclos - asegurar que el proxy esté desactivado durante la espera
-        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
+        # Pausa entre ciclos (proxy sigue activo hasta fin de cuenta)
         time.sleep(0.5)
 
 
@@ -307,8 +324,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
     import json
     
     print("👁️ Observando número, captcha rojo, captcha blanco o éxito...")
-    # Asegurar que el proxy esté desactivado al inicio del observador (no se necesita durante la observación)
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
+    # El proxy permanece activo durante toda la cuenta (se enciende antes del fav de LinkedIn).
     time.sleep(5)
     
     # Configuración del observador
@@ -348,7 +364,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
         if _verificar_timeout(start_time, timeout_seconds, coordinates):
             return False, "timeout", {"tiempo_transcurrido": time.time() - start_time, "timeout_seconds": timeout_seconds}
         
-        # Verificar captcha bueno PRIMERO (solo desactiva proxy)
+        # Verificar captcha bueno PRIMERO
         captcha_bueno_result = _procesar_captcha_bueno(coordinates, estado, browser_name=browser_name)
         if captcha_bueno_result is True:  # Procesado correctamente, continuar
             continue
@@ -403,10 +419,16 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
         # Verificar éxito
         exito_result = _procesar_exito_con_detalle(coordinates, email, password, filepath, browser_id=browser_id, browser_name=browser_name)
         if exito_result is not None:
-            # Si es un fallo de cookie, cerrar ventana antes de retornar
+            # Si es un fallo de cookie o user agent, cerrar ventana antes de retornar
             if isinstance(exito_result, tuple) and len(exito_result) >= 2:
-                if exito_result[0] is False and exito_result[1] in ["cookie_vacia", "cookie_invalida", "cookie_duplicada", "max_intentos_cookie"]:
-                    print("❌ Fallo en obtención de cookie - cerrando ventana")
+                if exito_result[0] is False and exito_result[1] in [
+                    "cookie_vacia",
+                    "cookie_invalida",
+                    "cookie_duplicada",
+                    "max_intentos_cookie",
+                    "user_agent_no_encontrado",
+                ]:
+                    print("❌ Fallo en obtención de cookie o user agent - cerrando ventana")
                     close_window_coords = coordinates.get("close_window")
                     if close_window_coords:
                         click_coordinates(close_window_coords)
@@ -420,8 +442,7 @@ def observador_unificado_con_detalle(coordinates, email, password, filepath, bro
         elif captcha_blanco_result is True:  # Procesado correctamente, continuar
             continue
         
-        # Pausa entre ciclos - asegurar que el proxy esté desactivado durante la espera
-        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
+        # Pausa entre ciclos (proxy sigue activo hasta fin de cuenta)
         time.sleep(0.5)
 
 
@@ -447,7 +468,6 @@ def _verificar_timeout(start_time, timeout_seconds, coordinates):
     elapsed_time = time.time() - start_time
     if elapsed_time > timeout_seconds:
         print("⏰ Timeout de 150 segundos - no se encontraron imágenes, cerrando ventana")
-        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos en cada verificación
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
@@ -471,12 +491,8 @@ def _procesar_numero(coordinates, estado, browser_name=None):
     estado.ciclos_sin_imagen = 0
     print(f"✅ Número encontrado (vez #{estado.numero_count})")
     
-    # Desactivar proxy inmediatamente al detectar número
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-    
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        # Ya se desactivó arriba, no es necesario desactivar de nuevo
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
@@ -491,13 +507,8 @@ def _procesar_numero(coordinates, estado, browser_name=None):
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
-            # Activar proxy SOLO justo antes de hacer clic
-            _activar_proxy()
-            time.sleep(0.3)  # Tiempo mínimo para activar proxy
             click_coordinates(continue2_coords)
-            time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
-            # Desactivar proxy inmediatamente después del clic
-            _desactivar_proxy()
+            time.sleep(3)
     
     return True
 
@@ -517,12 +528,8 @@ def _procesar_captcha_error(coordinates, estado, browser_name=None):
     estado.ciclos_sin_imagen = 0
     print(f"✅ Captcha error encontrado (vez #{estado.numero_count})")
     
-    # Desactivar proxy inmediatamente al detectar captcha error
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-    
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - cerrando ventana directamente")
-        # Ya se desactivó arriba, no es necesario desactivar de nuevo
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
@@ -539,13 +546,8 @@ def _procesar_captcha_error(coordinates, estado, browser_name=None):
         
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
-            # Activar proxy SOLO justo antes de hacer clic
-            _activar_proxy()
-            time.sleep(0.3)  # Tiempo mínimo para activar proxy
             click_coordinates(continue2_coords)
-            time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
-            # Desactivar proxy inmediatamente después del clic
-            _desactivar_proxy()
+            time.sleep(3)
     else:
         print(f"⚠️ No se encontraron coordenadas de close_captcha_error_click - por favor configúralas")
     
@@ -673,9 +675,6 @@ def _procesar_linkedin_error(coordinates, estado, browser_name=None):
     estado.ciclos_sin_imagen = 0
     print(f"⚠️ Error de carga de LinkedIn detectado - cerrando navegador y continuando con siguiente email")
     
-    # Desactivar proxy inmediatamente al detectar error
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-    
     # Cerrar ventana y salir para continuar con siguiente email
     close_window_coords = coordinates.get("close_window")
     if close_window_coords:
@@ -699,9 +698,6 @@ def _procesar_formato_nuevo(coordinates, estado, browser_name=None):
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
     print(f"✅ Formato nuevo encontrado - cerrando ventana inmediatamente")
-    
-    # Desactivar proxy inmediatamente al detectar formato nuevo
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     # Cerrar ventana directamente
     close_window_coords = coordinates.get("close_window")
@@ -734,9 +730,6 @@ def _procesar_captcha_rojo(coordinates, estado, browser_id=None, browser_name=No
     estado.obstaculo_count += 1
     estado.ciclos_sin_imagen = 0
     
-    # Desactivar proxy inmediatamente al detectar captcha rojo
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-    
     # Comportamiento según tipo de máquina
     if isInVps is True:
         # VPS: Cerrar inmediatamente (comportamiento original)
@@ -768,13 +761,8 @@ def _procesar_captcha_rojo(coordinates, estado, browser_id=None, browser_name=No
             
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
-            # Activar proxy SOLO justo antes de hacer clic
-            _activar_proxy()
-            time.sleep(0.3)  # Tiempo mínimo para activar proxy
             click_coordinates(continue2_coords)
-            time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
-            # Desactivar proxy inmediatamente después del clic
-            _desactivar_proxy()
+            time.sleep(3)
         
         return True  # Continuar el proceso
 
@@ -829,9 +817,6 @@ def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
     estado.ciclos_sin_imagen = 0
     print(f"✅ Captcha imposible encontrado (vez #{estado.captcha_count})")
     
-    # Desactivar proxy inmediatamente al detectar captcha imposible
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-    
     if estado.obstaculo_count >= 2:
         print("🔄 Segundo obstáculo detectado - verificando confirmación antes de cerrar...")
         print("⏳ Esperando 8 segundos para verificar si el spinner persiste...")
@@ -852,7 +837,6 @@ def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
         
         if captcha_still_found:
             print("✅ Spinner de captcha imposible confirmado - procediendo a cerrar ventana")
-            # Ya se desactivó arriba, no es necesario desactivar de nuevo
             close_window_coords = coordinates.get("close_window")
             if close_window_coords:
                 click_coordinates(close_window_coords)
@@ -875,13 +859,8 @@ def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
         continue2_coords = coordinates.get("continue_button2_click")
         if continue2_coords:
             print("📍 Haciendo clic en continue después de captcha imposible...")
-            # Activar proxy SOLO justo antes de hacer clic
-            _activar_proxy()
-            time.sleep(0.3)  # Tiempo mínimo para activar proxy
             click_coordinates(continue2_coords)
-            time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
-            # Desactivar proxy inmediatamente después del clic
-            _desactivar_proxy()
+            time.sleep(3)
             print("✅ Clic en continue realizado después de captcha imposible")
             # Esperar un momento para que el captcha desaparezca después del clic
             time.sleep(1)
@@ -932,11 +911,23 @@ def _procesar_exito(coordinates, email, password, filepath, browser_id=None, bro
     
     if not exito_found:
         return None
-    
+
     print(f"✅ Imagen de éxito encontrada - buscando cookie...")
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-    
-    return _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id=browser_id, browser_name=browser_name)
+
+    from app.creator.post_account_success_actions import run_after_account_success_before_cookie
+
+    password_cuenta = _get_password_usado() or password
+    run_after_account_success_before_cookie(
+        coordinates,
+        email,
+        password_cuenta,
+        filepath,
+        exito_image_name=exito_image_name,
+        browser_id=browser_id,
+        browser_name=browser_name,
+    )
+
+    return _obtener_y_guardar_cookie(coordinates, email, password_cuenta, filepath, browser_id=browser_id, browser_name=browser_name)
 
 
 def _procesar_exito_con_detalle(coordinates, email, password, filepath, exito_image_name=None, browser_id=None, browser_name=None):
@@ -961,15 +952,27 @@ def _procesar_exito_con_detalle(coordinates, email, password, filepath, exito_im
     
     if not exito_found:
         return None
-    
+
     print(f"✅ Imagen de éxito encontrada - buscando cookie...")
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-    
-    return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name_found, browser_id=browser_id, browser_name=browser_name)
+
+    from app.creator.post_account_success_actions import run_after_account_success_before_cookie
+
+    password_cuenta = _get_password_usado() or password
+    run_after_account_success_before_cookie(
+        coordinates,
+        email,
+        password_cuenta,
+        filepath,
+        exito_image_name=exito_image_name_found,
+        browser_id=browser_id,
+        browser_name=browser_name,
+    )
+
+    return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password_cuenta, filepath, exito_image_name_found, browser_id=browser_id, browser_name=browser_name)
 
 
 def _procesar_captcha_bueno(coordinates, estado, browser_name=None):
-    """Procesa la detección de captcha bueno - solo desactiva el proxy (máximo 2 veces)"""
+    """Procesa la detección de captcha bueno (máximo 2 veces). El proxy sigue activo durante la cuenta."""
     from app.creator.computer_actions import wait_for_creator_image
     import time
     
@@ -1008,9 +1011,6 @@ def _procesar_captcha_bueno(coordinates, estado, browser_name=None):
     # Solo mostrar mensaje en la primera detección
     if estado.captcha_bueno_count == 1:
         print(f"✅ Captcha bueno detectado (vez #1)")
-    
-    # Solo desactivar el proxy UNA VEZ por detección (no por cada variante)
-    _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
     
     # Esperar un momento para que la imagen desaparezca de pantalla (reducido)
     time.sleep(0.5)  # Reducido de 2s a 0.5s
@@ -1065,9 +1065,6 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
         estado.obstaculo_count += 1
         estado.ciclos_sin_imagen = 0
         
-        # Desactivar proxy
-        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-        
         # Cerrar captcha blanco
         close_captcha_coords = coordinates.get("close_captcha_click")
         if close_captcha_coords:
@@ -1077,13 +1074,8 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
             # Hacer clic en continue
             continue2_coords = coordinates.get("continue_button2_click")
             if continue2_coords:
-                # Activar proxy SOLO justo antes de hacer clic
-                _activar_proxy()
-                time.sleep(0.3)  # Tiempo mínimo para activar proxy
                 click_coordinates(continue2_coords)
-                time.sleep(0.3)  # Tiempo mínimo para que se procese el clic
-                # Desactivar proxy inmediatamente después del clic
-                _desactivar_proxy()
+                time.sleep(3)
         
         # Actualizar tiempo de última detección
         estado.captcha_blanco_ultima_deteccion_tiempo = time.time()
@@ -1095,7 +1087,6 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
     elif estado.captcha_blanco_flag >= 4:
         # Cuarta detección: cerrar ventana y finalizar proceso
         print("❌ Captcha blanco encontrado (vez #4) - finalizando proceso")
-        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
@@ -1106,7 +1097,7 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
 
 
 def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id=None, browser_name=None):
-    """Obtiene y guarda la cookie de la cuenta creada"""
+    """Obtiene y guarda la cookie: prioriza UA de sesión (extensión + pool) si hubo; si no, creator_setting."""
     from app.creator.computer_actions import click_coordinates, get_clipboard_content
     from app.database.database import get_creator_setting
     import time
@@ -1162,22 +1153,21 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id
             else:
                 return False, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
         
-        # Guardar cookie
-        print("✅ Cookie única guardada")
-        
-        if browser_id:
-            creator_settings = get_creator_setting(browser_id)
-        else:
-            creator_settings = None
-        if not creator_settings or not creator_settings.get('user_agent'):
+        ua_sess = (_get_session_creator_user_agent() or "").strip()
+        creator_settings = get_creator_setting(browser_id) if browser_id else None
+        ua_cfg = (creator_settings.get("user_agent") or "").strip() if creator_settings else ""
+        user_agent = ua_sess or ua_cfg
+        if not user_agent:
             return False, "user_agent_no_encontrado", {}
-        
-        user_agent = creator_settings.get('user_agent')
+
         contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
         
         try:
             with open(filepath, 'a', encoding='utf-8') as f:
                 f.write(contenido + "\n")
+            print("✅ Cuenta guardada en archivo (user agent + email + cookie).")
+            # Apagar proxy inmediatamente al completar la cuenta (no esperar al finally del flujo).
+            _desactivar_proxy(coordinates, silent=False)
             return True
         except Exception as e:
             return False, "error_escritura_archivo", {"error": str(e)}
@@ -1192,7 +1182,7 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id
 
 
 def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name, browser_id=None, browser_name=None):
-    """Obtiene y guarda la cookie con información detallada"""
+    """Obtiene y guarda cookie detallada: UA de sesión (extensión) si existe, si no creator_setting."""
     from app.creator.computer_actions import click_coordinates, get_clipboard_content
     from app.database.database import get_creator_setting
     import time
@@ -1248,23 +1238,21 @@ def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath
             else:
                 return False, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}
         
-        # Guardar cookie
-        print("✅ Cookie única guardada")
-        
-        if browser_id:
-            creator_settings = get_creator_setting(browser_id)
-        else:
-            creator_settings = None
-        if not creator_settings or not creator_settings.get('user_agent'):
+        ua_sess = (_get_session_creator_user_agent() or "").strip()
+        creator_settings = get_creator_setting(browser_id) if browser_id else None
+        ua_cfg = (creator_settings.get("user_agent") or "").strip() if creator_settings else ""
+        user_agent = ua_sess or ua_cfg
+        if not user_agent:
             return False, "user_agent_no_encontrado", {}
-        
-        user_agent = creator_settings.get('user_agent')
+
         contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
-        
         
         try:
             with open(filepath, 'a', encoding='utf-8') as f:
                 f.write(contenido + "\n")
+            print("✅ Cuenta guardada en archivo (user agent + email + cookie).")
+            # Apagar proxy inmediatamente al completar la cuenta (no esperar al finally del flujo).
+            _desactivar_proxy(coordinates, silent=False)
             return True, "exito", {"imagen_exito": exito_image_name, "intento": intento}
         except Exception as e:
             return False, "error_escritura_archivo", {"error": str(e)}
@@ -1318,6 +1306,9 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total, 
     """
     Procesa un email individual en el proceso de creación de cuenta LinkedIn
     """
+    global _session_creator_user_agent
+    _session_creator_user_agent = ""
+
     from app.database.database import get_creator_email_by_id
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname
     import time
@@ -1331,38 +1322,41 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total, 
     # Paso 1: Click en el navegador
     if not _click_brave(coordinates, browser_name=browser_name):
         return False
-    
-    # Paso 2: Click en LinkedIn fav
-    if not _click_linkedin_fav(coordinates):
+
+    # Proxy encendido durante toda la cuenta; se apaga en finally al terminar (éxito o fallo)
+    _activar_proxy(coordinates)
+    try:
+        # Paso 2: Opcional UA por extensión + clic en LinkedIn fav
+        if not _click_linkedin_fav(coordinates, browser_id=browser_id):
+            return False
+        
+        # Paso 3: Verificar carga de LinkedIn
+        if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
+            print("❌ LinkedIn no cargó correctamente - cerrando ventana")
+            _cerrar_ventana(coordinates)
+            return False
+        
+        # Verificar proxy error después de cargar LinkedIn
+        _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
+        
+        # Paso 4: Llenar formulario de registro
+        formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email, browser_id=browser_id, browser_name=browser_name)
+        if not formulario_ok:
+            return False
+        
+        # Verificar proxy error después de llenar formulario
+        _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
+        
+        # Paso 5: Observar y crear cuenta
+        cuenta_creada = observador_unificado(coordinates, full_email, _get_password_usado(), filepath, browser_id=browser_id, browser_name=browser_name)
+        
+        # Paso 6: Cerrar ventana si se creó exitosamente
+        if cuenta_creada:
+            _cerrar_ventana(coordinates)
+            return True
         return False
-    
-    # Paso 3: Verificar carga de LinkedIn
-    if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
-        print("❌ LinkedIn no cargó correctamente - cerrando ventana")
-        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-        _cerrar_ventana(coordinates)
-        return False
-    
-    # Verificar proxy error después de cargar LinkedIn
-    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
-    
-    # Paso 4: Llenar formulario de registro
-    formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email, browser_id=browser_id, browser_name=browser_name)
-    if not formulario_ok:
-        return False
-    
-    # Verificar proxy error después de llenar formulario
-    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
-    
-    # Paso 5: Observar y crear cuenta
-    cuenta_creada = observador_unificado(coordinates, full_email, _get_password_usado(), filepath, browser_id=browser_id, browser_name=browser_name)
-    
-    # Paso 6: Cerrar ventana si se creó exitosamente
-    if cuenta_creada:
-        _cerrar_ventana(coordinates)
-        return True
-    else:
-        return False
+    finally:
+        _desactivar_proxy(coordinates, silent=True)
 
 
 def procesar_email_individual_con_detalle(email_id, coordinates, filepath, contador, total, browser_id=None, browser_name=None):
@@ -1375,6 +1369,9 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         browser_id: ID del navegador activo
         browser_name: Nombre del navegador activo
     """
+    global _session_creator_user_agent
+    _session_creator_user_agent = ""
+
     from app.database.database import get_creator_email_by_id
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname
     import time
@@ -1413,61 +1410,64 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
             click_coordinates(close_window_coords)
             time.sleep(1)
         return False, "detenido_por_usuario", {}
-    
-    # Paso 2: Click en LinkedIn fav
-    if not _click_linkedin_fav(coordinates):
-        return False, "error_click_linkedin_fav", {}
-    
-    # Verificar si se debe detener el bot
-    if not bot_running:
-        print("🛑 Señal de detención recibida. Deteniendo procesamiento de email...")
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            from app.creator.computer_actions import click_coordinates
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return False, "detenido_por_usuario", {}
-    
-    # Paso 3: Verificar carga de LinkedIn
-    if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
-        print("❌ LinkedIn no cargó correctamente - cerrando ventana")
-        _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
-        _cerrar_ventana(coordinates)
-        return False, "error_carga_linkedin", {}
-    
-    # Verificar si se debe detener el bot después de verificar LinkedIn
-    if not bot_running:
-        print("🛑 Señal de detención recibida. Deteniendo procesamiento de email...")
-        close_window_coords = coordinates.get("close_window")
-        if close_window_coords:
-            from app.creator.computer_actions import click_coordinates
-            click_coordinates(close_window_coords)
-            time.sleep(1)
-        return False, "detenido_por_usuario", {}
-    
-    # Verificar proxy error después de cargar LinkedIn
-    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
-    
-    # Paso 4: Llenar formulario de registro
-    formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email, browser_id=browser_id, browser_name=browser_name)
-    if not formulario_ok:
-        return False, "error_llenar_formulario", {}
-    
-    # Verificar proxy error después de llenar formulario
-    _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
-    
-    # Paso 5: Observar y crear cuenta con detalle
-    exito, motivo_fallo, detalles = observador_unificado_con_detalle(
-        coordinates, full_email, _get_password_usado(), filepath, 
-        browser_id=browser_id, browser_name=browser_name
-    )
-    
-    # Paso 6: Cerrar ventana si se creó exitosamente
-    if exito:
-        _cerrar_ventana(coordinates)
-        return True, "exito", detalles
-    else:
+
+    # Proxy encendido durante toda la cuenta; se apaga en finally al terminar (éxito o fallo)
+    _activar_proxy(coordinates)
+    try:
+        # Paso 2: Opcional UA por extensión + clic en LinkedIn fav
+        if not _click_linkedin_fav(coordinates, browser_id=browser_id):
+            return False, "error_click_linkedin_fav", {}
+        
+        # Verificar si se debe detener el bot
+        if not bot_running:
+            print("🛑 Señal de detención recibida. Deteniendo procesamiento de email...")
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                from app.creator.computer_actions import click_coordinates
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False, "detenido_por_usuario", {}
+        
+        # Paso 3: Verificar carga de LinkedIn
+        if not _verificar_carga_linkedin(coordinates, browser_name=browser_name):
+            print("❌ LinkedIn no cargó correctamente - cerrando ventana")
+            _cerrar_ventana(coordinates)
+            return False, "error_carga_linkedin", {}
+        
+        # Verificar si se debe detener el bot después de verificar LinkedIn
+        if not bot_running:
+            print("🛑 Señal de detención recibida. Deteniendo procesamiento de email...")
+            close_window_coords = coordinates.get("close_window")
+            if close_window_coords:
+                from app.creator.computer_actions import click_coordinates
+                click_coordinates(close_window_coords)
+                time.sleep(1)
+            return False, "detenido_por_usuario", {}
+        
+        # Verificar proxy error después de cargar LinkedIn
+        _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
+        
+        # Paso 4: Llenar formulario de registro
+        formulario_ok, full_email = _llenar_formulario_registro(coordinates, current_email, browser_id=browser_id, browser_name=browser_name)
+        if not formulario_ok:
+            return False, "error_llenar_formulario", {}
+        
+        # Verificar proxy error después de llenar formulario
+        _verificar_y_cerrar_proxy_error(coordinates, browser_name=browser_name)
+        
+        # Paso 5: Observar y crear cuenta con detalle
+        exito, motivo_fallo, detalles = observador_unificado_con_detalle(
+            coordinates, full_email, _get_password_usado(), filepath, 
+            browser_id=browser_id, browser_name=browser_name
+        )
+        
+        # Paso 6: Cerrar ventana si se creó exitosamente
+        if exito:
+            _cerrar_ventana(coordinates)
+            return True, "exito", detalles
         return False, motivo_fallo, detalles
+    finally:
+        _desactivar_proxy(coordinates, silent=True)
 
 
 def _click_brave(coordinates, browser_name=None):
@@ -1539,11 +1539,14 @@ def _click_brave(coordinates, browser_name=None):
     return False
 
 
-def _click_linkedin_fav(coordinates):
-    """Hace clic en el favorito de LinkedIn"""
+def _click_linkedin_fav(coordinates, browser_id=None):
+    """Clic en fav LinkedIn. Si en bot_settings está activado, aplica UA por extensión antes."""
     from app.creator.computer_actions import click_coordinates
     from app.auth.auth import bot_running
+    from app.database.database import get_bot_settings
     import time
+
+    global _session_creator_user_agent
     
     # Sleep interrumpible
     sleep_interval = 0.5
@@ -1554,7 +1557,14 @@ def _click_linkedin_fav(coordinates):
             return False
         time.sleep(sleep_interval)
         slept += sleep_interval
-    
+
+    cfg = get_bot_settings() or {}
+    if cfg.get("enable_creator_user_agent_actions"):
+        if not _aplicar_user_agent_antes_linkedin(browser_id):
+            return False
+    else:
+        _session_creator_user_agent = ""
+
     linkedin_coords = coordinates.get("linkedin_fav_click")
     if not linkedin_coords:
         return False
@@ -1581,231 +1591,88 @@ def _click_linkedin_fav(coordinates):
 
 
 def _verificar_carga_linkedin(coordinates=None, browser_name=None):
-    """Verifica que LinkedIn haya cargado correctamente con matching 100% exacto - busca tres imágenes posibles"""
-    from app.creator.computer_actions import find_creator_image, click_coordinates, wait_for_creator_image
-    from app.database.database import get_creator_coordinates, get_default_browser
+    """
+    Verifica que LinkedIn haya cargado buscando una de las imágenes de éxito.
+    Con proxy activo la carga tarda más: espera inicial larga y muchas rondas de
+    detección sin cerrar ni reabrir el navegador.
+    """
+    from app.creator.computer_actions import find_creator_image
     import time
-    
-    # Lista de imágenes posibles para verificar carga de LinkedIn
+
     linkedin_verification_images = [
         "imagen_de_verificacion_de_exito_carga_linkedin",
         "imagen_de_verificacion_de_exito_carga_linkedin_2",
-        "imagen_de_verificacion_de_exito_carga_linkedin_3"
+        "imagen_de_verificacion_de_exito_carga_linkedin_3",
     ]
-    
+
+    # Tiempos pensados para conexión lenta / proxy (sin reiniciar el navegador)
+    INITIAL_WAIT_SEC = 10.0
+    MAX_ROUNDS = 40
+    DELAY_BETWEEN_ROUNDS_SEC = 3.0
+    EXTRA_PAUSE_FIRST_ROUND_SEC = 2.0
+    confidence = 0.88
+
     nombre_navegador = browser_name if browser_name else "navegador"
-    print(f"🔍 Verificando carga de LinkedIn (Navegador: {nombre_navegador})")
-    
-    # Verificar si se debe detener el bot antes de comenzar
+    print(
+        f"🔍 Verificando carga de LinkedIn (Navegador: {nombre_navegador}) — "
+        f"hasta {MAX_ROUNDS} rondas, ~{int(INITIAL_WAIT_SEC + MAX_ROUNDS * DELAY_BETWEEN_ROUNDS_SEC)}s máx. aprox., sin cerrar ventana"
+    )
+
     from app.auth.auth import bot_running
+
     if not bot_running:
         print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
         return False
-    
-    # Esperar un momento inicial para que LinkedIn cargue completamente (sleep interrumpible)
+
     sleep_interval = 0.5
     slept = 0
-    while slept < 3:
+    while slept < INITIAL_WAIT_SEC:
         if not bot_running:
             print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
             return False
         time.sleep(sleep_interval)
         slept += sleep_interval
-    
-    max_attempts_per_cycle = 6
-    max_reintentos = 3
-    delay_between_attempts = 1.5  # Aumentar delay entre intentos
-    # Reducir confianza ligeramente para permitir pequeñas variaciones (resolución, antialiasing, etc.)
-    confidence = 0.90  # 90% de precisión - permite pequeñas variaciones pero mantiene alta precisión
-    
-    # Obtener coordenadas necesarias para reinicio si no se proporcionaron
-    if not coordinates:
-        # Si no hay browser_name, obtener navegador por defecto
-        if not browser_name:
-            default_browser = get_default_browser()
-            if default_browser:
-                browser_id = default_browser['id']
-            else:
-                browser_id = None
-        else:
-            browser_id = None  # No podemos obtener browser_id solo con nombre sin consultar DB
-        
-        if browser_id:
-            coordinates = get_creator_coordinates(browser_id)
-        else:
-            coordinates = None
-        if not coordinates:
-            print("❌ No se pudieron obtener las coordenadas")
-            return False
-    
-    for reintento in range(1, max_reintentos + 1):
-        # Verificar si se debe detener el bot
-        from app.auth.auth import bot_running
+
+    for round_idx in range(1, MAX_ROUNDS + 1):
         if not bot_running:
             print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
             return False
-        
-        # Buscar imágenes en cada ciclo hasta encontrar una o llegar al límite
-        for attempt in range(1, max_attempts_per_cycle + 1):
-            # Verificar si se debe detener el bot
-            if not bot_running:
-                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                return False
-            
-            # Intentar buscar cada imagen en este ciclo
-            for image_name in linkedin_verification_images:
-                # Verificar si se debe detener el bot
-                if not bot_running:
-                    print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                    return False
-                
-                # Esperar un poco antes de buscar para dar tiempo a que cargue la página
-                if attempt == 1:
-                    # Sleep interrumpible
-                    sleep_interval = 0.5
-                    slept = 0
-                    while slept < 1:
-                        if not bot_running:
-                            print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                            return False
-                        time.sleep(sleep_interval)
-                        slept += sleep_interval
-                
-                verification_image = find_creator_image(image_name, confidence=confidence, browser_name=browser_name)
-                if verification_image:
-                    print(f"✅ ¡Imagen encontrada en el intento {attempt}! Usando: {image_name}")
-                    return True
-            
-            # Si no se encontró ninguna imagen en este ciclo, esperar antes del siguiente
-            if attempt < max_attempts_per_cycle:
-                # Sleep interrumpible
-                sleep_interval = 0.5
-                slept = 0
-                while slept < delay_between_attempts:
-                    if not bot_running:
-                        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                        return False
-                    time.sleep(sleep_interval)
-                    slept += sleep_interval
-        
-        # Si llegamos aquí, no se encontró ninguna imagen después de max_attempts_per_cycle intentos
-        # Solo mostrar mensaje si no es el último reintento para reducir ruido en consola
-        if reintento < max_reintentos:
-            print(f"⚠️ No se encontró imagen después de {max_attempts_per_cycle} intentos")
-        
-        # Verificar si se debe detener el bot antes de reiniciar
-        if not bot_running:
-            print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-            return False
-        
-        # Si no es el último reintento, reiniciar el proceso
-        if reintento < max_reintentos:
-            print(f"🔄 Reiniciando proceso (reintento {reintento}/{max_reintentos})...")
-            
-            # Verificar si se debe detener el bot antes de reiniciar
-            if not bot_running:
-                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                return False
-            
-            # 1. Cerrar ventana
-            close_window_coords = coordinates.get("close_window")
-            if close_window_coords:
-                print(f"🔄 Cerrando ventana...")
-                click_coordinates(close_window_coords)
-                # Sleep interrumpible
-                sleep_interval = 0.5
-                slept = 0
-                while slept < 1:
-                    if not bot_running:
-                        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                        return False
-                    time.sleep(sleep_interval)
-                    slept += sleep_interval
-            
-            # Verificar si se debe detener el bot después de cerrar ventana
-            if not bot_running:
-                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                return False
-            
-            # 2. Doble clic en el navegador con validación
-            # Obtener nombre del navegador para mensajes
-            nombre_navegador = browser_name if browser_name else "navegador"
-            
-            brave_coords = coordinates.get("brave_click")
-            if brave_coords:
-                print(f"🔄 Haciendo doble clic en {nombre_navegador}...")
-                click_coordinates(brave_coords, double_click=True)
-                # Sleep interrumpible
-                sleep_interval = 0.5
-                slept = 0
-                while slept < 2:
-                    if not bot_running:
-                        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                        return False
-                    time.sleep(sleep_interval)
-                    slept += sleep_interval
-                
-                # Validar que la imagen del navegador NO apareció (significa que el navegador se abrió correctamente)
-                browser_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
-                if browser_image_found:
-                    print(f"⚠️ {nombre_navegador} todavía en pantalla de inicio, reintentando clic...")
-                    click_coordinates(brave_coords, double_click=True)
-                    # Sleep interrumpible
-                    sleep_interval = 0.5
-                    slept = 0
-                    while slept < 2:
-                        if not bot_running:
-                            print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                            return False
-                        time.sleep(sleep_interval)
-                        slept += sleep_interval
-                    browser_image_found = wait_for_creator_image("brave_image", max_attempts=2, delay_between_attempts=0.5, silent=True, browser_name=browser_name)
-                    if browser_image_found:
-                        print(f"❌ No se pudo abrir {nombre_navegador} correctamente")
-                        return False
-                print(f"✅ {nombre_navegador} validado - clic realizado correctamente")
-            
-            # Verificar si se debe detener el bot antes de hacer clic en LinkedIn
-            if not bot_running:
-                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                return False
-            
-            # 3. Clic en LinkedIn fav
-            linkedin_coords = coordinates.get("linkedin_fav_click")
-            if linkedin_coords:
-                print(f"🔄 Haciendo clic en LinkedIn fav...")
-                click_coordinates(linkedin_coords)
-                # Esperar más tiempo para que LinkedIn cargue completamente (sleep interrumpible)
-                sleep_interval = 0.5
-                slept = 0
-                while slept < 5:
-                    if not bot_running:
-                        print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                        return False
-                    time.sleep(sleep_interval)
-                    slept += sleep_interval
-            
-            # Verificar si se debe detener el bot antes de continuar
-            if not bot_running:
-                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
-                return False
-            
-            # 4. Continuar buscando imágenes en el siguiente reintento
-            print(f"🔄 Continuando búsqueda de imágenes...")
-            # Sleep interrumpible
-            sleep_interval = 0.5
+
+        if round_idx == 1:
             slept = 0
-            while slept < 1:
+            while slept < EXTRA_PAUSE_FIRST_ROUND_SEC:
                 if not bot_running:
                     print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
                     return False
                 time.sleep(sleep_interval)
                 slept += sleep_interval
-        else:
-            # Último reintento completado sin éxito
-            print(f"❌ No se encontró ninguna imagen de verificación de LinkedIn después de {max_reintentos} reintentos")
-            return False
-    
+
+        for image_name in linkedin_verification_images:
+            if not bot_running:
+                print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                return False
+            verification_image = find_creator_image(
+                image_name, confidence=confidence, browser_name=browser_name
+            )
+            if verification_image:
+                print(f"✅ Imagen de carga LinkedIn detectada (ronda {round_idx}/{MAX_ROUNDS}): {image_name}")
+                return True
+
+        if round_idx < MAX_ROUNDS:
+            if round_idx % 5 == 0:
+                print(f"⏳ LinkedIn aún cargando… ronda {round_idx}/{MAX_ROUNDS}, esperando {DELAY_BETWEEN_ROUNDS_SEC:.0f}s")
+            slept = 0
+            while slept < DELAY_BETWEEN_ROUNDS_SEC:
+                if not bot_running:
+                    print("🛑 Señal de detención recibida. Deteniendo verificación de LinkedIn...")
+                    return False
+                time.sleep(sleep_interval)
+                slept += sleep_interval
+
+    print(
+        f"❌ No se encontró imagen de verificación de LinkedIn tras {MAX_ROUNDS} rondas "
+        f"(~{int(INITIAL_WAIT_SEC + MAX_ROUNDS * DELAY_BETWEEN_ROUNDS_SEC)}s de espera acumulada aprox.)"
+    )
     return False
 
 
@@ -1909,9 +1776,6 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
     import time
     import pyperclip
     
-    # Asegurar que el proxy esté desactivado al inicio (no se necesita para escribir texto)
-    _desactivar_proxy()
-    
     # Click en email_input_click
     email_coords = coordinates.get("email_input_click")
     if not email_coords:
@@ -1940,16 +1804,16 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
             # No aplicar relleno aquí para evitar doble relleno
             # Usar formato específico para dominio personalizado
             full_email = generate_email_with_domain_format(email)
-            print(f"📧 Email generado con formato personalizado: {full_email} (dominio: {email})")
+            print(f"[DEBUG] email completo={full_email!r} (formato personalizado, dominio={email!r})")
         else:
             # Generar prefijo aleatorio y concatenar con el dominio (modo 33mail)
             prefix = generate_email_prefix()
             full_email = f"{prefix}{email}"
-            print(f"📧 Email generado: {full_email} (dominio: {email})")
+            print(f"[DEBUG] email completo={full_email!r} (33mail, dominio={email!r})")
     else:
         # Si ya viene completo, usar tal como está
         full_email = email
-        print(f"📧 Email completo recibido: {full_email}")
+        print(f"[DEBUG] email completo={full_email!r} (recibido tal cual)")
     
     # Escribir email completo con verificación (proxy desactivado - no se necesita)
     if not _escribir_y_verificar_campo(full_email, "email"):
@@ -1964,6 +1828,7 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
     
     # Escribir contraseña aleatoria (sin verificación para mayor velocidad, proxy desactivado)
     password = generate_random_password()
+    print(f"[DEBUG] password={password!r}")
     type_text(password)
     time.sleep(0.3)  # Tiempo mínimo para que se escriba
     
@@ -2018,7 +1883,6 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
             # Último intento fallido
             # print("❌ No se pudo verificar la carga correcta del email y contraseña después de 4 intentos")
             # print("🔄 Cerrando ventana y continuando con el siguiente email")
-            _desactivar_proxy(silent=True)  # Silent para evitar logs repetitivos
             close_window_coords = coordinates.get("close_window")
             if close_window_coords:
                 click_coordinates(close_window_coords)
@@ -2052,21 +1916,17 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
     if not _escribir_y_verificar_campo(random_lastname, "apellido"):
         return False, None
 
+    print(
+        f"[DEBUG] resumen registro: email={full_email!r} | password={password!r} | "
+        f"nombre={random_name!r} | apellido={random_lastname!r}"
+    )
 
-    # Click en continue_button2_click - activar proxy SOLO justo antes del clic
+    # Click en continue_button2_click (proxy ya activo desde antes del fav de LinkedIn)
     continue2_coords = coordinates.get("continue_button2_click")
     if not continue2_coords:
         return False, None
-    # Activar proxy SOLO justo antes de hacer clic (máxima optimización)
-    _activar_proxy()
-    time.sleep(0.3)  # Tiempo mínimo para activar proxy
     click_coordinates(continue2_coords)
-    time.sleep(0.5)  # Tiempo mínimo para que se procese el clic
-    # Desactivar proxy inmediatamente después del clic (no mantenerlo activo)
-    _desactivar_proxy()
-    
-
-
+    time.sleep(3)
     
     # Guardar password para uso posterior
     global _password_usado
@@ -2078,6 +1938,27 @@ def _get_password_usado():
     """Obtiene el password usado en el formulario"""
     global _password_usado
     return _password_usado
+
+
+def _aplicar_user_agent_antes_linkedin(browser_id=None):
+    """Ejecuta user_agent_actions y guarda el UA del pool en sesión para el archivo de cuentas."""
+    from app.creator.user_agent_actions import resolve_browser_id, run_user_agent_extension_click
+
+    global _session_creator_user_agent
+    bid = resolve_browser_id(browser_id)
+    if bid is None:
+        print("⚠️ Sin navegador para aplicar user agent.")
+        _session_creator_user_agent = ""
+        return False
+
+    ok, ua = run_user_agent_extension_click(bid)
+    if ok and ua:
+        _session_creator_user_agent = ua.strip()
+        return True
+
+    _session_creator_user_agent = ""
+    print("❌ No se pudo aplicar user agent antes de LinkedIn.")
+    return False
 
 
 def _cerrar_ventana(coordinates):
@@ -2123,6 +2004,12 @@ def _ejecutar_modo_avion():
                             capture_output=True, text=True, timeout=10)
             print("📶 Modo avión desactivado")
             time.sleep(3)
+            try:
+                from app.auth.auth import reconnect_bot_websocket_after_network_recovery
+
+                reconnect_bot_websocket_after_network_recovery()
+            except Exception as e:
+                print(f"⚠️ Reconexión WebSocket tras modo avión: {e}")
         except Exception as e:
             pass
     else:
@@ -2130,74 +2017,159 @@ def _ejecutar_modo_avion():
         time.sleep(2)
 
 
-def _activar_proxy():
-    """Activa el proxy si está habilitado en la configuración - VERSIÓN SEGURA"""
+def _activar_proxy(coordinates):
+    """Activa proxy según bot_settings: coordenadas (extensión) o proxy de Windows."""
+    import sys
     import time
+    import winreg
     from app.database.database import get_bot_settings
+    from app.creator.computer_actions import click_coordinates
     from app.confirmabot.utils.proxy_tool_safe import SafeProxyController
-    
-    config = get_bot_settings()
-    enable_proxy = config.get("enable_proxy", True)
-    
-    if enable_proxy:
+
+    global _proxy_activado_por_click, _proxy_modo_usado
+    config = get_bot_settings() or {}
+    if not config.get("enable_proxy"):
+        return
+
+    use_coord = bool(config.get("proxy_via_coordinates"))
+    use_win = bool(config.get("proxy_via_windows"))
+
+    if use_coord:
         try:
-            proxy_controller = SafeProxyController()
-            try:
-                # Solo activar el proxy sin verificaciones que puedan colgarse
-                success = proxy_controller.enable_proxy_only()
-                if success:
-                    proxy_controller.refresh_internet_settings()
-                    print("✅ Proxy activado")
-                else:
-                    print("⚠️ No se pudo activar proxy")
-                    
-            finally:
-                proxy_controller.close()
+            proxy_extension_coords = coordinates.get("proxy_extension_click") if coordinates else None
+            activate_proxy_coords = coordinates.get("activate_proxy_click") if coordinates else None
+            if not proxy_extension_coords or not activate_proxy_coords:
+                print("⚠️ Faltan coordenadas de proxy (extensión/activar)")
+                return
+            click_coordinates(proxy_extension_coords)
+            time.sleep(1)
+            click_coordinates(activate_proxy_coords)
+            _proxy_activado_por_click = True
+            _proxy_modo_usado = "coordinates"
+            print("✅ Proxy por coordenadas activado")
         except Exception as e:
-            print(f"❌ Error al activar proxy: {e}")
-    else:
-        pass
+            print(f"❌ Error al activar proxy por coordenadas: {e}")
+        return
+
+    if not use_win:
+        return
+
+    if sys.platform != "win32":
+        print("⚠️ Proxy por registro de Windows solo disponible en Windows")
+        return
+
+    controller = None
+    try:
+        controller = SafeProxyController()
+        if not controller.proxy_key:
+            print("⚠️ No se pudo abrir la clave de proxy de Windows")
+            return
+
+        enabled_before, server_status, _ = controller.get_proxy_status()
+        server = server_status
+        if not server and controller.proxy_key:
+            try:
+                server, _ = winreg.QueryValueEx(controller.proxy_key, "ProxyServer")
+            except OSError:
+                server = None
+        server = (str(server).strip() if server else "")
+        if not enabled_before and not server:
+            print(
+                "⚠️ No hay servidor proxy en Windows; configura el proxy en "
+                "Configuración de Internet antes de usar esta opción"
+            )
+            return
+
+        if not controller.enable_proxy_only():
+            print("⚠️ No se pudo activar el proxy de Windows")
+            return
+
+        controller.refresh_internet_settings()
+        if not enabled_before:
+            _proxy_activado_por_click = True
+            _proxy_modo_usado = "windows"
+        print("✅ Proxy de Windows activado")
+    except Exception as e:
+        print(f"❌ Error al activar proxy: {e}")
+    finally:
+        if controller:
+            try:
+                controller.close()
+            except Exception:
+                pass
 
 
-def _desactivar_proxy(silent=False):
-    """Desactiva el proxy si está habilitado en la configuración - VERSIÓN SEGURA
-    Args:
-        silent: Si es True, no imprime logs (útil para llamadas repetitivas en loops)
-    Solo imprime log si realmente estaba activo y se desactivó, y silent=False"""
+def _desactivar_proxy(coordinates, silent=False):
+    """Desactiva el proxy del modo usado en _activar_proxy (coordenadas o Windows)."""
+    import sys
     import time
     from app.database.database import get_bot_settings
+    from app.creator.computer_actions import click_coordinates
     from app.confirmabot.utils.proxy_tool_safe import SafeProxyController
-    
-    config = get_bot_settings()
-    enable_proxy = config.get("enable_proxy", True)
-    
-    if enable_proxy:
+
+    global _proxy_activado_por_click, _proxy_modo_usado
+    config = get_bot_settings() or {}
+    if not config.get("enable_proxy"):
+        return
+
+    if not _proxy_activado_por_click:
+        return
+
+    modo = _proxy_modo_usado
+
+    if modo == "coordinates":
         try:
-            proxy_controller = SafeProxyController()
-            try:
-                # Verificar si el proxy está activo antes de intentar desactivarlo
-                proxy_enabled, _, _ = proxy_controller.get_proxy_status()
-                
-                # Solo intentar desactivar si está activo
-                if proxy_enabled:
-                    success = proxy_controller.disable_proxy()
-                    if success:
-                        proxy_controller.refresh_internet_settings()
-                        if not silent:
-                            print("✅ Proxy desactivado")
-                    else:
-                        if not silent:
-                            print("⚠️ No se pudo desactivar proxy")
-                    # Reducido de 0.5s a 0.2s - tiempo mínimo necesario
-                    time.sleep(0.2)
-                # Si ya está desactivado, no hacer nada ni imprimir log
-            finally:
-                proxy_controller.close()
+            proxy_extension_coords = coordinates.get("proxy_extension_click") if coordinates else None
+            disable_proxy_coords = coordinates.get("disable_proxy_click") if coordinates else None
+            if not proxy_extension_coords or not disable_proxy_coords:
+                if not silent:
+                    print("⚠️ Faltan coordenadas para desactivar proxy (extensión/apagar)")
+                return
+            click_coordinates(proxy_extension_coords)
+            time.sleep(0.5)
+            click_coordinates(disable_proxy_coords)
+            _proxy_activado_por_click = False
+            _proxy_modo_usado = None
+            if not silent:
+                print("✅ Proxy por coordenadas desactivado")
         except Exception as e:
             if not silent:
-                print(f"❌ Error al desactivar proxy: {e}")
-    else:
-        pass
+                print(f"❌ Error al desactivar proxy por coordenadas: {e}")
+        return
+
+    if modo != "windows":
+        return
+
+    if sys.platform != "win32":
+        return
+
+    controller = None
+    try:
+        controller = SafeProxyController()
+        if not controller.proxy_key:
+            if not silent:
+                print("⚠️ No se pudo acceder al registro para desactivar proxy")
+            return
+
+        if not controller.disable_proxy():
+            if not silent:
+                print("⚠️ No se pudo desactivar el proxy de Windows")
+            return
+
+        controller.refresh_internet_settings()
+        _proxy_activado_por_click = False
+        _proxy_modo_usado = None
+        if not silent:
+            print("✅ Proxy de Windows desactivado")
+    except Exception as e:
+        if not silent:
+            print(f"❌ Error al desactivar proxy: {e}")
+    finally:
+        if controller:
+            try:
+                controller.close()
+            except Exception:
+                pass
 
 
 def _actualizar_encabezado_con_exitos(filepath, total_emails, emails_exitosos):
@@ -3024,8 +2996,9 @@ def _validar_navegador_configurado(browser_id, browser_name, mostrar_detalles=Fa
     Returns:
         tuple: (bool, str) - (True si está configurado, motivo si no está configurado)
     """
-    from app.database.database import get_creator_coordinates
+    from app.database.database import get_bot_settings, get_creator_coordinates, get_creator_setting
     from app.creator.image_config import get_image_path
+    from app.creator.user_agent_actions import COORD_APPLY, COORD_EXTENSION, COORD_OUTSIDE, COORD_PLACE
     from app.utils.path_utils import get_browser_images_path
     import os
     
@@ -3036,7 +3009,28 @@ def _validar_navegador_configurado(browser_id, browser_name, mostrar_detalles=Fa
         if mostrar_detalles:
             print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
         return False, motivo
-    
+
+    cfg = get_bot_settings() or {}
+    if cfg.get("enable_creator_user_agent_actions"):
+        for key, etiqueta in (
+            (COORD_EXTENSION, "extensión"),
+            (COORD_PLACE, "colocar"),
+            (COORD_APPLY, "aplicar"),
+            (COORD_OUTSIDE, "fuera"),
+        ):
+            if not (coordinates.get(key) or "").strip():
+                motivo = f"falta coordenada user agent ({etiqueta}); desactiva el checkbox o configura Creator"
+                if mostrar_detalles:
+                    print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
+                return False, motivo
+    else:
+        st = get_creator_setting(browser_id)
+        if not st or not (st.get("user_agent") or "").strip():
+            motivo = "falta user agent en la configuración del navegador"
+            if mostrar_detalles:
+                print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
+            return False, motivo
+
     # Verificar que exista la carpeta de imágenes del navegador
     images_dir = get_browser_images_path(browser_name)
     if not os.path.exists(images_dir):
@@ -3110,7 +3104,7 @@ def _mostrar_error_navegadores_sin_configuracion(active_browsers_originales):
     # Construir mensaje detallado
     mensaje = "❌ No hay navegadores con configuración completa.\n\n"
     mensaje += "El bot requiere que al menos un navegador activo tenga:\n"
-    mensaje += "• Coordenadas configuradas\n"
+    mensaje += "• Coordenadas configuradas; user agent en ajustes del navegador (o extensión UA si está activada en opciones)\n"
     mensaje += "• Carpeta de imágenes creada\n"
     mensaje += "• Al menos 2 imágenes esenciales cargadas\n\n"
     
@@ -3128,6 +3122,64 @@ def _mostrar_error_navegadores_sin_configuracion(active_browsers_originales):
     )
     
     root.destroy()
+
+
+PROXY_ROTATION_INTERVAL_SEC = 60.0
+
+
+def _maybe_run_proxy_rotation_tras_cuenta(browser_id: int, clock_ref: dict) -> None:
+    """
+    Si rotación proxy está habilitada para el navegador y pasaron PROXY_ROTATION_INTERVAL_SEC
+    desde la última ejecución (o intento), ejecuta el flujo de proxy_rotation_actions.
+    Solo debe llamarse cuando terminó procesar_email_individual_con_detalle (no en medio de una cuenta).
+    """
+    import time
+    from app.database.database import get_creator_setting
+
+    st = get_creator_setting(browser_id) or {}
+    if not st.get("proxy_rotation_enabled"):
+        return
+    now = time.monotonic()
+    if now - clock_ref["last"] < PROXY_ROTATION_INTERVAL_SEC:
+        return
+    try:
+        from app.creator.proxy_rotation_actions import run_proxy_rotation_flow
+
+        print(f"🔄 Rotación de proxy (cada {int(PROXY_ROTATION_INTERVAL_SEC)} s, tras cuenta completada)…")
+        ok = run_proxy_rotation_flow(browser_id)
+        if not ok:
+            print("⚠️ Rotación proxy no completada; revisa coordenadas y enlace en la app.")
+    except Exception as e:
+        print(f"⚠️ Error en rotación proxy: {e}")
+    finally:
+        clock_ref["last"] = time.monotonic()
+
+
+def _run_proxy_rotation_al_inicio_si_corresponde(active_browsers, clock_ref) -> None:
+    """
+    Al arrancar el creator: si la rotación proxy está habilitada para el navegador
+    de configuración principal (mismo criterio que la ventana principal), ejecuta
+    una vez run_proxy_rotation_flow y actualiza el reloj para que el siguiente
+    disparo periódico sea 60 s después de terminar esta secuencia.
+    """
+    import time
+    from app.database.database import get_creator_setting, get_default_browser
+
+    ids_active = {b["id"] for b in active_browsers}
+    db = get_default_browser()
+    bid = db["id"] if db and db["id"] in ids_active else active_browsers[0]["id"]
+    st = get_creator_setting(bid) or {}
+    if not st.get("proxy_rotation_enabled"):
+        return
+    try:
+        from app.creator.proxy_rotation_actions import run_proxy_rotation_flow
+
+        print("🔄 Rotación de proxy al inicio del proceso…")
+        run_proxy_rotation_flow(bid)
+    except Exception as e:
+        print(f"⚠️ Error en rotación proxy al inicio: {e}")
+    finally:
+        clock_ref["last"] = time.monotonic()
 
 
 def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, ciclo_minutes=None, active_browsers=None, browser_index_start=0, domain_index_start=0):
@@ -3193,7 +3245,11 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, cic
     intento = 1
     from datetime import datetime
     tiempo_inicio_proceso = datetime.now()
-    
+
+    # Rotación proxy: intervalo en tiempo monotónico (solo tras terminar cada cuenta)
+    proxy_rotation_clock = {"last": time.monotonic()}
+    _run_proxy_rotation_al_inicio_si_corresponde(active_browsers, proxy_rotation_clock)
+
     # Índice para rotar entre navegadores (usar el índice inicial pasado como parámetro)
     browser_index = browser_index_start
     
@@ -3329,6 +3385,8 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, cic
                 else:
                     print(f"❌ Falló - {motivo_fallo} (Navegador: {browser_name})")
                 
+                _maybe_run_proxy_rotation_tras_cuenta(browser_id, proxy_rotation_clock)
+
                 # Rotar al siguiente navegador para el próximo email
                 browser_index = (browser_index + 1) % len(active_browsers)
                 
@@ -3458,6 +3516,8 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, cic
                     print(f"❌ Falló - {motivo_fallo} (Navegador: {browser_name})")
                 
                 update_creator_email_progress(email_id, cuentas_creadas)
+
+                _maybe_run_proxy_rotation_tras_cuenta(browser_id, proxy_rotation_clock)
                 
                 # Rotar al siguiente navegador para el próximo email
                 browser_index = (browser_index + 1) % len(active_browsers)

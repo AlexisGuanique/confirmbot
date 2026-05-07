@@ -29,8 +29,8 @@ Si prefieres usar PyInstaller directamente:
 **Versión DEBUG (con consola):**
 ```bash
 
-pyinstaller --onefile --windowed --icon="favicon.ico" --name=ConfirmabotCentral main.py
-pyinstaller --onefile --icon="favicon.ico" --name=ConfirmabotCentral-Debug main.py
+pyinstaller --onefile --windowed --icon="favicon.ico" --name=Confirmabot main.py
+pyinstaller --onefile --icon="favicon.ico" --name=Confirmabot-Debug main.py
 ```
 
 ## Estructura de Carpetas

@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import sqlite3
 from app.utils.server_config import build_api_url
 
@@ -13,6 +14,12 @@ else:
 
 DB_DIR = os.path.join(BASE_DIR, "app", "database")
 DB_PATH = os.path.join(DB_DIR, "cookies.db")
+
+
+def _creator_coordinates_column_names(cursor):
+    """Orden real de columnas en SQLite (evita mezclar activate/disable si ALTER las añadió en otro orden)."""
+    cursor.execute("PRAGMA table_info(creator_coordinates)")
+    return [row[1] for row in cursor.fetchall()]
 
 
 def _sync_random_tlds_global_column(conn=None):
@@ -143,6 +150,42 @@ def create_database():
             except Exception as e:
                 print(f"⚠️ Error en migración bot_type: {e}")
         
+        # Migración 6/7: modo de proxy (coordenadas vs Windows)
+        cursor.execute("PRAGMA table_info(bot_settings)")
+        _bs_cols = [column[1] for column in cursor.fetchall()]
+        if "proxy_via_coordinates" not in _bs_cols or "proxy_via_windows" not in _bs_cols:
+            print("🔄 Aplicando migración: proxy_via_coordinates / proxy_via_windows...")
+            try:
+                if "proxy_via_coordinates" not in _bs_cols:
+                    cursor.execute(
+                        "ALTER TABLE bot_settings ADD COLUMN proxy_via_coordinates INTEGER NOT NULL DEFAULT 0"
+                    )
+                if "proxy_via_windows" not in _bs_cols:
+                    cursor.execute(
+                        "ALTER TABLE bot_settings ADD COLUMN proxy_via_windows INTEGER NOT NULL DEFAULT 0"
+                    )
+                cursor.execute(
+                    """
+                    UPDATE bot_settings SET proxy_via_windows = 1
+                    WHERE COALESCE(enable_proxy, 0) = 1
+                    """
+                )
+                print("✅ Migración modo proxy aplicada")
+            except Exception as e:
+                print(f"⚠️ Error en migración modo proxy: {e}")
+        
+        cursor.execute("PRAGMA table_info(bot_settings)")
+        _bs_cols2 = [column[1] for column in cursor.fetchall()]
+        if "enable_creator_user_agent_actions" not in _bs_cols2:
+            print("🔄 Aplicando migración: enable_creator_user_agent_actions...")
+            try:
+                cursor.execute(
+                    "ALTER TABLE bot_settings ADD COLUMN enable_creator_user_agent_actions INTEGER NOT NULL DEFAULT 0"
+                )
+                print("✅ Migración enable_creator_user_agent_actions aplicada")
+            except Exception as e:
+                print(f"⚠️ Error en migración enable_creator_user_agent_actions: {e}")
+        
         conn.commit()
         print("✅ Verificación de migraciones de bot_settings completada")
 
@@ -219,6 +262,20 @@ def create_database():
                 white_captcha_click TEXT NOT NULL,
                 close_captcha_error_click TEXT NOT NULL,
                 close_proxy_error_click TEXT NOT NULL,
+                proxy_extension_click TEXT NOT NULL,
+                activate_proxy_click TEXT NOT NULL,
+                disable_proxy_click TEXT NOT NULL,
+                user_agent_extension_click TEXT NOT NULL,
+                user_agent_extract_click TEXT NOT NULL,
+                user_agent_apply_click TEXT NOT NULL,
+                user_agent_outside_click TEXT NOT NULL,
+                search_bar_click TEXT NOT NULL,
+                user_options_click TEXT NOT NULL,
+                logout_click TEXT NOT NULL,
+                jobs_click TEXT NOT NULL,
+                login_with_email_click TEXT NOT NULL,
+                clic_email_click TEXT NOT NULL,
+                linkedin_logo_click TEXT NOT NULL,
                 FOREIGN KEY (browser_id) REFERENCES browsers(id) ON DELETE CASCADE,
                 UNIQUE(browser_id)
             )
@@ -264,6 +321,20 @@ def create_database():
                     white_captcha_click TEXT NOT NULL,
                     close_captcha_error_click TEXT NOT NULL,
                     close_proxy_error_click TEXT NOT NULL,
+                    proxy_extension_click TEXT NOT NULL,
+                    activate_proxy_click TEXT NOT NULL,
+                    disable_proxy_click TEXT NOT NULL,
+                    user_agent_extension_click TEXT NOT NULL,
+                    user_agent_extract_click TEXT NOT NULL,
+                    user_agent_apply_click TEXT NOT NULL,
+                    user_agent_outside_click TEXT NOT NULL,
+                    search_bar_click TEXT NOT NULL,
+                    user_options_click TEXT NOT NULL,
+                    logout_click TEXT NOT NULL,
+                    jobs_click TEXT NOT NULL,
+                    login_with_email_click TEXT NOT NULL,
+                    clic_email_click TEXT NOT NULL,
+                    linkedin_logo_click TEXT NOT NULL,
                     FOREIGN KEY (browser_id) REFERENCES browsers(id) ON DELETE CASCADE,
                     UNIQUE(browser_id)
                 )
@@ -280,8 +351,13 @@ def create_database():
                         continue_button_click, name_input_click, continue_button2_click,
                         close_captcha_click, close_number_click, cookie_editor_icon_click,
                         save_cookie_clipboard_click, close_window, continue_button_click_optional,
-                        white_captcha_click, close_captcha_error_click, close_proxy_error_click
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        white_captcha_click, close_captcha_error_click, close_proxy_error_click,
+                        proxy_extension_click, activate_proxy_click, disable_proxy_click,
+                        user_agent_extension_click, user_agent_extract_click,
+                        user_agent_apply_click, user_agent_outside_click,
+                        search_bar_click, user_options_click, logout_click,
+                        jobs_click, login_with_email_click, clic_email_click, linkedin_logo_click
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     default_browser_id,
                     old_data[1] if len(old_data) > 1 else '',
@@ -298,7 +374,21 @@ def create_database():
                     old_data[12] if len(old_data) > 12 else '',
                     old_data[13] if len(old_data) > 13 else '',
                     old_data[14] if len(old_data) > 14 else '',
-                    old_data[15] if len(old_data) > 15 else ''
+                    old_data[15] if len(old_data) > 15 else '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
                 ))
             
             # Eliminar tabla antigua y renombrar la nueva
@@ -315,7 +405,12 @@ def create_database():
             'continue_button_click', 'name_input_click', 'continue_button2_click',
             'close_captcha_click', 'close_number_click', 'cookie_editor_icon_click',
             'save_cookie_clipboard_click', 'close_window', 'continue_button_click_optional',
-            'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click'
+            'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click',
+            'proxy_extension_click', 'activate_proxy_click', 'disable_proxy_click',
+            'user_agent_extension_click', 'user_agent_extract_click', 'user_agent_apply_click', 'user_agent_outside_click',
+            'search_bar_click', 'user_options_click', 'logout_click', 'jobs_click',
+            'login_with_email_click', 'clic_email_click', 'linkedin_logo_click',
+            'proxy_rotation_browser_click', 'proxy_rotation_search_bar_click', 'proxy_rotation_close_browser_click',
         ]
         
         # Agregar columnas faltantes
@@ -325,7 +420,7 @@ def create_database():
             for col in missing_columns:
                 if col != 'browser_id':  # browser_id ya se maneja en la migración
                     try:
-                        if col in ['close_window', 'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click']:
+                        if col in ['close_window', 'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click', 'proxy_extension_click', 'activate_proxy_click', 'disable_proxy_click', 'user_agent_extension_click', 'user_agent_extract_click', 'user_agent_apply_click', 'user_agent_outside_click', 'search_bar_click', 'user_options_click', 'logout_click', 'jobs_click', 'login_with_email_click', 'clic_email_click', 'linkedin_logo_click', 'proxy_rotation_browser_click', 'proxy_rotation_search_bar_click', 'proxy_rotation_close_browser_click']:
                             cursor.execute(f"ALTER TABLE creator_coordinates ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
                         elif col == 'continue_button_click_optional':
                             cursor.execute(f"ALTER TABLE creator_coordinates ADD COLUMN {col} TEXT")
@@ -423,6 +518,31 @@ def create_database():
         if 'random_domain_tlds' not in global_config_columns:
             print("🔄 Agregando campo random_domain_tlds a global_time_config...")
             cursor.execute("ALTER TABLE global_time_config ADD COLUMN random_domain_tlds TEXT")
+
+        # 🔹 Tabla para pool de User-Agents remotos del creator (lista global enviada por servidor)
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS creator_user_agents_pool (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                user_agents_json TEXT NOT NULL DEFAULT '[]',
+                used_user_agents_json TEXT NOT NULL DEFAULT '[]',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            '''
+        )
+        cursor.execute("PRAGMA table_info(creator_user_agents_pool)")
+        ua_pool_cols = [col[1] for col in cursor.fetchall()]
+        if 'used_user_agents_json' not in ua_pool_cols:
+            print("🔄 Agregando campo used_user_agents_json a creator_user_agents_pool...")
+            cursor.execute(
+                "ALTER TABLE creator_user_agents_pool ADD COLUMN used_user_agents_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        cursor.execute("SELECT COUNT(*) FROM creator_user_agents_pool")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(
+                "INSERT INTO creator_user_agents_pool (id, user_agents_json, used_user_agents_json) VALUES (1, ?, ?)",
+                ('[]', '[]'),
+            )
         
         # 🔹 Tabla para dominios (múltiples dominios con configuración de relleno)
         cursor.execute(
@@ -575,6 +695,19 @@ def create_database():
         
         print("✅ Verificación de creator_setting completada")
 
+        for _pr_col, _pr_sql in (
+            ("proxy_rotation_enabled", "ALTER TABLE creator_setting ADD COLUMN proxy_rotation_enabled INTEGER DEFAULT 0"),
+            ("proxy_rotation_link", "ALTER TABLE creator_setting ADD COLUMN proxy_rotation_link TEXT"),
+        ):
+            cursor.execute("PRAGMA table_info(creator_setting)")
+            _cols_now = [col[1] for col in cursor.fetchall()]
+            if _pr_col not in _cols_now:
+                try:
+                    cursor.execute(_pr_sql)
+                    print(f"✅ Columna {_pr_col} agregada a creator_setting")
+                except sqlite3.OperationalError:
+                    pass
+
         # 🔹 Tabla para emails del creator
         cursor.execute(
             '''
@@ -641,7 +774,122 @@ def run_migrations():
                 'version': 3,
                 'description': 'Agregar columna white_captcha_click después de eliminar duplicada',
                 'sql': "ALTER TABLE creator_coordinates ADD COLUMN white_captcha_click TEXT NOT NULL DEFAULT ''"
-            }
+            },
+            {
+                'version': 4,
+                'description': 'Agregar columna proxy_extension_click a creator_coordinates',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN proxy_extension_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 5,
+                'description': 'Agregar columna activate_proxy_click a creator_coordinates',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN activate_proxy_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 6,
+                'description': 'Agregar columna disable_proxy_click a creator_coordinates',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN disable_proxy_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 7,
+                'description': 'Coordenadas rotación proxy: proxy_rotation_url_click',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN proxy_rotation_url_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 8,
+                'description': 'Coordenadas rotación proxy: proxy_rotation_rotate_click',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN proxy_rotation_rotate_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 9,
+                'description': 'Coordenadas rotación proxy: proxy_rotation_confirm_click',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN proxy_rotation_confirm_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 10,
+                'description': 'Rotación proxy: clic navegador (proxy_rotation_browser_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN proxy_rotation_browser_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 11,
+                'description': 'Rotación proxy: barra búsqueda (proxy_rotation_search_bar_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN proxy_rotation_search_bar_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 12,
+                'description': 'Rotación proxy: cerrar navegador (proxy_rotation_close_browser_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN proxy_rotation_close_browser_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 13,
+                'description': 'User-Agent: clic extensión (user_agent_extension_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN user_agent_extension_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 14,
+                'description': 'User-Agent: clic extraer valor (user_agent_extract_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN user_agent_extract_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 15,
+                'description': 'User-Agent: clic aplicar (user_agent_apply_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN user_agent_apply_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 16,
+                'description': 'User-Agent: clic fuera de extensión (user_agent_outside_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN user_agent_outside_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 17,
+                'description': 'Post-registro: abrir nueva pestaña (new_tab_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN new_tab_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 18,
+                'description': 'Post-registro: nueva pestaña LinkedIn (linkedin_new_tab_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN linkedin_new_tab_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 19,
+                'description': 'Post-registro: pegar contraseña (paste_password_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN paste_password_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 20,
+                'description': 'Post-registro: opciones de usuario (user_options_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN user_options_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 21,
+                'description': 'Post-registro: cerrar sesión (logout_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN logout_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 22,
+                'description': 'Post-éxito: barra búsqueda LinkedIn (search_bar_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN search_bar_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 23,
+                'description': 'Post-éxito: Jobs (jobs_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN jobs_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 24,
+                'description': 'Post-éxito: logo LinkedIn (linkedin_logo_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN linkedin_logo_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 25,
+                'description': 'Post-éxito: login with email (login_with_email_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN login_with_email_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 26,
+                'description': 'Post-éxito: clic Email (clic_email_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN clic_email_click TEXT NOT NULL DEFAULT ''"
+            },
         ]
         
         # Ejecutar migraciones pendientes
@@ -796,7 +1044,17 @@ def clear_database():
 
 
 
-def save_bot_settings(iterations, pause_minutes=20, enable_adb=True, enable_proxy=True, emails_per_batch=5):
+def save_bot_settings(
+    iterations,
+    pause_minutes=20,
+    enable_adb=True,
+    emails_per_batch=5,
+    proxy_via_coordinates=False,
+    proxy_via_windows=False,
+    enable_creator_user_agent_actions=False,
+):
+    """Guarda ajustes del bot. enable_proxy se deriva: True si algún modo de proxy está activo."""
+    enable_proxy = bool(proxy_via_coordinates or proxy_via_windows)
     try:
         conn = sqlite3.connect(DB_PATH)
         # Habilitar claves foráneas
@@ -808,16 +1066,46 @@ def save_bot_settings(iterations, pause_minutes=20, enable_adb=True, enable_prox
         existing = cursor.fetchone()
 
         if existing:
-            cursor.execute('''
+            cursor.execute(
+                """
                 UPDATE bot_settings
-                SET iterations = ?, pause_minutes = ?, enable_adb = ?, enable_proxy = ?, emails_per_batch = ?
+                SET iterations = ?, pause_minutes = ?, enable_adb = ?, enable_proxy = ?, emails_per_batch = ?,
+                    proxy_via_coordinates = ?, proxy_via_windows = ?,
+                    enable_creator_user_agent_actions = ?
                 WHERE id = ?
-            ''', (iterations, pause_minutes, int(enable_adb), int(enable_proxy), emails_per_batch, existing[0]))
+                """,
+                (
+                    iterations,
+                    pause_minutes,
+                    int(enable_adb),
+                    int(enable_proxy),
+                    emails_per_batch,
+                    int(bool(proxy_via_coordinates)),
+                    int(bool(proxy_via_windows)),
+                    int(bool(enable_creator_user_agent_actions)),
+                    existing[0],
+                ),
+            )
         else:
-            cursor.execute('''
-                INSERT INTO bot_settings (iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (iterations, pause_minutes, int(enable_adb), int(enable_proxy), emails_per_batch))
+            cursor.execute(
+                """
+                INSERT INTO bot_settings (
+                    iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch,
+                    proxy_via_coordinates, proxy_via_windows, enable_creator_user_agent_actions
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    iterations,
+                    pause_minutes,
+                    int(enable_adb),
+                    int(enable_proxy),
+                    emails_per_batch,
+                    int(bool(proxy_via_coordinates)),
+                    int(bool(proxy_via_windows)),
+                    int(bool(enable_creator_user_agent_actions)),
+                ),
+            )
 
         conn.commit()
         conn.close()
@@ -834,16 +1122,52 @@ def get_bot_settings():
         # Habilitar claves foráneas
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch FROM bot_settings LIMIT 1")
+        cursor.execute("PRAGMA table_info(bot_settings)")
+        cols = [r[1] for r in cursor.fetchall()]
+        has_proxy_mode = "proxy_via_coordinates" in cols and "proxy_via_windows" in cols
+        has_ua_actions = "enable_creator_user_agent_actions" in cols
+        if has_proxy_mode:
+            if has_ua_actions:
+                cursor.execute(
+                    """
+                    SELECT iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch,
+                           COALESCE(proxy_via_coordinates, 0), COALESCE(proxy_via_windows, 0),
+                           COALESCE(enable_creator_user_agent_actions, 0)
+                    FROM bot_settings LIMIT 1
+                    """
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch,
+                           COALESCE(proxy_via_coordinates, 0), COALESCE(proxy_via_windows, 0)
+                    FROM bot_settings LIMIT 1
+                    """
+                )
+        else:
+            cursor.execute(
+                "SELECT iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch FROM bot_settings LIMIT 1"
+            )
         row = cursor.fetchone()
         conn.close()
         if row:
+            if has_proxy_mode and len(row) >= 7:
+                pc, pw = bool(row[5]), bool(row[6])
+            else:
+                pc, pw = False, bool(row[3])
+            if has_proxy_mode and has_ua_actions and len(row) >= 8:
+                ua_act = bool(row[7])
+            else:
+                ua_act = False
             return {
-                "iterations": row[0], 
+                "iterations": row[0],
                 "pause_minutes": row[1],
                 "enable_adb": bool(row[2]),
                 "enable_proxy": bool(row[3]),
-                "emails_per_batch": row[4]
+                "emails_per_batch": row[4],
+                "proxy_via_coordinates": pc,
+                "proxy_via_windows": pw,
+                "enable_creator_user_agent_actions": ua_act,
             }
         else:
             return None
@@ -1384,6 +1708,8 @@ def set_creator_user_agent_by_browser_name(browser_name, user_agent):
             accounts_to_create=current.get('accounts_to_create', 1),
             notification_email=current.get('notification_email'),
             isInVps=current.get('isInVps'),
+            proxy_rotation_enabled=current.get('proxy_rotation_enabled'),
+            proxy_rotation_link=current.get('proxy_rotation_link'),
         )
         if not ok:
             return False, f"No se pudo guardar User-Agent para {browser_real_name}"
@@ -1391,6 +1717,137 @@ def set_creator_user_agent_by_browser_name(browser_name, user_agent):
         return True, f"User-Agent remoto aplicado para {browser_real_name}"
     except Exception as e:
         return False, f"Error aplicando User-Agent remoto: {e}"
+
+
+def save_creator_user_agents_pool(user_agents):
+    """
+    Guarda la lista global de User-Agents de creator enviada por servidor.
+
+    - Entrada esperada: list[str]
+    - Limpieza: trim, ignora vacíos, dedup case-insensitive preservando orden.
+    """
+    try:
+        if user_agents is None:
+            return True, "Sin cambios: payload de User-Agents no enviado"
+        if not isinstance(user_agents, list):
+            return False, "Formato inválido: se esperaba lista de User-Agents"
+
+        cleaned = []
+        seen = set()
+        for raw in user_agents:
+            s = str(raw or "").strip()
+            if not s:
+                continue
+            k = s.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            cleaned.append(s)
+
+        payload_json = json.dumps(cleaned, ensure_ascii=False)
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO creator_user_agents_pool (id, user_agents_json, used_user_agents_json, updated_at)
+            VALUES (1, ?, '[]', CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                user_agents_json = excluded.user_agents_json,
+                used_user_agents_json = '[]',
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (payload_json,),
+        )
+        conn.commit()
+        conn.close()
+        return True, f"Pool de User-Agents creator actualizado ({len(cleaned)} elementos)"
+    except Exception as e:
+        return False, f"Error guardando pool de User-Agents creator: {e}"
+
+
+def get_creator_user_agents_pool():
+    """
+    Devuelve la lista global de User-Agents de creator almacenada localmente.
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_agents_json FROM creator_user_agents_pool WHERE id = 1")
+        row = cursor.fetchone()
+        conn.close()
+        if not row or not row[0]:
+            return []
+        data = json.loads(row[0])
+        if not isinstance(data, list):
+            return []
+        return [str(x).strip() for x in data if str(x).strip()]
+    except Exception as e:
+        print(f"❌ Error obteniendo pool de User-Agents creator: {e}")
+        return []
+
+
+def get_next_creator_user_agent_random():
+    """
+    Obtiene un User-Agent aleatorio sin repetir hasta agotar el pool.
+    Cuando se agotan, reinicia el ciclo automáticamente.
+    """
+    try:
+        import random
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT user_agents_json, used_user_agents_json FROM creator_user_agents_pool WHERE id = 1"
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return None
+
+        all_raw = json.loads(row[0] or "[]")
+        used_raw = json.loads(row[1] or "[]")
+        all_list = [str(x).strip() for x in all_raw if str(x).strip()]
+        if not all_list:
+            conn.close()
+            return None
+
+        used_set = {str(x).strip().lower() for x in used_raw if str(x).strip()}
+        available = [ua for ua in all_list if ua.lower() not in used_set]
+
+        # Si ya se usaron todos, reiniciar ciclo
+        if not available:
+            used_set = set()
+            available = list(all_list)
+
+        picked = random.choice(available)
+        used_set.add(picked.lower())
+        used_to_save = [ua for ua in all_list if ua.lower() in used_set]
+
+        cursor.execute(
+            """
+            UPDATE creator_user_agents_pool
+            SET used_user_agents_json = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = 1
+            """,
+            (json.dumps(used_to_save, ensure_ascii=False),),
+        )
+        conn.commit()
+        conn.close()
+        return picked
+    except Exception as e:
+        print(f"❌ Error obteniendo User-Agent aleatorio: {e}")
+        return None
+
+
+def clear_creator_user_agents_pool():
+    """
+    Limpia (deja vacía) la lista global de User-Agents de creator.
+    """
+    return save_creator_user_agents_pool([])
 
 
 def update_browser(browser_id, name=None, isActive=None):
@@ -1552,63 +2009,42 @@ def save_creator_coordinates(browser_id, coordinates_dict=None, **kwargs):
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
 
-        # Obtener coordenadas existentes para este navegador
+        column_names = _creator_coordinates_column_names(cursor)
+        if not column_names:
+            conn.close()
+            return False
+
         cursor.execute("SELECT * FROM creator_coordinates WHERE browser_id = ?", (browser_id,))
         existing_row = cursor.fetchone()
-        
-        # Preparar valores con los existentes como base o valores por defecto
+
         if existing_row:
-            # Excluir id y browser_id (índices 0 y 1)
-            values = list(existing_row[2:])  # Desde índice 2 en adelante
-            # Asegurar que tenemos exactamente 15 valores
-            while len(values) < 15:
-                values.append('')
-            values = values[:15]
+            data = {
+                column_names[i]: existing_row[i]
+                for i in range(min(len(column_names), len(existing_row)))
+            }
         else:
-            values = [''] * 15  # 15 campos de coordenadas
+            data = {name: "" for name in column_names}
+            data["browser_id"] = browser_id
 
-        # Mapeo de nombres de campos a índices (0-14 para 15 campos)
-        field_mapping = {
-            'brave_click': 0,
-            'linkedin_fav_click': 1,
-            'email_input_click': 2,
-            'continue_button_click': 3,
-            'name_input_click': 4,
-            'continue_button2_click': 5,
-            'close_captcha_click': 6,
-            'close_number_click': 7,
-            'cookie_editor_icon_click': 8,
-            'save_cookie_clipboard_click': 9,
-            'close_window': 10,
-            'continue_button_click_optional': 11,
-            'white_captcha_click': 12,
-            'close_captcha_error_click': 13,
-            'close_proxy_error_click': 14
-        }
+        data["browser_id"] = browser_id
 
-        # Actualizar valores desde coordinates_dict si se proporciona
         if coordinates_dict:
             for field, coord in coordinates_dict.items():
-                if field in field_mapping:
-                    values[field_mapping[field]] = coord
+                if field in data:
+                    data[field] = coord
 
-        # Actualizar valores desde kwargs
         for field, coord in kwargs.items():
-            if field in field_mapping:
-                values[field_mapping[field]] = coord
+            if field in data:
+                data[field] = coord
 
-        # Insertar o actualizar (UPSERT usando REPLACE)
+        insert_columns = [c for c in column_names if c != "id"]
+        placeholders = ",".join("?" * len(insert_columns))
+        columns_sql = ",".join(insert_columns)
+        values_tuple = tuple(data.get(c, "") for c in insert_columns)
+
         cursor.execute(
-            """
-            INSERT OR REPLACE INTO creator_coordinates (
-                browser_id, brave_click, linkedin_fav_click, email_input_click,
-                continue_button_click, name_input_click, continue_button2_click,
-                close_captcha_click, close_number_click, cookie_editor_icon_click,
-                save_cookie_clipboard_click, close_window, continue_button_click_optional,
-                white_captcha_click, close_captcha_error_click, close_proxy_error_click
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (browser_id,) + tuple(values)
+            f"INSERT OR REPLACE INTO creator_coordinates ({columns_sql}) VALUES ({placeholders})",
+            values_tuple,
         )
 
         conn.commit()
@@ -1637,6 +2073,7 @@ def get_creator_coordinates(browser_id, *field_names):
         # Habilitar claves foráneas
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
+        column_names = _creator_coordinates_column_names(cursor)
         cursor.execute("SELECT * FROM creator_coordinates WHERE browser_id = ?", (browser_id,))
         row = cursor.fetchone()
         conn.close()
@@ -1644,52 +2081,19 @@ def get_creator_coordinates(browser_id, *field_names):
         if not row:
             return None
 
-        # Mapeo de nombres de campos a índices (ahora browser_id es índice 1)
-        field_mapping = {
-            'brave_click': 2,
-            'linkedin_fav_click': 3,
-            'email_input_click': 4,
-            'continue_button_click': 5,
-            'name_input_click': 6,
-            'continue_button2_click': 7,
-            'close_captcha_click': 8,
-            'close_number_click': 9,
-            'cookie_editor_icon_click': 10,
-            'save_cookie_clipboard_click': 11,
-            'close_window': 12,
-            'continue_button_click_optional': 13,
-            'white_captcha_click': 14,
-            'close_captcha_error_click': 15,
-            'close_proxy_error_click': 16
+        full = {
+            column_names[i]: row[i] if i < len(row) else ""
+            for i in range(len(column_names))
         }
 
-        # Si no se especifican campos, devolver todos
+        # Misma forma que antes: solo campos de coordenadas (sin id ni browser_id)
+        coord_keys = [c for c in column_names if c not in ("id", "browser_id")]
+        all_coords = {k: full.get(k, "") for k in coord_keys}
+
         if not field_names:
-            return {
-                'brave_click': row[2] if len(row) > 2 else '',
-                'linkedin_fav_click': row[3] if len(row) > 3 else '',
-                'email_input_click': row[4] if len(row) > 4 else '',
-                'continue_button_click': row[5] if len(row) > 5 else '',
-                'name_input_click': row[6] if len(row) > 6 else '',
-                'continue_button2_click': row[7] if len(row) > 7 else '',
-                'close_captcha_click': row[8] if len(row) > 8 else '',
-                'close_number_click': row[9] if len(row) > 9 else '',
-                'cookie_editor_icon_click': row[10] if len(row) > 10 else '',
-                'save_cookie_clipboard_click': row[11] if len(row) > 11 else '',
-                'close_window': row[12] if len(row) > 12 else '',
-                'continue_button_click_optional': row[13] if len(row) > 13 else '',
-                'white_captcha_click': row[14] if len(row) > 14 else '',
-                'close_captcha_error_click': row[15] if len(row) > 15 else '',
-                'close_proxy_error_click': row[16] if len(row) > 16 else ''
-            }
+            return all_coords
 
-        # Devolver solo los campos solicitados
-        result = {}
-        for field_name in field_names:
-            if field_name in field_mapping:
-                idx = field_mapping[field_name]
-                result[field_name] = row[idx] if len(row) > idx else ''
-
+        result = {name: all_coords.get(name, "") for name in field_names if name in all_coords}
         return result if result else None
 
     except Exception as e:
@@ -1698,7 +2102,7 @@ def get_creator_coordinates(browser_id, *field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None, is33mail=None, domain=None):
+def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None, is33mail=None, domain=None, proxy_rotation_enabled=None, proxy_rotation_link=None):
     """
     Guarda o actualiza la configuración del creator para un navegador específico
     NOTA: Los campos de tiempo (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle) 
@@ -1717,6 +2121,8 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
         isInVps (bool): Si está ejecutándose en VPS (True) o máquina física (False) (opcional)
         is33mail (bool): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
         domain (str): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
+        proxy_rotation_enabled (bool|None): Si se usa enlace + coordenadas de rotación de proxy; None conserva el valor guardado
+        proxy_rotation_link (str|None): URL del panel de rotación; None conserva el valor guardado
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -1730,15 +2136,31 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
         # Convertir boolean a integer para SQLite (True = 1, False = 0)
         isInVps_int = 1 if isInVps is True else (0 if isInVps is False else None)
         
-        # Insertar o actualizar (UPSERT usando REPLACE) - NO guardar campos de tiempo ni dominio
+        cursor.execute(
+            """
+            SELECT COALESCE(proxy_rotation_enabled, 0), proxy_rotation_link
+            FROM creator_setting WHERE browser_id = ?
+            """,
+            (browser_id,),
+        )
+        ex_proxy = cursor.fetchone()
+        pr_en = int(ex_proxy[0]) if ex_proxy else 0
+        pr_link = ex_proxy[1] if ex_proxy else None
+        if proxy_rotation_enabled is not None:
+            pr_en = 1 if proxy_rotation_enabled else 0
+        if proxy_rotation_link is not None:
+            s = str(proxy_rotation_link).strip()
+            pr_link = s if s else None
+
+        # Insertar o actualizar (UPSERT) - NO guardar campos de tiempo ni dominio
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, notification_email, isInVps)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (browser_id, user_agent, accounts_to_create, notification_email, isInVps_int))
+            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, notification_email, isInVps, proxy_rotation_enabled, proxy_rotation_link)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (browser_id, user_agent, accounts_to_create, notification_email, isInVps_int, pr_en, pr_link))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Notificación={notification_email}, isInVps={isInVps}")
+        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Notificación={notification_email}, isInVps={isInVps}, proxy_rotación={bool(pr_en)}")
         return True
         
     except Exception as e:
@@ -1764,7 +2186,10 @@ def get_creator_setting(browser_id):
         # Habilitar claves foráneas
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT user_agent, accounts_to_create, notification_email, isInVps FROM creator_setting WHERE browser_id = ?", (browser_id,))
+        cursor.execute(
+            "SELECT user_agent, accounts_to_create, notification_email, isInVps, COALESCE(proxy_rotation_enabled, 0), proxy_rotation_link FROM creator_setting WHERE browser_id = ?",
+            (browser_id,),
+        )
         row = cursor.fetchone()
         conn.close()
         
@@ -1782,6 +2207,8 @@ def get_creator_setting(browser_id):
                 'accounts_to_create': row[1],
                 'notification_email': row[2],
                 'isInVps': isInVps_bool,  # Boolean o None
+                'proxy_rotation_enabled': bool(row[4]),
+                'proxy_rotation_link': row[5],
                 # Campos de tiempo y dominio desde configuración global
                 'scheduled_time': global_time_config['scheduled_time'],
                 'timezone': global_time_config['timezone'],

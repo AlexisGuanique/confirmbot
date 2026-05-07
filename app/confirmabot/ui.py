@@ -4,21 +4,35 @@ def setup_ui(logged_in_user, on_login_success):
     from tkinter import messagebox
     from app.auth.auth import logout
     from app.confirmabot.auth_ui import setup_auth_ui
-    from app.database.database import save_bot_settings, get_bot_settings, save_emails, get_all_emails, get_email_count, clear_emails, save_click_coordinates, save_nopecha_key, get_nopecha_key
+    from app.database.database import (
+        save_bot_settings,
+        get_bot_settings,
+        save_emails,
+        get_all_emails,
+        get_email_count,
+        clear_emails,
+        save_click_coordinates,
+        save_nopecha_key,
+        get_nopecha_key,
+        get_default_browser,
+        get_creator_setting,
+        save_creator_setting,
+        create_browser,
+    )
 
     from app.confirmabot.confirm_bot import run_checker, stop_bot, open_temp_chrome_profile as openProfileWithExtraExtension
     import threading
     import time
     from app.confirmabot.utils.field_reader import parse_email_file  
     from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
-    from app.creator.ui_creator import create_new_window
+    from app.creator.ui_creator import create_new_window, open_proxy_rotation_config_modal
 
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
 
     root = ctk.CTk()
     root.title("Confirma Bot")
-    root.geometry("600x650")
+    root.geometry("600x700")
     root.configure(fg_color="#FFFFFF")  # Fondo blanco
 
    # 📌 Etiqueta de bienvenida centrada arriba
@@ -352,10 +366,21 @@ def setup_ui(logged_in_user, on_login_success):
                 # Obtener valores actuales de los checkboxes para no sobrescribirlos
                 current_settings = get_bot_settings()
                 enable_adb = current_settings.get("enable_adb", True) if current_settings else True
-                enable_proxy = current_settings.get("enable_proxy", True) if current_settings else True
-                
-                # Guardar configuración manteniendo los valores de los checkboxes
-                save_bot_settings(iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch)
+                pc = current_settings.get("proxy_via_coordinates", False) if current_settings else False
+                pw = current_settings.get("proxy_via_windows", True) if current_settings else True
+                enable_creator_ua = (
+                    current_settings.get("enable_creator_user_agent_actions", False) if current_settings else False
+                )
+
+                save_bot_settings(
+                    iterations,
+                    pause_minutes,
+                    enable_adb,
+                    emails_per_batch,
+                    proxy_via_coordinates=pc,
+                    proxy_via_windows=pw,
+                    enable_creator_user_agent_actions=enable_creator_ua,
+                )
                 
                 messagebox.showinfo("Éxito", "Configuración guardada correctamente.")
                 config_window.destroy()
@@ -557,16 +582,147 @@ def setup_ui(logged_in_user, on_login_success):
     )
     adb_checkbox.pack(pady=(0, 10), anchor="center")
 
-    # Checkbox para Proxy
-    proxy_checkbox = ctk.CTkCheckBox(
+    ctk.CTkLabel(
         hostinger_frame,
-        text="Activar proxy",
+        text="Proxy (elige un modo):",
+        text_color="black",
+        font=("Arial", 12, "bold"),
+    ).pack(pady=(0, 4), anchor="center")
+
+    proxy_coord_checkbox = ctk.CTkCheckBox(
+        hostinger_frame,
+        text="Proxy por coordenadas (clics / extensión)",
         text_color="black",
         font=("Arial", 12),
         checkbox_width=20,
-        checkbox_height=20
+        checkbox_height=20,
     )
-    proxy_checkbox.pack(pady=(0, 15), anchor="center")
+    proxy_coord_checkbox.pack(pady=(0, 6), anchor="center")
+
+    proxy_win_checkbox = ctk.CTkCheckBox(
+        hostinger_frame,
+        text="Proxy de Windows (registro del sistema)",
+        text_color="black",
+        font=("Arial", 12),
+        checkbox_width=20,
+        checkbox_height=20,
+    )
+    proxy_win_checkbox.pack(pady=(0, 6), anchor="center")
+
+    creator_ua_checkbox = ctk.CTkCheckBox(
+        hostinger_frame,
+        text="Creator: aplicar User-Agent (extensión + pool) antes de LinkedIn",
+        text_color="black",
+        font=("Arial", 12),
+        checkbox_width=20,
+        checkbox_height=20,
+    )
+    creator_ua_checkbox.pack(pady=(0, 10), anchor="center")
+
+    def _on_proxy_coord_toggle():
+        if proxy_coord_checkbox.get() == 1:
+            proxy_win_checkbox.deselect()
+        auto_save_checkboxes()
+
+    def _on_proxy_win_toggle():
+        if proxy_win_checkbox.get() == 1:
+            proxy_coord_checkbox.deselect()
+        auto_save_checkboxes()
+
+    # Rotación proxy (creator): debajo de los modos de proxy; solo aparece el botón al marcar el checkbox
+    def resolve_main_creator_browser():
+        b = get_default_browser()
+        if not b:
+            bid_new = create_browser("Navegador Principal", True)
+            if bid_new:
+                b = get_default_browser()
+        if b:
+            return b["id"], b["name"]
+        return None, None
+
+    bid_rot, bname_rot = resolve_main_creator_browser()
+    cs_rot = get_creator_setting(bid_rot) if bid_rot else {}
+
+    rot_proxy_outer = ctk.CTkFrame(hostinger_frame, fg_color="transparent")
+    rot_proxy_outer.pack(fill="x", pady=(0, 14), anchor="w")
+
+    ctk.CTkLabel(
+        rot_proxy_outer,
+        text="🔄 Creator — rotación proxy",
+        font=("Arial", 11, "bold"),
+        text_color="black",
+    ).pack(anchor="w")
+    ctk.CTkLabel(
+        rot_proxy_outer,
+        text=(
+            f"Navegador predeterminado: {bname_rot}"
+            if bid_rot
+            else "Sin navegador: abre «Configuración del creator» y crea uno."
+        ),
+        font=("Arial", 10),
+        text_color="gray",
+        wraplength=320,
+        justify="left",
+    ).pack(anchor="w", pady=(2, 6))
+
+    main_proxy_rot_var = ctk.IntVar(value=1 if (cs_rot and cs_rot.get("proxy_rotation_enabled")) else 0)
+
+    def sync_rot_proxy_config_btn():
+        bid, _ = resolve_main_creator_browser()
+        if main_proxy_rot_var.get() == 1 and bid:
+            main_rot_proxy_config_btn.pack(anchor="w", pady=(6, 0))
+        else:
+            main_rot_proxy_config_btn.pack_forget()
+
+    def on_creator_rot_proxy_toggle():
+        bid, _ = resolve_main_creator_browser()
+        sync_rot_proxy_config_btn()
+        if not bid:
+            return
+        cs_m = get_creator_setting(bid) or {}
+        save_creator_setting(
+            browser_id=bid,
+            user_agent=cs_m.get("user_agent", ""),
+            accounts_to_create=cs_m.get("accounts_to_create", 1),
+            notification_email=cs_m.get("notification_email"),
+            isInVps=cs_m.get("isInVps"),
+            proxy_rotation_enabled=(main_proxy_rot_var.get() == 1),
+            proxy_rotation_link=None,
+        )
+
+    def open_creator_rot_proxy_modal():
+        bid, _ = resolve_main_creator_browser()
+        if not bid:
+            messagebox.showwarning(
+                "Aviso",
+                "No hay navegador en la base de datos.\nAbre «Configuración del creator».",
+            )
+            return
+        open_proxy_rotation_config_modal(root, bid, include_link_section=True)
+
+    main_rot_proxy_config_btn = ctk.CTkButton(
+        rot_proxy_outer,
+        text="Configurar rotación proxy",
+        fg_color="#6f42c1",
+        text_color="white",
+        font=("Arial", 11, "bold"),
+        width=210,
+        height=32,
+        command=open_creator_rot_proxy_modal,
+    )
+
+    ctk.CTkCheckBox(
+        rot_proxy_outer,
+        text="Habilitar enlace de rotación de proxy",
+        text_color="black",
+        font=("Arial", 11),
+        checkbox_width=20,
+        checkbox_height=20,
+        variable=main_proxy_rot_var,
+        command=on_creator_rot_proxy_toggle,
+    ).pack(anchor="w", pady=(0, 2))
+
+    sync_rot_proxy_config_btn()
 
     # 🔽 Función para guardar automáticamente cuando cambien los checkboxes
     def auto_save_checkboxes():
@@ -583,12 +739,21 @@ def setup_ui(logged_in_user, on_login_success):
                 iterations_val = current_settings.get("iterations", 5)
                 pause_minutes_val = current_settings.get("pause_minutes", 20)
                 emails_per_batch_val = current_settings.get("emails_per_batch", 5)
-            
+
             enable_adb = adb_checkbox.get() == 1
-            enable_proxy = proxy_checkbox.get() == 1
-            
-            # Guardar TODOS los campos, incluyendo emails_per_batch
-            success = save_bot_settings(iterations_val, pause_minutes_val, enable_adb, enable_proxy, emails_per_batch_val)
+            pc = proxy_coord_checkbox.get() == 1
+            pw = proxy_win_checkbox.get() == 1
+            enable_creator_ua = creator_ua_checkbox.get() == 1
+
+            success = save_bot_settings(
+                iterations_val,
+                pause_minutes_val,
+                enable_adb,
+                emails_per_batch_val,
+                proxy_via_coordinates=pc,
+                proxy_via_windows=pw,
+                enable_creator_user_agent_actions=enable_creator_ua,
+            )
             if success:
                 print("✅ Configuración de checkboxes guardada automáticamente")
             else:
@@ -600,15 +765,34 @@ def setup_ui(logged_in_user, on_login_success):
     bot_settings = get_bot_settings()
     if bot_settings:
         adb_checkbox.select() if bot_settings.get("enable_adb", True) else adb_checkbox.deselect()
-        proxy_checkbox.select() if bot_settings.get("enable_proxy", True) else proxy_checkbox.deselect()
+        pc = bot_settings.get("proxy_via_coordinates", False)
+        pw = bot_settings.get("proxy_via_windows", False)
+        if pc:
+            proxy_coord_checkbox.select()
+            proxy_win_checkbox.deselect()
+        elif pw:
+            proxy_win_checkbox.select()
+            proxy_coord_checkbox.deselect()
+        elif bot_settings.get("enable_proxy", False):
+            proxy_win_checkbox.select()
+            proxy_coord_checkbox.deselect()
+        else:
+            proxy_coord_checkbox.deselect()
+            proxy_win_checkbox.deselect()
+        if bot_settings.get("enable_creator_user_agent_actions"):
+            creator_ua_checkbox.select()
+        else:
+            creator_ua_checkbox.deselect()
     else:
-        # Valores por defecto si no hay configuración
         adb_checkbox.select()
-        proxy_checkbox.select()
+        proxy_coord_checkbox.deselect()
+        proxy_win_checkbox.select()
+        creator_ua_checkbox.deselect()
 
-    # 🔽 Conectar eventos de cambio a los checkboxes
     adb_checkbox.configure(command=auto_save_checkboxes)
-    proxy_checkbox.configure(command=auto_save_checkboxes)
+    proxy_coord_checkbox.configure(command=_on_proxy_coord_toggle)
+    proxy_win_checkbox.configure(command=_on_proxy_win_toggle)
+    creator_ua_checkbox.configure(command=auto_save_checkboxes)
 
    
 

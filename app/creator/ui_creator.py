@@ -1,3 +1,299 @@
+def capture_creator_coordinate(default_parent, browser_id, coord_name, field_name, value_label_ref, popup_parent=None):
+    """Captura una coordenada con tecla «c»; guarda en creator_coordinates para browser_id."""
+    import customtkinter as ctk
+    from tkinter import messagebox
+    import threading
+    from app.database.database import save_creator_coordinates
+
+    _parent = popup_parent if popup_parent is not None else default_parent
+    popup = ctk.CTkToplevel(_parent)
+    popup.geometry("420x220")
+    popup.title("Captura de Coordenada")
+    popup.configure(fg_color="#f0f0f0")
+    popup.lift()
+    popup.focus_force()
+    popup.attributes("-topmost", True)
+
+    label = ctk.CTkLabel(
+        popup,
+        text=f"Presiona la tecla 'c' para capturar la coordenada de:\n{coord_name}",
+        font=("Arial", 14),
+        text_color="black",
+    )
+    label.pack(pady=15)
+
+    coord_label = ctk.CTkLabel(
+        popup,
+        text="",
+        font=("Arial", 14, "bold"),
+        text_color="black",
+    )
+    coord_label.pack(pady=10)
+
+    def capturar():
+        import pyautogui
+        import threading as th
+        import time
+        from app.confirmabot.utils.mouse_click_coordenates import get_mouse_coordinate_on_keypress
+
+        capturando = [True]
+
+        def actualizar_coordenadas():
+            try:
+                while capturando[0]:
+                    x, y = pyautogui.position()
+                    coord_text = f"X: {x}, Y: {y}"
+                    try:
+                        if popup.winfo_exists():
+                            coord_label.configure(text=f"Movimiento detectado: {coord_text}")
+                    except Exception:
+                        pass
+                    time.sleep(0.1)
+            except Exception:
+                pass
+
+        update_thread = th.Thread(target=actualizar_coordenadas, daemon=True)
+        update_thread.start()
+
+        # No usar keyboard.wait("c"): en Windows/hilos puede lanzar KeyError al limpiar hotkeys.
+        # Misma lógica que get_mouse_coordinate_on_keypress: bucle con is_pressed.
+        try:
+            coordenada_capturada = get_mouse_coordinate_on_keypress("c")
+        finally:
+            capturando[0] = False
+
+        try:
+            if popup.winfo_exists():
+                coord_label.configure(text=f"{coord_name}: {coordenada_capturada}")
+                mostrar_botones_confirmacion(coordenada_capturada)
+        except Exception:
+            pass
+
+    def mostrar_botones_confirmacion(coord):
+        try:
+            if not popup.winfo_exists():
+                return
+
+            for widget in popup.winfo_children():
+                if isinstance(widget, ctk.CTkButton):
+                    widget.destroy()
+
+            def guardar():
+                if save_creator_coordinates(browser_id, **{field_name: coord}):
+                    messagebox.showinfo("Guardado", f"✅ Coordenada guardada: {coord}")
+                    popup.destroy()
+                    value_label_ref.configure(text=coord, text_color="black")
+                else:
+                    messagebox.showerror("Error", "No se pudo guardar la coordenada.")
+
+            def volver_a_capturar():
+                popup.destroy()
+                capture_creator_coordinate(
+                    default_parent, browser_id, coord_name, field_name, value_label_ref, popup_parent
+                )
+
+            guardar_button = ctk.CTkButton(
+                popup,
+                text="Guardar",
+                command=guardar,
+                fg_color="#28a745",
+                text_color="white",
+            )
+            guardar_button.pack(pady=5)
+
+            volver_button = ctk.CTkButton(
+                popup,
+                text="Volver a Capturar",
+                command=volver_a_capturar,
+                fg_color="#dc3545",
+                text_color="white",
+            )
+            volver_button.pack(pady=5)
+        except Exception:
+            pass
+
+    threading.Thread(target=capturar, daemon=True).start()
+
+
+def open_proxy_rotation_config_modal(parent_window, browser_id, include_link_section=True):
+    """
+    Modal con enlace (opcional) + tabla de coordenadas de rotación proxy.
+    include_link_section=False: solo tabla (el enlace ya está en la ventana de configuración del creator).
+    """
+    import customtkinter as ctk
+    from tkinter import messagebox
+    from app.database.database import get_creator_coordinates, get_creator_setting, save_creator_setting
+
+    modal = ctk.CTkToplevel(parent_window)
+    modal.title("Configuración — rotación de proxy")
+    modal.geometry("740x580" if include_link_section else "700x460")
+    modal.configure(fg_color="#FFFFFF")
+    modal.transient(parent_window)
+    modal.grab_set()
+
+    ctk.CTkLabel(
+        modal,
+        text="📍 Rotación de proxy (creator)",
+        font=("Arial", 15, "bold"),
+        text_color="black",
+    ).pack(pady=(14, 6), padx=16)
+
+    if include_link_section:
+        link_wrap = ctk.CTkFrame(modal, fg_color="white", corner_radius=6, border_width=1, border_color="#cccccc")
+        link_wrap.pack(fill="x", padx=16, pady=(0, 10))
+
+        ctk.CTkLabel(
+            link_wrap,
+            text="Enlace del panel de rotación",
+            font=("Arial", 12, "bold"),
+            text_color="black",
+        ).pack(anchor="w", padx=12, pady=(12, 4))
+
+        cs_link = get_creator_setting(browser_id) or {}
+        link_entry = ctk.CTkEntry(
+            link_wrap,
+            placeholder_text="https://…",
+            font=("Arial", 11),
+            height=34,
+        )
+        link_entry.pack(fill="x", padx=12, pady=(0, 8))
+        if cs_link.get("proxy_rotation_link"):
+            link_entry.insert(0, cs_link["proxy_rotation_link"])
+
+        def guardar_enlace_modal():
+            s = link_entry.get().strip() or None
+            if not s:
+                messagebox.showwarning("Aviso", "Ingresa la URL del panel de rotación.")
+                return
+            cs = get_creator_setting(browser_id) or {}
+            if save_creator_setting(
+                browser_id=browser_id,
+                user_agent=cs.get("user_agent", ""),
+                accounts_to_create=cs.get("accounts_to_create", 1),
+                notification_email=cs.get("notification_email"),
+                isInVps=cs.get("isInVps"),
+                proxy_rotation_enabled=True,
+                proxy_rotation_link=s,
+            ):
+                messagebox.showinfo("Guardado", "Enlace guardado correctamente.")
+            else:
+                messagebox.showerror("Error", "No se pudo guardar el enlace.")
+
+        ctk.CTkButton(
+            link_wrap,
+            text="Guardar enlace",
+            command=guardar_enlace_modal,
+            fg_color="#28a745",
+            text_color="white",
+            width=140,
+            height=32,
+        ).pack(anchor="w", padx=12, pady=(0, 12))
+
+    ctk.CTkLabel(
+        modal,
+        text="Coordenadas (tecla «c»): navegador → barra de búsqueda → cerrar navegador.",
+        font=("Arial", 11),
+        text_color="gray",
+        wraplength=680,
+        justify="left",
+    ).pack(pady=(0, 8), padx=16, anchor="w")
+
+    scroll_m = ctk.CTkScrollableFrame(modal, fg_color="transparent")
+    scroll_m.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+    proxy_coords_list = [
+        "Clic al navegador",
+        "Clic barra de búsqueda",
+        "Clic cerrar navegador",
+    ]
+    proxy_field_mapping = {
+        "Clic al navegador": "proxy_rotation_browser_click",
+        "Clic barra de búsqueda": "proxy_rotation_search_bar_click",
+        "Clic cerrar navegador": "proxy_rotation_close_browser_click",
+    }
+
+    saved_proxy = get_creator_coordinates(browser_id) or {}
+
+    table_wrap = ctk.CTkFrame(scroll_m, fg_color="white", corner_radius=5, border_width=2, border_color="black")
+    table_wrap.pack(fill="x", pady=(0, 8))
+
+    header_m = ctk.CTkFrame(table_wrap, fg_color="#f0f0f0", corner_radius=0)
+    header_m.pack(fill="x")
+    for i, (h, w, al) in enumerate(
+        zip(
+            ["Coordenada", "Valor", "Acción"],
+            [320, 200, 150],
+            ["w", "w", "center"],
+        )
+    ):
+        ctk.CTkLabel(
+            header_m,
+            text=h,
+            font=("Arial", 14, "bold"),
+            text_color="black",
+            width=w,
+            anchor=al,
+        ).grid(row=0, column=i, padx=5, pady=10, sticky="w" if al == "w" else "ew")
+    for j in range(3):
+        header_m.grid_columnconfigure(j, weight=1)
+
+    for coord_name in proxy_coords_list:
+        row_f = ctk.CTkFrame(table_wrap, fg_color="white", corner_radius=0)
+        row_f.pack(fill="x")
+        field_name_p = proxy_field_mapping[coord_name]
+        cv = saved_proxy.get(field_name_p, "") if saved_proxy else ""
+
+        ctk.CTkLabel(
+            row_f,
+            text=coord_name,
+            font=("Arial", 12),
+            text_color="black",
+            width=320,
+            anchor="w",
+        ).grid(row=0, column=0, padx=5, pady=8, sticky="w")
+
+        val_l = ctk.CTkLabel(
+            row_f,
+            text=cv if cv else "No configurado",
+            font=("Arial", 11),
+            text_color="gray" if not cv else "black",
+            width=200,
+            anchor="w",
+        )
+        val_l.grid(row=0, column=1, padx=5, pady=8, sticky="w")
+
+        def _mk_cap(cn, fn, vl):
+            return lambda: capture_creator_coordinate(parent_window, browser_id, cn, fn, vl, modal)
+
+        ctk.CTkButton(
+            row_f,
+            text="Configurar",
+            command=_mk_cap(coord_name, field_name_p, val_l),
+            fg_color="#007ACC",
+            text_color="white",
+            font=("Arial", 11),
+            width=120,
+            height=30,
+        ).grid(row=0, column=2, padx=5, pady=8)
+        for jc in range(3):
+            row_f.grid_columnconfigure(jc, weight=1)
+
+    ctk.CTkButton(
+        modal,
+        text="Cerrar",
+        command=modal.destroy,
+        fg_color="#6c757d",
+        text_color="white",
+        width=140,
+        height=32,
+    ).pack(pady=(0, 14))
+
+
+def open_proxy_rotation_modal_for_browser(parent_window, browser_id):
+    """Compatibilidad: mismo modal con sección de enlace (p. ej. llamadas antiguas)."""
+    open_proxy_rotation_config_modal(parent_window, browser_id, include_link_section=True)
+
+
 def create_new_window(parent_root, browser_id=None):
     """
     Crea una nueva ventana con tabla de coordenadas del creator para un navegador específico
@@ -219,7 +515,7 @@ def create_new_window(parent_root, browser_id=None):
     user_agent_frame.pack(fill="x", padx=20, pady=(0, 20))
     
     # Obtener configuración actual para este navegador
-    current_settings = get_creator_setting(browser_id)
+    current_settings = get_creator_setting(browser_id) or {}
     
     # Frame para los inputs locales
     inputs_frame = ctk.CTkFrame(user_agent_frame, fg_color="transparent")
@@ -321,7 +617,16 @@ def create_new_window(parent_root, browser_id=None):
         command=on_fisica_checkbox_change
     )
     fisica_checkbox.pack(side="left")
-    
+
+    ctk.CTkLabel(
+        inputs_frame,
+        text="Rotación de proxy: configúrala en la ventana principal (sección LinkedIn Creator).",
+        font=("Arial", 10),
+        text_color="gray",
+        wraplength=520,
+        justify="left",
+    ).pack(anchor="w", pady=(8, 0))
+
     # Función para guardar configuración completa
     def save_creator_settings():
         notification_email = notification_email_entry.get().strip()
@@ -345,18 +650,21 @@ def create_new_window(parent_root, browser_id=None):
         
         # Guardar configuración (preservar configuración de tiempo existente)
         # NOTA: is33mail y domain ahora se configuran globalmente en "Gestión de Navegadores"
-        user_agent_to_keep = current_settings.get('user_agent', '') if current_settings else ''
+        user_agent_to_keep = current_settings.get("user_agent", "")
+
         if save_creator_setting(
             browser_id=browser_id,
             user_agent=user_agent_to_keep,
             accounts_to_create=1, 
-            scheduled_time=current_settings.get('scheduled_time') if current_settings else None,
-            timezone=current_settings.get('timezone') if current_settings else None,
+            scheduled_time=current_settings.get("scheduled_time"),
+            timezone=current_settings.get("timezone"),
             notification_email=notification_email if notification_email else None,
-            cycle_time_minutes=current_settings.get('cycle_time_minutes') if current_settings else None,
-            time_config_type=current_settings.get('time_config_type') if current_settings else None,
-            accounts_per_cycle=current_settings.get('accounts_per_cycle') if current_settings else None,
-            isInVps=isInVps
+            cycle_time_minutes=current_settings.get("cycle_time_minutes"),
+            time_config_type=current_settings.get("time_config_type"),
+            accounts_per_cycle=current_settings.get("accounts_per_cycle"),
+            isInVps=isInVps,
+            proxy_rotation_enabled=None,
+            proxy_rotation_link=None,
         ):
             success_msg = "✅ Configuración guardada correctamente."
             if notification_email:
@@ -516,7 +824,21 @@ def create_new_window(parent_root, browser_id=None):
         "Click botón Agree opcional",
         "Click captcha blanco",
         "Click cerrar captcha error",
-        "Click cerrar proxy error"
+        "Click cerrar proxy error",
+        "Click proxy extensión",
+        "Click activar proxy",
+        "Click desactivar proxy",
+        "Click extensión user agent",
+        "Click colocar user agent",
+        "Click aplicar user agent",
+        "Click fuera extensión user agent",
+        "Click barra de búsqueda",
+        "Click opciones de usuario",
+        "Click Logout",
+        "Click Jobs",
+        "Click login with email",
+        "Clic Email",
+        "Click logo LinkedIn",
     ]
     
     # Mapeo de nombres a campos de la base de datos
@@ -535,129 +857,29 @@ def create_new_window(parent_root, browser_id=None):
         "Click guardar cookie portapapeles": "save_cookie_clipboard_click",
         "Click cerrar ventana": "close_window",
         "Click cerrar captcha error": "close_captcha_error_click",
-        "Click cerrar proxy error": "close_proxy_error_click"
+        "Click cerrar proxy error": "close_proxy_error_click",
+        "Click proxy extensión": "proxy_extension_click",
+        "Click activar proxy": "activate_proxy_click",
+        "Click desactivar proxy": "disable_proxy_click",
+        "Click extensión user agent": "user_agent_extension_click",
+        "Click colocar user agent": "user_agent_extract_click",
+        "Click aplicar user agent": "user_agent_apply_click",
+        "Click fuera extensión user agent": "user_agent_outside_click",
+        "Click barra de búsqueda": "search_bar_click",
+        "Click opciones de usuario": "user_options_click",
+        "Click Logout": "logout_click",
+        "Click Jobs": "jobs_click",
+        "Click login with email": "login_with_email_click",
+        "Clic Email": "clic_email_click",
+        "Click logo LinkedIn": "linkedin_logo_click",
     }
     
     # Obtener coordenadas guardadas para este navegador
     saved_coordinates = get_creator_coordinates(browser_id)
     
-    # Función para capturar coordenadas (igual que en ui.py)
-    def capture_coordinate(coord_name, field_name, value_label_ref):
-        # Crear popup para capturar coordenada
-        popup = ctk.CTkToplevel(new_window)
-        popup.geometry("420x220")
-        popup.title("Captura de Coordenada")
-        popup.configure(fg_color="#f0f0f0")
-        popup.lift()
-        popup.focus_force()
-        popup.attributes("-topmost", True)
+    def capture_coordinate(coord_name, field_name, value_label_ref, popup_parent=None):
+        capture_creator_coordinate(new_window, browser_id, coord_name, field_name, value_label_ref, popup_parent)
 
-        label = ctk.CTkLabel(
-            popup,
-            text=f"Presiona la tecla 'c' para capturar la coordenada de:\n{coord_name}",
-            font=("Arial", 14),
-            text_color="black"
-        )
-        label.pack(pady=15)
-
-        coord_label = ctk.CTkLabel(
-            popup,
-            text="",
-            font=("Arial", 14, "bold"),
-            text_color="black"
-        )
-        coord_label.pack(pady=10)
-
-        def capturar():
-            import pyautogui
-            import keyboard
-            import threading
-            import time
-            
-            # Bandera para controlar el loop
-            capturando = [True]
-            
-            # Función para actualizar coordenadas en tiempo real
-            def actualizar_coordenadas():
-                try:
-                    while capturando[0]:
-                        x, y = pyautogui.position()
-                        coord_text = f"X: {x}, Y: {y}"
-                        try:
-                            if popup.winfo_exists():
-                                coord_label.configure(text=f"Movimiento detectado: {coord_text}")
-                        except:
-                            pass
-                        time.sleep(0.1)  # Actualizar cada 0.1 segundos
-                except:
-                    pass
-            
-            # Iniciar thread para actualizar coordenadas
-            update_thread = threading.Thread(target=actualizar_coordenadas, daemon=True)
-            update_thread.start()
-            
-            # Esperar a que presionen la tecla 'c'
-            keyboard.wait('c')
-            capturando[0] = False  # Detener actualización
-            
-            # Obtener coordenada final
-            x, y = pyautogui.position()
-            coordenada_capturada = f"{x}x{y}"
-            
-            # Verificar que el popup aún existe antes de actualizar
-            try:
-                if popup.winfo_exists():
-                    coord_label.configure(text=f"{coord_name}: {coordenada_capturada}")
-                    mostrar_botones_confirmacion(coordenada_capturada)
-            except:
-                pass  # El popup ya no existe, ignorar
-
-        def mostrar_botones_confirmacion(coord):
-            try:
-                # Verificar que el popup aún existe
-                if not popup.winfo_exists():
-                    return
-                
-                # Limpiar widgets anteriores
-                for widget in popup.winfo_children():
-                    if isinstance(widget, ctk.CTkButton):
-                        widget.destroy()
-                
-                def guardar():
-                    if save_creator_coordinates(browser_id, **{field_name: coord}):
-                        messagebox.showinfo("Guardado", f"✅ Coordenada guardada: {coord}")
-                        popup.destroy()
-                        # Actualizar solo el label de valor sin refrescar toda la ventana
-                        value_label_ref.configure(text=coord, text_color="black")
-                    else:
-                        messagebox.showerror("Error", "No se pudo guardar la coordenada.")
-
-                def volver_a_capturar():
-                    popup.destroy()
-                    capture_coordinate(coord_name, field_name, value_label_ref)
-
-                guardar_button = ctk.CTkButton(
-                    popup,
-                    text="Guardar",
-                    command=guardar,
-                    fg_color="#28a745",
-                    text_color="white"
-                )
-                guardar_button.pack(pady=5)
-
-                volver_button = ctk.CTkButton(
-                    popup,
-                    text="Volver a Capturar",
-                    command=volver_a_capturar,
-                    fg_color="#dc3545",
-                    text_color="white"
-                )
-                volver_button.pack(pady=5)
-            except:
-                pass  # El popup ya no existe, ignorar
-
-        threading.Thread(target=capturar, daemon=True).start()
-    
     # Función para refrescar la ventana
     def refresh_window():
         new_window.destroy()
@@ -789,6 +1011,11 @@ def create_new_window(parent_root, browser_id=None):
         "captcha_error",
         "proxy_error",
         "linkedin_error",
+        "Carga Cuenta",
+        "Linkedin Perfecto",
+        "Try Premium",
+        "Jobs Images",
+        "Login With Email",
     ]
     
     # Crear encabezados de la tabla de imágenes

@@ -23,6 +23,8 @@ from app.database.database import (
     get_domain_sync_payload,
     apply_remote_domain_config,
     save_global_time_config,
+    clear_creator_user_agents_pool,
+    save_creator_user_agents_pool,
 )
 
 # Configuración
@@ -161,7 +163,8 @@ def _show_browser_not_available_messagebox(message_text):
 
 def apply_remote_user_agent_if_present(command_payload):
     """
-    Aplica User-Agent enviado por servidor para el navegador seleccionado.
+    Si el servidor envía User-Agent(s), los guarda en creator_setting por navegador.
+    Si no envía UA, no falla: el creator obtiene el UA real por cuenta desde la extensión.
     """
     raw_list = command_payload.get("preferred_browsers")
     raw_uas = command_payload.get("remote_user_agents")
@@ -170,27 +173,17 @@ def apply_remote_user_agent_if_present(command_payload):
         and len(raw_list) > 0
         and isinstance(raw_uas, dict)
     ):
-        missing_ua: list[str] = []
         for name in raw_list:
             bn = str(name).strip()
             if not bn:
                 continue
             ua = (raw_uas.get(bn) or raw_uas.get(name) or "").strip()
             if not ua:
-                missing_ua.append(bn)
-        if missing_ua:
-            msg = (
-                "Faltan User-Agent en el servidor para estos navegadores: "
-                + ", ".join(missing_ua)
-                + "\n\nConfigúralos en Config Bots (api_login)."
-            )
-            _show_browser_not_available_messagebox(msg)
-            return False, msg
-        for name in raw_list:
-            bn = str(name).strip()
-            if not bn:
+                print(
+                    f"ℹ️ Sin User-Agent remoto para '{bn}'; se omite "
+                    "(el creador lo captura por extensión al guardar la cuenta)."
+                )
                 continue
-            ua = (raw_uas.get(bn) or raw_uas.get(name) or "").strip()
             ok, message = set_creator_user_agent_by_browser_name(bn, ua)
             if not ok:
                 print(f"⚠️ {message}")
@@ -206,13 +199,11 @@ def apply_remote_user_agent_if_present(command_payload):
         return True, None
 
     if not remote_user_agent:
-        msg = (
-            "No se recibió User-Agent desde el servidor para el navegador seleccionado.\n\n"
-            f"Navegador: {preferred_browser}\n"
-            "Configura el User-Agent en 'Config Bots' del servidor."
+        print(
+            f"ℹ️ Sin User-Agent remoto para '{preferred_browser}'; "
+            "el creador lo captura por extensión al guardar la cuenta."
         )
-        _show_browser_not_available_messagebox(msg)
-        return False, msg
+        return True, None
 
     ok, message = set_creator_user_agent_by_browser_name(preferred_browser, remote_user_agent)
     if ok:
@@ -221,6 +212,34 @@ def apply_remote_user_agent_if_present(command_payload):
 
     print(f"⚠️ {message}")
     _show_browser_not_available_messagebox(message)
+    return False, message
+
+
+def apply_remote_creator_user_agents_pool_if_present(command_payload):
+    """
+    Guarda la lista global de User-Agents de creator enviada por servidor:
+    `remote_creator_user_agents`.
+    """
+    raw = command_payload.get("remote_creator_user_agents")
+    if raw is None:
+        return True, None
+
+    if not isinstance(raw, list):
+        return False, "Formato inválido en remote_creator_user_agents (se esperaba lista)"
+
+    # Regla del flujo: en cada arranque remoto, limpiar y volver a cargar.
+    cleared_ok, cleared_msg = clear_creator_user_agents_pool()
+    if not cleared_ok:
+        print(f"⚠️ {cleared_msg}")
+        return False, cleared_msg
+    print("🌐 Pool de User-Agents creator limpiado antes de cargar lista nueva")
+
+    ok, message = save_creator_user_agents_pool(raw)
+    if ok:
+        print(f"🌐 {message}")
+        return True, None
+
+    print(f"⚠️ {message}")
     return False, message
 
 
@@ -449,10 +468,10 @@ def connect():
 
 @sio.event
 def disconnect():
-    """Se ejecuta cuando el bot se desconecta del servidor"""
-    global bot_running
-    bot_running = False
-    print("❌ Bot desconectado del servidor WebSocket")
+    """Se ejecuta cuando se pierde la conexión (red, modo avión, servidor, etc.)."""
+    # No poner bot_running = False aquí: un corte de red no debe detener el creator
+    # ni el flujo local; stop/logout siguen estableciendo bot_running explícitamente.
+    print("⚠️  WebSocket desconectado (la creación local puede continuar; se puede reconectar)")
 
 
 @sio.event
@@ -508,6 +527,15 @@ def command(data):
                 'action': 'start',
                 'success': False,
                 'message': ua_error
+            })
+            return
+        pool_ok, pool_error = apply_remote_creator_user_agents_pool_if_present(data)
+        if not pool_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'start',
+                'success': False,
+                'message': pool_error
             })
             return
 
@@ -566,6 +594,15 @@ def command(data):
                 'action': 'execute_creator',
                 'success': False,
                 'message': ua_error
+            })
+            return
+        pool_ok, pool_error = apply_remote_creator_user_agents_pool_if_present(data)
+        if not pool_ok:
+            sio.emit('status_update', {'status': 'stopped'})
+            sio.emit('action_completed', {
+                'action': 'execute_creator',
+                'success': False,
+                'message': pool_error
             })
             return
 
@@ -774,3 +811,28 @@ def connect_bot():
         import traceback
         traceback.print_exc()
         return False
+
+
+def reconnect_bot_websocket_after_network_recovery(max_attempts=10, delay_sec=2.5):
+    """
+    Reintenta connect_bot tras recuperar la red (p. ej. tras modo avión en el teléfono ADB).
+    No modifica bot_running.
+    """
+    user = get_logged_in_user()
+    if not user:
+        return False
+    for attempt in range(1, max_attempts + 1):
+        try:
+            if sio.connected:
+                return True
+        except Exception:
+            pass
+        print(f"🔌 Reconectando WebSocket tras red (intento {attempt}/{max_attempts})...")
+        try:
+            if connect_bot():
+                return True
+        except Exception as e:
+            print(f"⚠️  Error en reconexión: {e}")
+        time.sleep(delay_sec)
+    print("⚠️  No se pudo reconectar el WebSocket; el proceso local sigue.")
+    return False
