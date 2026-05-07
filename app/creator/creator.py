@@ -468,6 +468,11 @@ def _verificar_timeout(start_time, timeout_seconds, coordinates):
     elapsed_time = time.time() - start_time
     if elapsed_time > timeout_seconds:
         print("⏰ Timeout de 150 segundos - no se encontraron imágenes, cerrando ventana")
+        # Intentar apagar proxy antes de cerrar para evitar que quede activo en el siguiente intento.
+        try:
+            _desactivar_proxy(coordinates, silent=False)
+        except Exception as e:
+            print(f"⚠️ No se pudo desactivar proxy en timeout: {e}")
         close_window_coords = coordinates.get("close_window")
         if close_window_coords:
             click_coordinates(close_window_coords)
@@ -917,7 +922,7 @@ def _procesar_exito(coordinates, email, password, filepath, browser_id=None, bro
     from app.creator.post_account_success_actions import run_after_account_success_before_cookie
 
     password_cuenta = _get_password_usado() or password
-    run_after_account_success_before_cookie(
+    acciones_ok = run_after_account_success_before_cookie(
         coordinates,
         email,
         password_cuenta,
@@ -926,6 +931,9 @@ def _procesar_exito(coordinates, email, password, filepath, browser_id=None, bro
         browser_id=browser_id,
         browser_name=browser_name,
     )
+    if acciones_ok is False:
+        print("❌ Fallo en acciones post-éxito; cuenta NO creada, se omite guardado de cookie.")
+        return False, "post_success_actions_failed", {}
 
     return _obtener_y_guardar_cookie(coordinates, email, password_cuenta, filepath, browser_id=browser_id, browser_name=browser_name)
 
@@ -958,7 +966,7 @@ def _procesar_exito_con_detalle(coordinates, email, password, filepath, exito_im
     from app.creator.post_account_success_actions import run_after_account_success_before_cookie
 
     password_cuenta = _get_password_usado() or password
-    run_after_account_success_before_cookie(
+    acciones_ok = run_after_account_success_before_cookie(
         coordinates,
         email,
         password_cuenta,
@@ -967,6 +975,9 @@ def _procesar_exito_con_detalle(coordinates, email, password, filepath, exito_im
         browser_id=browser_id,
         browser_name=browser_name,
     )
+    if acciones_ok is False:
+        print("❌ Fallo en acciones post-éxito; cuenta NO creada (detalle).")
+        return False, "post_success_actions_failed", {"exito_image_name": exito_image_name_found}
 
     return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password_cuenta, filepath, exito_image_name_found, browser_id=browser_id, browser_name=browser_name)
 
@@ -1349,9 +1360,12 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total, 
         
         # Paso 5: Observar y crear cuenta
         cuenta_creada = observador_unificado(coordinates, full_email, _get_password_usado(), filepath, browser_id=browser_id, browser_name=browser_name)
-        
+        exito_bool = cuenta_creada if isinstance(cuenta_creada, bool) else bool(
+            isinstance(cuenta_creada, tuple) and len(cuenta_creada) > 0 and cuenta_creada[0] is True
+        )
+
         # Paso 6: Cerrar ventana si se creó exitosamente
-        if cuenta_creada:
+        if exito_bool:
             _cerrar_ventana(coordinates)
             return True
         return False
@@ -1773,8 +1787,17 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
     """Llena el formulario de registro de LinkedIn"""
     from app.creator.computer_actions import click_coordinates, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname, wait_for_creator_image, generate_email_prefix, generate_email_with_domain_format
     from app.database.database import get_creator_setting
+    import random
     import time
     import pyperclip
+
+    def _agregar_sufijo_4_digitos(email_base):
+        """Agrega un sufijo aleatorio de 4 dígitos al local-part del email."""
+        if not email_base or "@" not in email_base:
+            return email_base
+        local, domain = email_base.split("@", 1)
+        sufijo = f"{random.randint(0, 9999):04d}"
+        return f"{local}{sufijo}@{domain}"
     
     # Click en email_input_click
     email_coords = coordinates.get("email_input_click")
@@ -1803,17 +1826,19 @@ def _llenar_formulario_registro(coordinates, email, browser_id=None, browser_nam
             # El dominio ya viene con el relleno aplicado desde _ejecutar_proceso_creator
             # No aplicar relleno aquí para evitar doble relleno
             # Usar formato específico para dominio personalizado
-            full_email = generate_email_with_domain_format(email)
-            print(f"[DEBUG] email completo={full_email!r} (formato personalizado, dominio={email!r})")
+            full_email_base = generate_email_with_domain_format(email)
+            full_email = _agregar_sufijo_4_digitos(full_email_base)
+            print(f"[DEBUG] email completo={full_email!r} (formato personalizado + 4 dígitos, dominio={email!r})")
         else:
             # Generar prefijo aleatorio y concatenar con el dominio (modo 33mail)
             prefix = generate_email_prefix()
-            full_email = f"{prefix}{email}"
-            print(f"[DEBUG] email completo={full_email!r} (33mail, dominio={email!r})")
+            full_email_base = f"{prefix}{email}"
+            full_email = _agregar_sufijo_4_digitos(full_email_base)
+            print(f"[DEBUG] email completo={full_email!r} (33mail + 4 dígitos, dominio={email!r})")
     else:
         # Si ya viene completo, usar tal como está
-        full_email = email
-        print(f"[DEBUG] email completo={full_email!r} (recibido tal cual)")
+        full_email = _agregar_sufijo_4_digitos(email)
+        print(f"[DEBUG] email completo={full_email!r} (recibido + 4 dígitos)")
     
     # Escribir email completo con verificación (proxy desactivado - no se necesita)
     if not _escribir_y_verificar_campo(full_email, "email"):
