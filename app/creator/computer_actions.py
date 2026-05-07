@@ -122,7 +122,7 @@ def creator_image_exists(image_name, confidence=0.8):
     location = find_creator_image(image_name, confidence=confidence)
     return location is not None
 
-def click_coordinates(coordinates, double_click=False, button='left'):
+def click_coordinates(coordinates, double_click=False, button='left', retries=3):
     """
     Hace click o doble click en coordenadas específicas
     """
@@ -136,35 +136,46 @@ def click_coordinates(coordinates, double_click=False, button='left'):
         x = int(x_str)
         y = int(y_str)
         
-        # Configurar pyautogui
-        pyautogui.PAUSE = 0.01
+        # Configurar pyautogui (más conservador para VPS lentos)
+        pyautogui.PAUSE = 0.02
         pyautogui.FAILSAFE = False
-        
-        # Mover mouse a la posición
-        #print(f"🖱️ Moviendo mouse a coordenadas: {x}, {y}")
-        pyautogui.moveTo(x, y, duration=0.5)  # Movimiento más lento
-        time.sleep(0.3)  # Esperar más tiempo a que llegue
-        
-        # Verificar que el mouse llegó a la posición correcta
-        current_pos = pyautogui.position()
-        #print(f"📍 Posición actual del mouse: {current_pos}")
-        
-        # Verificar si está cerca de la posición objetivo (tolerancia de 5 píxeles)
-        if abs(current_pos.x - x) <= 5 and abs(current_pos.y - y) <= 5:
-            #print("✅ Mouse en posición correcta, haciendo click")
-            if double_click:
-                # Doble click
-                pyautogui.click(button=button)
-                time.sleep(0.15)  # Delay entre clicks
-                pyautogui.click(button=button)
-            else:
-                # Click simple
-                pyautogui.click(button=button)
-        else:
-            #print(f"⚠️ Mouse no llegó a la posición correcta. Objetivo: ({x}, {y}), Actual: ({current_pos.x}, {current_pos.y})")
-            return False
-        
-        return True
+
+        # En VPS lentos el cursor puede “seguir moviéndose” aunque moveTo haya retornado.
+        # Reintentar movimiento y esperar a posición estable antes del click.
+        tolerance = 8
+        settle_timeout_sec = 2.0
+        stable_required = 2  # cantidad de lecturas seguidas iguales/casi iguales
+
+        attempt = 0
+        while attempt < max(1, int(retries)):
+            attempt += 1
+            # Movimiento progresivamente más lento si hay reintentos
+            duration = 0.55 + (attempt - 1) * 0.25
+            pyautogui.moveTo(x, y, duration=duration)
+
+            t0 = time.time()
+            stable = 0
+            last = None
+            while time.time() - t0 < settle_timeout_sec:
+                pos = pyautogui.position()
+                if abs(pos.x - x) <= tolerance and abs(pos.y - y) <= tolerance:
+                    if last and abs(pos.x - last.x) <= 1 and abs(pos.y - last.y) <= 1:
+                        stable += 1
+                    else:
+                        stable = 0
+                    if stable >= stable_required:
+                        # Click explícito en (x,y) para evitar drift del cursor
+                        if double_click:
+                            pyautogui.click(x=x, y=y, button=button)
+                            time.sleep(0.18)
+                            pyautogui.click(x=x, y=y, button=button)
+                        else:
+                            pyautogui.click(x=x, y=y, button=button)
+                        return True
+                last = pos
+                time.sleep(0.08)
+
+        return False
         
     except ValueError as e:
         print(f"⚠️ Error parseando coordenadas '{coordinates}': {e}")

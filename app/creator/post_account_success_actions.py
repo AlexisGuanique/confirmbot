@@ -40,6 +40,8 @@ PRE_WAIT_BEFORE_JOBS_SEARCH_SEC = 20.0
 PRE_WAIT_BEFORE_LOGIN_WITH_EMAIL_SEARCH_SEC = 15.0
 POST_SUBMIT_WAIT_BEFORE_LINKEDIN_PERFECTO_SEC = 15.0
 POST_LOGO_WAIT_BEFORE_TRY_PREMIUM_SEC = 30.0
+POST_FEED_ENTER_WAIT_SEC = 20.0
+POST_SUBMIT_RELOGIN_MAX_ATTEMPTS = 3
 IMAGE_CONFIDENCE = 0.9
 
 
@@ -93,6 +95,30 @@ def _wait_try_premium(*, browser_name=None) -> bool:
     return False
 
 
+def _wait_try_premium_or_jobs(*, browser_name=None) -> str | None:
+    """
+    Tras navegar al feed, a veces la cuenta se desloguea.
+    Devuelve:
+    - "try_premium": si aparece «Try Premium» (seguimos flujo normal con logout)
+    - "jobs": si aparece «Jobs Images» (ya está deslogueado; saltar logout e ir directo a Jobs)
+    """
+    t0 = time.time()
+    print(
+        f"[post-exito] Verificando estado en feed («{IMAGE_TRY_PREMIUM}» o «{IMAGE_JOBS_IMAGES}») "
+        f"hasta {int(TRY_PREMIUM_MAX_SEC)}s…"
+    )
+    while time.time() - t0 < TRY_PREMIUM_MAX_SEC:
+        if _image_found_strict(IMAGE_TRY_PREMIUM, browser_name=browser_name):
+            print(f"[post-exito] Estado feed: detectado «{IMAGE_TRY_PREMIUM}».")
+            return "try_premium"
+        if _image_found_strict(IMAGE_JOBS_IMAGES, browser_name=browser_name):
+            print(f"[post-exito] Estado feed: detectado «{IMAGE_JOBS_IMAGES}» (cuenta deslogueada).")
+            return "jobs"
+        time.sleep(TRY_PREMIUM_POLL_SEC)
+    print("[post-exito] No se detectó estado en feed (ni Try Premium ni Jobs) a tiempo.")
+    return None
+
+
 def _wait_linkedin_perfecto(*, browser_name=None) -> bool:
     t0 = time.time()
     print(f"[post-exito] Buscando imagen «{IMAGE_LINKEDIN_PERFECTO}» (hasta {int(LINKEDIN_PERFECTO_MAX_SEC)}s)…")
@@ -103,6 +129,29 @@ def _wait_linkedin_perfecto(*, browser_name=None) -> bool:
         time.sleep(LINKEDIN_PERFECTO_POLL_SEC)
     print(f"[post-exito] No apareció «{IMAGE_LINKEDIN_PERFECTO}» a tiempo.")
     return False
+
+
+def _wait_linkedin_or_jobs_state(*, browser_name=None) -> str | None:
+    """
+    Espera hasta detectar un estado post-login:
+    - "linkedin": sesión correcta (apareció Linkedin Perfecto)
+    - "jobs": se deslogueó (apareció Jobs)
+    """
+    t0 = time.time()
+    print(
+        f"[post-exito] Verificando estado post-login («{IMAGE_LINKEDIN_PERFECTO}» o «{IMAGE_JOBS_IMAGES}») "
+        f"hasta {int(LINKEDIN_PERFECTO_MAX_SEC)}s…"
+    )
+    while time.time() - t0 < LINKEDIN_PERFECTO_MAX_SEC:
+        if _image_found_strict(IMAGE_LINKEDIN_PERFECTO, browser_name=browser_name):
+            print(f"[post-exito] Estado post-login: detectado «{IMAGE_LINKEDIN_PERFECTO}».")
+            return "linkedin"
+        if _image_found_strict(IMAGE_JOBS_IMAGES, browser_name=browser_name):
+            print(f"[post-exito] Estado post-login: detectado «{IMAGE_JOBS_IMAGES}» (cuenta deslogueada).")
+            return "jobs"
+        time.sleep(LINKEDIN_PERFECTO_POLL_SEC)
+    print("[post-exito] No se detectó estado post-login (ni Linkedin Perfecto ni Jobs) a tiempo.")
+    return None
 
 
 def _resolve_account_password(password: str) -> str:
@@ -136,6 +185,41 @@ def run_after_account_success_before_cookie(
         c = (coordinates.get(key) or "").strip()
         return c if c else None
 
+    def _run_jobs_login_sequence(jb: str, lw: str, ce: str) -> bool:
+        print(f"[post-exito] Esperando {int(PRE_WAIT_BEFORE_JOBS_SEARCH_SEC)}s antes de buscar Jobs Images…")
+        time.sleep(PRE_WAIT_BEFORE_JOBS_SEARCH_SEC)
+        if not _wait_jobs_images(browser_name=browser_name):
+            return False
+        print("[post-exito] Clic Jobs")
+        click_coordinates(jb, double_click=False)
+        time.sleep(0.5)
+
+        print(
+            f"[post-exito] Esperando {int(PRE_WAIT_BEFORE_LOGIN_WITH_EMAIL_SEARCH_SEC)}s "
+            "antes de buscar Login With Email…"
+        )
+        time.sleep(PRE_WAIT_BEFORE_LOGIN_WITH_EMAIL_SEARCH_SEC)
+        if not _wait_login_with_email_image(browser_name=browser_name):
+            return False
+        print("[post-exito] Clic login with email")
+        click_coordinates(lw, double_click=False)
+        time.sleep(2.0)
+        print("[post-exito] Clic Email → pegar email → Tab → pegar password → Tab×3 → Enter")
+        click_coordinates(ce, double_click=False)
+        time.sleep(0.3)
+        type_text(account_email)
+        time.sleep(0.15)
+        press_key("tab")
+        time.sleep(0.15)
+        type_text(account_password)
+        time.sleep(0.2)
+        for _ in range(3):
+            press_key("tab")
+            time.sleep(0.1)
+        press_key("enter")
+        time.sleep(0.4)
+        return True
+
     account_email = (email or "").strip()
     account_password = _resolve_account_password(password)
     if not account_email:
@@ -164,18 +248,17 @@ def run_after_account_success_before_cookie(
         return False
 
     print("[post-exito] Clic barra de búsqueda → Ctrl+A → pegar URL feed → Enter")
-    click_coordinates(c_bar)
+    click_coordinates(c_bar, double_click=False)
     time.sleep(0.35)
     pyautogui.hotkey("ctrl", "a")
     time.sleep(0.15)
     type_text(LINKEDIN_FEED_URL)
     time.sleep(0.2)
     press_key("enter")
-    print("Esperando 30 segundos para que cargue la página...")
-    time.sleep(30)
-
-    if not _wait_try_premium(browser_name=browser_name):
-        return False
+    print(
+        f"[post-exito] Esperando {int(POST_FEED_ENTER_WAIT_SEC)}s tras ir al feed antes de verificar estado…"
+    )
+    time.sleep(POST_FEED_ENTER_WAIT_SEC)
 
     cu = _coord(COORD_USER_OPTIONS)
     lo = _coord(COORD_LOGOUT)
@@ -195,55 +278,51 @@ def run_after_account_success_before_cookie(
             print(f"[post-exito] Falta coordenada {label!r}")
             return False
 
-    print("[post-exito] Clic opciones de usuario")
-    click_coordinates(cu)
-    time.sleep(1.0)
-    print("[post-exito] Clic Logout")
-    click_coordinates(lo)
-    time.sleep(1.0)
-    print("[post-exito] Segundo clic Logout")
-    click_coordinates(lo)
-    time.sleep(1.0)
-
-    print(f"[post-exito] Esperando {int(PRE_WAIT_BEFORE_JOBS_SEARCH_SEC)}s antes de buscar Jobs Images…")
-    time.sleep(PRE_WAIT_BEFORE_JOBS_SEARCH_SEC)
-    if not _wait_jobs_images(browser_name=browser_name):
+    feed_state = _wait_try_premium_or_jobs(browser_name=browser_name)
+    if feed_state == "try_premium":
+        print("[post-exito] Clic opciones de usuario")
+        click_coordinates(cu, double_click=False)
+        time.sleep(1.0)
+        print("[post-exito] Clic Logout")
+        click_coordinates(lo, double_click=False)
+        time.sleep(1.0)
+        print("[post-exito] Segundo clic Logout")
+        click_coordinates(lo, double_click=False)
+        time.sleep(1.0)
+    elif feed_state == "jobs":
+        print("[post-exito] Cuenta deslogueada tras ir al feed: salto logout y voy directo a Jobs…")
+    else:
         return False
-    print("[post-exito] Clic Jobs")
-    click_coordinates(jb)
-    time.sleep(0.5)
 
-    print(f"[post-exito] Esperando {int(PRE_WAIT_BEFORE_LOGIN_WITH_EMAIL_SEARCH_SEC)}s antes de buscar Login With Email…")
-    time.sleep(PRE_WAIT_BEFORE_LOGIN_WITH_EMAIL_SEARCH_SEC)
-    if not _wait_login_with_email_image(browser_name=browser_name):
+    if not _run_jobs_login_sequence(jb, lw, ce):
         return False
-    print("[post-exito] Clic login with email")
-    click_coordinates(lw)
-    time.sleep(2.0)
-    print("[post-exito] Clic Email → pegar email → Tab → pegar password → Tab×3 → Enter")
-    click_coordinates(ce)
-    time.sleep(0.3)
-    type_text(account_email)
-    time.sleep(0.15)
-    press_key("tab")
-    time.sleep(0.15)
-    type_text(account_password)
-    time.sleep(0.2)
-    for _ in range(3):
-        press_key("tab")
-        time.sleep(0.1)
-    press_key("enter")
-    time.sleep(0.4)
 
-    print(
-        f"[post-exito] Esperando {int(POST_SUBMIT_WAIT_BEFORE_LINKEDIN_PERFECTO_SEC)}s "
-        "antes de buscar Linkedin Perfecto…"
-    )
-    time.sleep(POST_SUBMIT_WAIT_BEFORE_LINKEDIN_PERFECTO_SEC)
-    if not _wait_linkedin_perfecto(browser_name=browser_name):
+    relogin_attempt = 1
+    while relogin_attempt <= POST_SUBMIT_RELOGIN_MAX_ATTEMPTS:
+        print(
+            f"[post-exito] Esperando {int(POST_SUBMIT_WAIT_BEFORE_LINKEDIN_PERFECTO_SEC)}s "
+            "antes de validar estado post-login…"
+        )
+        time.sleep(POST_SUBMIT_WAIT_BEFORE_LINKEDIN_PERFECTO_SEC)
+        post_login_state = _wait_linkedin_or_jobs_state(browser_name=browser_name)
+        if post_login_state == "linkedin":
+            break
+        if post_login_state == "jobs":
+            if relogin_attempt >= POST_SUBMIT_RELOGIN_MAX_ATTEMPTS:
+                print("[post-exito] Se agotaron los reintentos de relogin tras detectar Jobs.")
+                return False
+            relogin_attempt += 1
+            print(
+                f"[post-exito] Jobs detectado tras login. Reintentando logueo "
+                f"({relogin_attempt}/{POST_SUBMIT_RELOGIN_MAX_ATTEMPTS})…"
+            )
+            if not _run_jobs_login_sequence(jb, lw, ce):
+                return False
+            continue
         return False
+
     print("[post-exito] Clic logo LinkedIn")
-    click_coordinates(ll)
+    click_coordinates(ll, double_click=False)
     print(f"[post-exito] Esperando {int(POST_LOGO_WAIT_BEFORE_TRY_PREMIUM_SEC)}s antes de buscar Try Premium…")
     time.sleep(POST_LOGO_WAIT_BEFORE_TRY_PREMIUM_SEC)
     if not _wait_try_premium(browser_name=browser_name):
