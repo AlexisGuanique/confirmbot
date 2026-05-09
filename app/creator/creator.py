@@ -97,13 +97,7 @@ def _son_cookies_similares(cookie1, cookie2):
 
 _password_usado = ""
 _proxy_activado_por_click = False
-_proxy_modo_usado = None  # "coordinates" | "windows" | None — cómo se activó el proxy en esta sesión
-_session_creator_user_agent = ""  # UA del pool si bot_settings activa la extensión antes de LinkedIn
-
-
-def _get_session_creator_user_agent():
-    global _session_creator_user_agent
-    return _session_creator_user_agent
+_proxy_modo_usado = None  # "coordinates" | "windows" | "url_request" | None — cómo se activó el proxy en esta sesión
 
 
 def execute_creator():
@@ -118,11 +112,10 @@ def execute_creator():
     auth_module.bot_running = True
     print("🚀 Iniciando Creator desde UI...")
     
-    global _password_usado, _proxy_activado_por_click, _proxy_modo_usado, _session_creator_user_agent
+    global _password_usado, _proxy_activado_por_click, _proxy_modo_usado
     _password_usado = ""
     _proxy_activado_por_click = False
     _proxy_modo_usado = None
-    _session_creator_user_agent = ""
     
     try:
         # Obtener navegadores activos
@@ -894,6 +887,28 @@ def _procesar_captcha_imposible(coordinates, estado, browser_name=None):
     return True
 
 
+def _limpiar_tras_fallo_post_exito(coordinates):
+    """
+    Tras fallar el flujo post-éxito: desactiva proxy (según configuración) y cierra el navegador,
+    para continuar con la siguiente cuenta sin dejar sesión colgada.
+    """
+    import time
+    from app.creator.computer_actions import click_coordinates
+
+    try:
+        _desactivar_proxy(coordinates, silent=False)
+    except Exception as e:
+        print(f"[post-exito] Aviso: error al desactivar proxy tras fallo post-éxito: {e}")
+
+    close_window_coords = (coordinates or {}).get("close_window")
+    if close_window_coords:
+        try:
+            click_coordinates(close_window_coords, double_click=False)
+            time.sleep(1)
+        except Exception as e:
+            print(f"[post-exito] Aviso: error al cerrar ventana tras fallo post-éxito: {e}")
+
+
 def _procesar_exito(coordinates, email, password, filepath, browser_id=None, browser_name=None):
     """Procesa la detección de éxito en la creación de cuenta"""
     from app.creator.computer_actions import wait_for_creator_image
@@ -933,6 +948,7 @@ def _procesar_exito(coordinates, email, password, filepath, browser_id=None, bro
     )
     if acciones_ok is False:
         print("❌ Fallo en acciones post-éxito; cuenta NO creada, se omite guardado de cookie.")
+        _limpiar_tras_fallo_post_exito(coordinates)
         return False, "post_success_actions_failed", {}
 
     return _obtener_y_guardar_cookie(coordinates, email, password_cuenta, filepath, browser_id=browser_id, browser_name=browser_name)
@@ -977,6 +993,7 @@ def _procesar_exito_con_detalle(coordinates, email, password, filepath, exito_im
     )
     if acciones_ok is False:
         print("❌ Fallo en acciones post-éxito; cuenta NO creada (detalle).")
+        _limpiar_tras_fallo_post_exito(coordinates)
         return False, "post_success_actions_failed", {"exito_image_name": exito_image_name_found}
 
     return _obtener_y_guardar_cookie_con_detalle(coordinates, email, password_cuenta, filepath, exito_image_name_found, browser_id=browser_id, browser_name=browser_name)
@@ -1107,10 +1124,49 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
     return True
 
 
+def _log_user_agent_al_guardar_cuenta(
+    user_agent: str, email: str, *, browser_id=None, browser_name=None
+) -> None:
+    """Traza el UA leído de creator_setting justo antes de escribir la línea en el archivo de cuentas."""
+    bid = browser_id if browser_id is not None else "—"
+    bn = browser_name if browser_name else "—"
+    print(
+        f"🌐 [cuenta] User-Agent que se guardará en la línea del archivo "
+        f"(browser_id={bid}, navegador={bn!r}, email={email!r}, {len(user_agent)} caracteres): "
+        f"{user_agent!r}",
+        flush=True,
+    )
+
+
+def _log_user_agent_al_iniciar_cuenta(*, browser_id=None, browser_name=None, email=None) -> None:
+    """Traza el UA efectivo para el archivo al empezar una cuenta (solo navegador actual)."""
+    from app.database.database import get_creator_setting, get_creator_user_agent_for_saved_account
+
+    bid = browser_id if browser_id is not None else "—"
+    bn = browser_name if browser_name else "—"
+    em = email if email else "—"
+    st = get_creator_setting(browser_id) if browser_id else None
+    ua_solo_nav = (st.get("user_agent") or "").strip() if st else ""
+    ua_efectivo = get_creator_user_agent_for_saved_account(browser_id)
+    if ua_efectivo:
+        print(
+            f"🌐 [inicio cuenta] user_agent que irá al archivo "
+            f"(browser_id={bid}, navegador={bn!r}, email={em!r}, {len(ua_efectivo)} caracteres): "
+            f"{ua_efectivo!r}",
+            flush=True,
+        )
+    else:
+        print(
+            f"🌐 [inicio cuenta] Sin user_agent en creator_setting para este navegador "
+            f"(browser_id={bid}, navegador={bn!r}, email={em!r}).",
+            flush=True,
+        )
+
+
 def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id=None, browser_name=None):
-    """Obtiene y guarda la cookie: prioriza UA de sesión (extensión + pool) si hubo; si no, creator_setting."""
+    """Obtiene y guarda la cookie; el User-Agent sale de creator_setting (servidor / BD local)."""
     from app.creator.computer_actions import click_coordinates, get_clipboard_content
-    from app.database.database import get_creator_setting
+    from app.database.database import get_creator_user_agent_for_saved_account
     import time
     import pyperclip
     
@@ -1164,13 +1220,13 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id
             else:
                 return False, "cookie_vacia", {"intento": intento, "max_intentos": max_intentos}
         
-        ua_sess = (_get_session_creator_user_agent() or "").strip()
-        creator_settings = get_creator_setting(browser_id) if browser_id else None
-        ua_cfg = (creator_settings.get("user_agent") or "").strip() if creator_settings else ""
-        user_agent = ua_sess or ua_cfg
+        user_agent = get_creator_user_agent_for_saved_account(browser_id)
         if not user_agent:
             return False, "user_agent_no_encontrado", {}
 
+        _log_user_agent_al_guardar_cuenta(
+            user_agent, email, browser_id=browser_id, browser_name=browser_name
+        )
         contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
         
         try:
@@ -1193,9 +1249,9 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id
 
 
 def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name, browser_id=None, browser_name=None):
-    """Obtiene y guarda cookie detallada: UA de sesión (extensión) si existe, si no creator_setting."""
+    """Obtiene y guarda cookie; el User-Agent se resuelve con get_creator_user_agent_for_saved_account."""
     from app.creator.computer_actions import click_coordinates, get_clipboard_content
-    from app.database.database import get_creator_setting
+    from app.database.database import get_creator_user_agent_for_saved_account
     import time
     import pyperclip
     
@@ -1249,13 +1305,13 @@ def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath
             else:
                 return False, "cookie_duplicada", {"intento": intento, "max_intentos": max_intentos}
         
-        ua_sess = (_get_session_creator_user_agent() or "").strip()
-        creator_settings = get_creator_setting(browser_id) if browser_id else None
-        ua_cfg = (creator_settings.get("user_agent") or "").strip() if creator_settings else ""
-        user_agent = ua_sess or ua_cfg
+        user_agent = get_creator_user_agent_for_saved_account(browser_id)
         if not user_agent:
             return False, "user_agent_no_encontrado", {}
 
+        _log_user_agent_al_guardar_cuenta(
+            user_agent, email, browser_id=browser_id, browser_name=browser_name
+        )
         contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
         
         try:
@@ -1317,9 +1373,6 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total, 
     """
     Procesa un email individual en el proceso de creación de cuenta LinkedIn
     """
-    global _session_creator_user_agent
-    _session_creator_user_agent = ""
-
     from app.database.database import get_creator_email_by_id
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname
     import time
@@ -1335,9 +1388,9 @@ def procesar_email_individual(email_id, coordinates, filepath, contador, total, 
         return False
 
     # Proxy encendido durante toda la cuenta; se apaga en finally al terminar (éxito o fallo)
-    _activar_proxy(coordinates)
+    _activar_proxy(coordinates, browser_id=browser_id)
     try:
-        # Paso 2: Opcional UA por extensión + clic en LinkedIn fav
+        # Paso 2: Clic en fav LinkedIn
         if not _click_linkedin_fav(coordinates, browser_id=browser_id):
             return False
         
@@ -1383,9 +1436,6 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         browser_id: ID del navegador activo
         browser_name: Nombre del navegador activo
     """
-    global _session_creator_user_agent
-    _session_creator_user_agent = ""
-
     from app.database.database import get_creator_email_by_id
     from app.creator.computer_actions import click_coordinates, wait_for_creator_image, type_text, press_key, generate_random_password, generate_random_name, generate_random_lastname
     import time
@@ -1410,7 +1460,11 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
             click_coordinates(close_window_coords)
             time.sleep(1)
         return False, "detenido_por_usuario", {}
-    
+
+    _log_user_agent_al_iniciar_cuenta(
+        browser_id=browser_id, browser_name=browser_name, email=current_email
+    )
+
     # Paso 1: Click en el navegador
     if not _click_brave(coordinates, browser_name=browser_name):
         return False, "error_click_brave", {}
@@ -1426,9 +1480,9 @@ def procesar_email_individual_con_detalle(email_id, coordinates, filepath, conta
         return False, "detenido_por_usuario", {}
 
     # Proxy encendido durante toda la cuenta; se apaga en finally al terminar (éxito o fallo)
-    _activar_proxy(coordinates)
+    _activar_proxy(coordinates, browser_id=browser_id)
     try:
-        # Paso 2: Opcional UA por extensión + clic en LinkedIn fav
+        # Paso 2: Clic en fav LinkedIn
         if not _click_linkedin_fav(coordinates, browser_id=browser_id):
             return False, "error_click_linkedin_fav", {}
         
@@ -1554,14 +1608,11 @@ def _click_brave(coordinates, browser_name=None):
 
 
 def _click_linkedin_fav(coordinates, browser_id=None):
-    """Clic en fav LinkedIn. Si en bot_settings está activado, aplica UA por extensión antes."""
+    """Clic en fav LinkedIn. El User-Agent guardado con la cookie viene de creator_setting (servidor)."""
     from app.creator.computer_actions import click_coordinates
     from app.auth.auth import bot_running
-    from app.database.database import get_bot_settings
     import time
 
-    global _session_creator_user_agent
-    
     # Sleep interrumpible
     sleep_interval = 0.5
     slept = 0
@@ -1571,13 +1622,6 @@ def _click_linkedin_fav(coordinates, browser_id=None):
             return False
         time.sleep(sleep_interval)
         slept += sleep_interval
-
-    cfg = get_bot_settings() or {}
-    if cfg.get("enable_creator_user_agent_actions"):
-        if not _aplicar_user_agent_antes_linkedin(browser_id):
-            return False
-    else:
-        _session_creator_user_agent = ""
 
     linkedin_coords = coordinates.get("linkedin_fav_click")
     if not linkedin_coords:
@@ -1965,27 +2009,6 @@ def _get_password_usado():
     return _password_usado
 
 
-def _aplicar_user_agent_antes_linkedin(browser_id=None):
-    """Ejecuta user_agent_actions y guarda el UA del pool en sesión para el archivo de cuentas."""
-    from app.creator.user_agent_actions import resolve_browser_id, run_user_agent_extension_click
-
-    global _session_creator_user_agent
-    bid = resolve_browser_id(browser_id)
-    if bid is None:
-        print("⚠️ Sin navegador para aplicar user agent.")
-        _session_creator_user_agent = ""
-        return False
-
-    ok, ua = run_user_agent_extension_click(bid)
-    if ok and ua:
-        _session_creator_user_agent = ua.strip()
-        return True
-
-    _session_creator_user_agent = ""
-    print("❌ No se pudo aplicar user agent antes de LinkedIn.")
-    return False
-
-
 def _cerrar_ventana(coordinates):
     """Cierra la ventana después de crear la cuenta exitosamente"""
     from app.creator.computer_actions import click_coordinates
@@ -2042,22 +2065,153 @@ def _ejecutar_modo_avion():
         time.sleep(2)
 
 
-def _activar_proxy(coordinates):
-    """Activa proxy según bot_settings: coordenadas (extensión) o proxy de Windows."""
+def _proxy_url_log_respuesta(http_code: int | str | None, body: str | bytes | None, fuente: str) -> None:
+    """Imprime en consola código HTTP y cuerpo (truncado) del endpoint de proxy por URL."""
+    lim_body = 2500
+    if body is None:
+        texto = ""
+    elif isinstance(body, bytes):
+        texto = body.decode("utf-8", errors="replace")
+    else:
+        texto = str(body)
+    texto = texto.strip()
+    if len(texto) > lim_body:
+        texto = texto[:lim_body] + f"\n… [recortado, total > {lim_body} caracteres]"
+    code_s = str(http_code) if http_code is not None else "?"
+    print(f"📡 [proxy URL / {fuente}] HTTP {code_s}")
+    if texto:
+        print(f"📄 [proxy URL] Cuerpo de la respuesta:\n{texto}")
+    else:
+        print("📄 [proxy URL] Cuerpo: (vacío)")
+
+
+def _proxy_url_peticion_navegador(url: str) -> bool:
+    """
+    Petición HTTP a la URL del proxy como haría un navegador (User-Agent Chrome).
+    Usa curl si está en PATH; si no, urllib.
+    """
+    import shutil
+    import subprocess
+
+    url = (url or "").strip()
+    if not url:
+        return False
+    ua = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+    marcador = "__CURL_HTTP_CODE__"
+    curl_exe = shutil.which("curl")
+    if curl_exe:
+        try:
+            r = subprocess.run(
+                [
+                    curl_exe,
+                    "-sS",
+                    "-L",
+                    "--max-time",
+                    "30",
+                    "-A",
+                    ua,
+                    "-w",
+                    "\n__CURL_HTTP_CODE__%{http_code}",
+                    url,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=35,
+                shell=False,
+            )
+            raw = (r.stdout or "").strip()
+            http_code = None
+            body = raw
+            if marcador in raw:
+                body, _, rest = raw.rpartition(marcador)
+                rest = rest.strip()
+                if rest.isdigit():
+                    http_code = int(rest)
+                body = body.strip()
+            if r.returncode != 0:
+                err = (r.stderr or raw or "").strip()
+                print(f"⚠️ curl proxy URL falló (código proceso {r.returncode}): {err[:800]}")
+                if raw:
+                    _proxy_url_log_respuesta(http_code, body or raw, "curl")
+                return False
+            if http_code is not None and http_code >= 400:
+                _proxy_url_log_respuesta(http_code, body, "curl")
+                print(f"⚠️ curl proxy URL: HTTP {http_code}")
+                return False
+            _proxy_url_log_respuesta(http_code, body, "curl")
+            if http_code is None:
+                print("⚠️ curl proxy URL: no se pudo leer el código HTTP (-w); revisa la respuesta arriba.")
+            print("✅ Proxy por URL (curl): petición completada")
+            return True
+        except subprocess.TimeoutExpired:
+            print("⚠️ curl proxy URL: tiempo de espera agotado")
+            return False
+        except Exception as e:
+            print(f"⚠️ curl proxy URL: {e}")
+            return False
+
+    import urllib.error
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": ua, "Accept": "*/*"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw_bytes = resp.read()
+            http_code = resp.getcode()
+        _proxy_url_log_respuesta(http_code, raw_bytes, "urllib")
+        if http_code >= 400:
+            print(f"⚠️ Proxy por URL: HTTP {http_code}")
+            return False
+        print("✅ Proxy por URL (urllib): petición completada")
+        return True
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = e.read()
+        except Exception:
+            err_body = b""
+        _proxy_url_log_respuesta(e.code, err_body, "urllib")
+        print(f"⚠️ Proxy por URL: HTTP {e.code}")
+        return False
+    except Exception as e:
+        print(f"⚠️ Proxy por URL (urllib): {e}")
+        return False
+
+
+def _activar_proxy(coordinates, browser_id=None):
+    """Activa proxy según bot_settings y creator_setting: coordenadas, Windows o petición HTTP a URL configurada."""
     import sys
     import time
     import winreg
-    from app.database.database import get_bot_settings
+    from app.database.database import get_bot_settings, get_creator_setting, get_default_browser
     from app.creator.computer_actions import click_coordinates
     from app.confirmabot.utils.proxy_tool_safe import SafeProxyController
 
     global _proxy_activado_por_click, _proxy_modo_usado
-    config = get_bot_settings() or {}
-    if not config.get("enable_proxy"):
-        return
 
+    def _resolver_creator_proxy_url():
+        bid = browser_id
+        if bid is None:
+            b = get_default_browser()
+            bid = b["id"] if b else None
+        if not bid:
+            return "", False
+        st = get_creator_setting(bid) or {}
+        u = (st.get("proxy_url") or "").strip()
+        en = bool(st.get("proxy_url_enabled"))
+        return u, en
+
+    config = get_bot_settings() or {}
     use_coord = bool(config.get("proxy_via_coordinates"))
     use_win = bool(config.get("proxy_via_windows"))
+    proxy_url_str, proxy_url_en = _resolver_creator_proxy_url()
+    use_url = bool(proxy_url_en and proxy_url_str) and not use_coord and not use_win
+
+    if not config.get("enable_proxy") and not use_url:
+        return
 
     if use_coord:
         try:
@@ -2076,56 +2230,61 @@ def _activar_proxy(coordinates):
             print(f"❌ Error al activar proxy por coordenadas: {e}")
         return
 
-    if not use_win:
+    if use_win:
+        if sys.platform != "win32":
+            print("⚠️ Proxy por registro de Windows solo disponible en Windows")
+            return
+
+        controller = None
+        try:
+            controller = SafeProxyController()
+            if not controller.proxy_key:
+                print("⚠️ No se pudo abrir la clave de proxy de Windows")
+                return
+
+            enabled_before, server_status, _ = controller.get_proxy_status()
+            server = server_status
+            if not server and controller.proxy_key:
+                try:
+                    server, _ = winreg.QueryValueEx(controller.proxy_key, "ProxyServer")
+                except OSError:
+                    server = None
+            server = (str(server).strip() if server else "")
+            if not enabled_before and not server:
+                print(
+                    "⚠️ No hay servidor proxy en Windows; configura el proxy en "
+                    "Configuración de Internet antes de usar esta opción"
+                )
+                return
+
+            if not controller.enable_proxy_only():
+                print("⚠️ No se pudo activar el proxy de Windows")
+                return
+
+            controller.refresh_internet_settings()
+            if not enabled_before:
+                _proxy_activado_por_click = True
+                _proxy_modo_usado = "windows"
+            print("✅ Proxy de Windows activado")
+        except Exception as e:
+            print(f"❌ Error al activar proxy: {e}")
+        finally:
+            if controller:
+                try:
+                    controller.close()
+                except Exception:
+                    pass
         return
 
-    if sys.platform != "win32":
-        print("⚠️ Proxy por registro de Windows solo disponible en Windows")
-        return
-
-    controller = None
-    try:
-        controller = SafeProxyController()
-        if not controller.proxy_key:
-            print("⚠️ No se pudo abrir la clave de proxy de Windows")
-            return
-
-        enabled_before, server_status, _ = controller.get_proxy_status()
-        server = server_status
-        if not server and controller.proxy_key:
-            try:
-                server, _ = winreg.QueryValueEx(controller.proxy_key, "ProxyServer")
-            except OSError:
-                server = None
-        server = (str(server).strip() if server else "")
-        if not enabled_before and not server:
-            print(
-                "⚠️ No hay servidor proxy en Windows; configura el proxy en "
-                "Configuración de Internet antes de usar esta opción"
-            )
-            return
-
-        if not controller.enable_proxy_only():
-            print("⚠️ No se pudo activar el proxy de Windows")
-            return
-
-        controller.refresh_internet_settings()
-        if not enabled_before:
+    if use_url:
+        if _proxy_url_peticion_navegador(proxy_url_str):
             _proxy_activado_por_click = True
-            _proxy_modo_usado = "windows"
-        print("✅ Proxy de Windows activado")
-    except Exception as e:
-        print(f"❌ Error al activar proxy: {e}")
-    finally:
-        if controller:
-            try:
-                controller.close()
-            except Exception:
-                pass
+            _proxy_modo_usado = "url_request"
+        return
 
 
 def _desactivar_proxy(coordinates, silent=False):
-    """Desactiva el proxy del modo usado en _activar_proxy (coordenadas o Windows)."""
+    """Desactiva el proxy del modo usado en _activar_proxy (coordenadas, Windows o URL)."""
     import sys
     import time
     from app.database.database import get_bot_settings
@@ -2133,14 +2292,22 @@ def _desactivar_proxy(coordinates, silent=False):
     from app.confirmabot.utils.proxy_tool_safe import SafeProxyController
 
     global _proxy_activado_por_click, _proxy_modo_usado
-    config = get_bot_settings() or {}
-    if not config.get("enable_proxy"):
-        return
 
     if not _proxy_activado_por_click:
         return
 
     modo = _proxy_modo_usado
+
+    if modo == "url_request":
+        _proxy_activado_por_click = False
+        _proxy_modo_usado = None
+        if not silent:
+            print("✅ Modo proxy por URL finalizado (solo petición de activación; sin cierre remoto)")
+        return
+
+    config = get_bot_settings() or {}
+    if not config.get("enable_proxy"):
+        return
 
     if modo == "coordinates":
         try:
@@ -3021,9 +3188,8 @@ def _validar_navegador_configurado(browser_id, browser_name, mostrar_detalles=Fa
     Returns:
         tuple: (bool, str) - (True si está configurado, motivo si no está configurado)
     """
-    from app.database.database import get_bot_settings, get_creator_coordinates, get_creator_setting
+    from app.database.database import get_creator_coordinates, get_creator_user_agent_for_saved_account
     from app.creator.image_config import get_image_path
-    from app.creator.user_agent_actions import COORD_APPLY, COORD_EXTENSION, COORD_OUTSIDE, COORD_PLACE
     from app.utils.path_utils import get_browser_images_path
     import os
     
@@ -3035,26 +3201,14 @@ def _validar_navegador_configurado(browser_id, browser_name, mostrar_detalles=Fa
             print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
         return False, motivo
 
-    cfg = get_bot_settings() or {}
-    if cfg.get("enable_creator_user_agent_actions"):
-        for key, etiqueta in (
-            (COORD_EXTENSION, "extensión"),
-            (COORD_PLACE, "colocar"),
-            (COORD_APPLY, "aplicar"),
-            (COORD_OUTSIDE, "fuera"),
-        ):
-            if not (coordinates.get(key) or "").strip():
-                motivo = f"falta coordenada user agent ({etiqueta}); desactiva el checkbox o configura Creator"
-                if mostrar_detalles:
-                    print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
-                return False, motivo
-    else:
-        st = get_creator_setting(browser_id)
-        if not st or not (st.get("user_agent") or "").strip():
-            motivo = "falta user agent en la configuración del navegador"
-            if mostrar_detalles:
-                print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
-            return False, motivo
+    if not get_creator_user_agent_for_saved_account(browser_id):
+        motivo = (
+            "falta user agent en este navegador "
+            "(debe enviarlo el servidor en el mapa por perfil)"
+        )
+        if mostrar_detalles:
+            print(f"⚠️ Navegador '{browser_name}' ignorado: {motivo}")
+        return False, motivo
 
     # Verificar que exista la carpeta de imágenes del navegador
     images_dir = get_browser_images_path(browser_name)
@@ -3129,7 +3283,7 @@ def _mostrar_error_navegadores_sin_configuracion(active_browsers_originales):
     # Construir mensaje detallado
     mensaje = "❌ No hay navegadores con configuración completa.\n\n"
     mensaje += "El bot requiere que al menos un navegador activo tenga:\n"
-    mensaje += "• Coordenadas configuradas; user agent en ajustes del navegador (o extensión UA si está activada en opciones)\n"
+    mensaje += "• Coordenadas configuradas; user agent en creator_setting para ese navegador\n"
     mensaje += "• Carpeta de imágenes creada\n"
     mensaje += "• Al menos 2 imágenes esenciales cargadas\n\n"
     
@@ -3409,7 +3563,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, cic
                     print(f"⚠️ Error de carga de LinkedIn - continuando con siguiente email (Navegador: {browser_name})")
                 else:
                     print(f"❌ Falló - {motivo_fallo} (Navegador: {browser_name})")
-                
+
                 _maybe_run_proxy_rotation_tras_cuenta(browser_id, proxy_rotation_clock)
 
                 # Rotar al siguiente navegador para el próximo email
@@ -3543,7 +3697,7 @@ def _ejecutar_proceso_creator_con_objetivo(objetivo_cuentas, es_ciclo=False, cic
                 update_creator_email_progress(email_id, cuentas_creadas)
 
                 _maybe_run_proxy_rotation_tras_cuenta(browser_id, proxy_rotation_clock)
-                
+
                 # Rotar al siguiente navegador para el próximo email
                 browser_index = (browser_index + 1) % len(active_browsers)
                 

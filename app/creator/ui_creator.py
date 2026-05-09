@@ -168,12 +168,14 @@ def open_proxy_rotation_config_modal(parent_window, browser_id, include_link_sec
             cs = get_creator_setting(browser_id) or {}
             if save_creator_setting(
                 browser_id=browser_id,
-                user_agent=cs.get("user_agent", ""),
-                accounts_to_create=cs.get("accounts_to_create", 1),
+                user_agent=cs.get("user_agent") or "",
+                accounts_to_create=cs.get("accounts_to_create") or 1,
                 notification_email=cs.get("notification_email"),
                 isInVps=cs.get("isInVps"),
                 proxy_rotation_enabled=True,
                 proxy_rotation_link=s,
+                proxy_url=cs.get("proxy_url"),
+                proxy_url_enabled=cs.get("proxy_url_enabled"),
             ):
                 messagebox.showinfo("Guardado", "Enlace guardado correctamente.")
             else:
@@ -553,7 +555,7 @@ def create_new_window(parent_root, browser_id=None):
     # Insertar el valor actual si existe (ya obtenido arriba)
     if current_settings and current_settings.get('notification_email'):
         notification_email_entry.insert(0, current_settings['notification_email'])
-    
+
     # === CHECKBOXES DE TIPO DE MÁQUINA ===
     # Frame para los checkboxes
     machine_type_frame = ctk.CTkFrame(inputs_frame, fg_color="transparent")
@@ -620,7 +622,7 @@ def create_new_window(parent_root, browser_id=None):
 
     ctk.CTkLabel(
         inputs_frame,
-        text="Rotación de proxy: configúrala en la ventana principal (sección LinkedIn Creator).",
+        text="URL de proxy del Creator: configúrala en la ventana principal (columna izquierda, sección «Creator — URL de proxy»). Rotación de proxy: misma ventana, debajo.",
         font=("Arial", 10),
         text_color="gray",
         wraplength=520,
@@ -650,7 +652,13 @@ def create_new_window(parent_root, browser_id=None):
         
         # Guardar configuración (preservar configuración de tiempo existente)
         # NOTA: is33mail y domain ahora se configuran globalmente en "Gestión de Navegadores"
-        user_agent_to_keep = current_settings.get("user_agent", "")
+        # User-Agent: releer siempre de BD (no usar current_settings: quedaría obsoleto si el
+        # servidor actualizó el UA mientras la ventana estaba abierta, y al guardar notificación
+        # VPS se sobrescribiría con el valor viejo).
+        from app.database.database import get_creator_setting as _gcs_ua
+
+        fresh_row = _gcs_ua(browser_id) or {}
+        user_agent_to_keep = (fresh_row.get("user_agent") or "").strip()
 
         if save_creator_setting(
             browser_id=browser_id,
@@ -665,6 +673,8 @@ def create_new_window(parent_root, browser_id=None):
             isInVps=isInVps,
             proxy_rotation_enabled=None,
             proxy_rotation_link=None,
+            proxy_url=None,
+            proxy_url_enabled=None,
         ):
             success_msg = "✅ Configuración guardada correctamente."
             if notification_email:
@@ -833,12 +843,15 @@ def create_new_window(parent_root, browser_id=None):
         "Click aplicar user agent",
         "Click fuera extensión user agent",
         "Click barra de búsqueda",
+        "Click abrir nueva pestaña",
+        "Click LinkedIn en nueva pestaña (fav)",
+        "Click casilla email 1 (post-éxito)",
+        "Click casilla email 2 (post-éxito)",
+        "Click casilla password (post-éxito)",
+        "Click cerrar pestaña (post-éxito)",
         "Click opciones de usuario",
         "Click Logout",
-        "Click Jobs",
-        "Click login with email",
-        "Clic Email",
-        "Click logo LinkedIn",
+        "Clic Europa",
     ]
     
     # Mapeo de nombres a campos de la base de datos
@@ -866,12 +879,15 @@ def create_new_window(parent_root, browser_id=None):
         "Click aplicar user agent": "user_agent_apply_click",
         "Click fuera extensión user agent": "user_agent_outside_click",
         "Click barra de búsqueda": "search_bar_click",
+        "Click abrir nueva pestaña": "new_tab_click",
+        "Click LinkedIn en nueva pestaña (fav)": "linkedin_new_tab_click",
+        "Click casilla email 1 (post-éxito)": "clic_email_click",
+        "Click casilla email 2 (post-éxito)": "clic_email_click_2",
+        "Click casilla password (post-éxito)": "paste_password_click",
+        "Click cerrar pestaña (post-éxito)": "close_tab_click",
         "Click opciones de usuario": "user_options_click",
         "Click Logout": "logout_click",
-        "Click Jobs": "jobs_click",
-        "Click login with email": "login_with_email_click",
-        "Clic Email": "clic_email_click",
-        "Click logo LinkedIn": "linkedin_logo_click",
+        "Clic Europa": "europa_click",
     }
     
     # Obtener coordenadas guardadas para este navegador
@@ -1016,6 +1032,8 @@ def create_new_window(parent_root, browser_id=None):
         "Try Premium",
         "Jobs Images",
         "Login With Email",
+        "Logout",
+        "Europa",
     ]
     
     # Crear encabezados de la tabla de imágenes

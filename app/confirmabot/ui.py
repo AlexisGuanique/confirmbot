@@ -32,43 +32,48 @@ def setup_ui(logged_in_user, on_login_success):
 
     root = ctk.CTk()
     root.title("Confirma Bot")
-    root.geometry("600x700")
+    root.geometry("600x720")
+    root.minsize(520, 480)
     root.configure(fg_color="#FFFFFF")  # Fondo blanco
 
-   # 📌 Etiqueta de bienvenida centrada arriba
     welcome_label = ctk.CTkLabel(
         root,
         text=f"Bienvenido a Confirma Bot, {logged_in_user}.",
         font=("Arial", 22, "bold"),
-        text_color="black"
+        text_color="black",
     )
-    welcome_label.pack(pady=(30, 10))
+    welcome_label.pack(pady=(16, 6))
 
-    # 👉 Título para el lado izquierdo
-    left_title = ctk.CTkLabel(
-        root,
+    scroll_outer = ctk.CTkFrame(root, fg_color="#FFFFFF")
+    # Espacio inferior para el botón «Cerrar sesión» fijo
+    scroll_outer.pack(fill="both", expand=True, padx=0, pady=(0, 56))
+
+    main_scroll = ctk.CTkScrollableFrame(scroll_outer, fg_color="#FFFFFF")
+    main_scroll.pack(fill="both", expand=True, padx=6, pady=4)
+
+    titles_row = ctk.CTkFrame(main_scroll, fg_color="transparent")
+    titles_row.pack(fill="x", pady=(0, 8))
+    ctk.CTkLabel(
+        titles_row,
         text="ConfirmaBot",
         text_color="black",
-        font=("Arial", 16, "bold")
-    )
-    left_title.place(relx=0.0, rely=0.0, anchor="nw", x=20, y=70)
-
-    # 👉 Título para el lado derecho
-    right_title = ctk.CTkLabel(
-        root,
+        font=("Arial", 16, "bold"),
+    ).pack(side="left", anchor="w")
+    ctk.CTkLabel(
+        titles_row,
         text="Linkedin Creator",
         text_color="black",
-        font=("Arial", 16, "bold")
-    )
-    right_title.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=70)
+        font=("Arial", 16, "bold"),
+    ).pack(side="right", anchor="e")
 
-    # 👉 Contenedor para inputs de Hostinger (lado izquierdo)
-    hostinger_frame = ctk.CTkFrame(root, fg_color="transparent")
-    hostinger_frame.place(relx=0.0, rely=0.0, anchor="nw", x=20, y=100)
+    columns_row = ctk.CTkFrame(main_scroll, fg_color="transparent")
+    columns_row.pack(fill="both", expand=True)
 
-    # 👉 Contenedor para opciones del bot (lado derecho)
-    options_frame = ctk.CTkFrame(root, fg_color="transparent")
-    options_frame.place(relx=1.0, rely=0.0, anchor="ne", x=-20, y=100)
+    hostinger_frame = ctk.CTkFrame(columns_row, fg_color="transparent")
+    hostinger_frame.pack(side="left", anchor="nw", fill="both", expand=True, padx=(0, 10))
+
+    options_frame = ctk.CTkFrame(columns_row, fg_color="transparent")
+    options_frame.pack(side="right", anchor="ne", fill="both", expand=True, padx=(10, 0))
 
 
     # Los inputs de configuración del bot se movieron a una ventana separada
@@ -90,22 +95,14 @@ def setup_ui(logged_in_user, on_login_success):
 
 
     # 👉 Mostrar cantidad de dominios y hacer clic para verlos
-    def toggle_domain_view(event=None):
-        if domain_view_frame.winfo_ismapped():
-            domain_view_frame.pack_forget()
-        else:
-            update_domain_list()
-            domain_view_frame.pack(pady=(0, 10), anchor="ne")
-
     email_count_label = ctk.CTkLabel(
         hostinger_frame,
         text=f"Dominios cargados: {get_email_count()} (click para ver)",
         text_color="blue",
         font=("Arial", 12, "bold"),
-        cursor="hand2"
+        cursor="hand2",
     )
     email_count_label.pack(pady=(10, 2), anchor="w")
-    email_count_label.bind("<Button-1>", toggle_domain_view)
 
 
 
@@ -147,17 +144,14 @@ def setup_ui(logged_in_user, on_login_success):
     )
     load_emails_button.pack(pady=(0, 15))
 
-   # 👉 Contenedor oculto que mostrará los dominios
+   # 👉 Contenedor oculto que mostrará los dominios (se empaqueta al expandir; dentro del scroll)
     domain_view_frame = ctk.CTkFrame(
-        root,
-        width=300,
-        height=200,
+        hostinger_frame,
         fg_color="white",
         corner_radius=8,
         border_width=1,
-        border_color="black"
+        border_color="black",
     )
-    domain_view_frame.place_forget()  # Oculto al inicio
 
     domain_title = ctk.CTkLabel(
         domain_view_frame,
@@ -210,17 +204,16 @@ def setup_ui(logged_in_user, on_login_success):
         else:
             domain_listbox.insert("end", "No hay dominios cargados.")
 
-                
-    # 👉 Mostrar/ocultar el panel de dominios (ajustado manualmente)
     def toggle_domain_view(event=None):
         if domain_view_frame.winfo_ismapped():
-            domain_view_frame.place_forget()
+            domain_view_frame.pack_forget()
         else:
             update_domain_list()
-            # ❗ Probar valores más bajos para ver el cambio real
-            domain_view_frame.place(x=250, y=250)  # ⇠ Más a la izquierda y abajo
+            domain_view_frame.pack(fill="x", pady=(0, 10), after=load_emails_button)
 
+    email_count_label.bind("<Button-1>", toggle_domain_view)
 
+                
     # 👉 Botón para ejecutar el bot
     def handle_run_checker():
         resultado = run_checker()
@@ -607,17 +600,7 @@ def setup_ui(logged_in_user, on_login_success):
         checkbox_width=20,
         checkbox_height=20,
     )
-    proxy_win_checkbox.pack(pady=(0, 6), anchor="center")
-
-    creator_ua_checkbox = ctk.CTkCheckBox(
-        hostinger_frame,
-        text="Creator: aplicar User-Agent (extensión + pool) antes de LinkedIn",
-        text_color="black",
-        font=("Arial", 12),
-        checkbox_width=20,
-        checkbox_height=20,
-    )
-    creator_ua_checkbox.pack(pady=(0, 10), anchor="center")
+    proxy_win_checkbox.pack(pady=(0, 10), anchor="center")
 
     def _on_proxy_coord_toggle():
         if proxy_coord_checkbox.get() == 1:
@@ -641,7 +624,102 @@ def setup_ui(logged_in_user, on_login_success):
         return None, None
 
     bid_rot, bname_rot = resolve_main_creator_browser()
-    cs_rot = get_creator_setting(bid_rot) if bid_rot else {}
+    cs_rot = (get_creator_setting(bid_rot) or {}) if bid_rot else {}
+
+    creator_proxy_outer = ctk.CTkFrame(hostinger_frame, fg_color="transparent")
+    creator_proxy_outer.pack(fill="x", pady=(0, 12), anchor="w")
+
+    ctk.CTkLabel(
+        creator_proxy_outer,
+        text="🌐 Creator — URL de proxy",
+        font=("Arial", 11, "bold"),
+        text_color="black",
+    ).pack(anchor="w")
+    ctk.CTkLabel(
+        creator_proxy_outer,
+        text=(
+            f"Navegador predeterminado: {bname_rot}"
+            if bid_rot
+            else "Sin navegador: abre «Configuración del creator» y crea uno."
+        ),
+        font=("Arial", 10),
+        text_color="gray",
+        wraplength=320,
+        justify="left",
+    ).pack(anchor="w", pady=(2, 6))
+
+    main_proxy_url_enabled_var = ctk.IntVar(
+        value=1 if cs_rot.get("proxy_url_enabled") else 0
+    )
+    main_proxy_url_chk = ctk.CTkCheckBox(
+        creator_proxy_outer,
+        text="Usar URL de proxy configurada",
+        text_color="black",
+        font=("Arial", 11),
+        checkbox_width=20,
+        checkbox_height=20,
+        variable=main_proxy_url_enabled_var,
+    )
+    main_proxy_url_chk.pack(anchor="w", pady=(0, 4))
+
+    main_proxy_url_entry = ctk.CTkEntry(
+        creator_proxy_outer,
+        placeholder_text="https://usuario:pass@host:puerto o http://host:puerto",
+        font=("Arial", 11),
+        height=32,
+    )
+    main_proxy_url_entry.pack(fill="x", pady=(0, 8))
+    if cs_rot.get("proxy_url"):
+        main_proxy_url_entry.insert(0, str(cs_rot["proxy_url"]))
+
+    def save_creator_proxy_url_settings(silent: bool = False):
+        bid, _ = resolve_main_creator_browser()
+        if not bid:
+            if not silent:
+                messagebox.showwarning(
+                    "Aviso",
+                    "No hay navegador en la base de datos.\nAbre «Configuración del creator».",
+                )
+            return
+        cs_m = get_creator_setting(bid) or {}
+        pu = main_proxy_url_entry.get().strip()
+        en = main_proxy_url_enabled_var.get() == 1
+        ok = save_creator_setting(
+            browser_id=bid,
+            user_agent=cs_m.get("user_agent") or "",
+            accounts_to_create=cs_m.get("accounts_to_create") or 1,
+            notification_email=cs_m.get("notification_email"),
+            isInVps=cs_m.get("isInVps"),
+            proxy_rotation_enabled=None,
+            proxy_rotation_link=None,
+            proxy_url=pu,
+            proxy_url_enabled=en,
+        )
+        if ok:
+            if not silent:
+                messagebox.showinfo("Éxito", "URL de proxy del Creator guardada.")
+            else:
+                print(f"✅ Creator proxy URL: checkbox={'sí' if en else 'no'} guardado en BD")
+        else:
+            if not silent:
+                messagebox.showerror("Error", "No se pudo guardar la URL de proxy.")
+            else:
+                print("❌ No se pudo guardar URL de proxy / checkbox")
+
+    main_proxy_url_chk.configure(
+        command=lambda: save_creator_proxy_url_settings(silent=True),
+    )
+
+    ctk.CTkButton(
+        creator_proxy_outer,
+        text="💾 Guardar URL de proxy",
+        command=lambda: save_creator_proxy_url_settings(silent=False),
+        fg_color="#28a745",
+        text_color="white",
+        font=("Arial", 11, "bold"),
+        width=200,
+        height=30,
+    ).pack(anchor="w")
 
     rot_proxy_outer = ctk.CTkFrame(hostinger_frame, fg_color="transparent")
     rot_proxy_outer.pack(fill="x", pady=(0, 14), anchor="w")
@@ -665,7 +743,7 @@ def setup_ui(logged_in_user, on_login_success):
         justify="left",
     ).pack(anchor="w", pady=(2, 6))
 
-    main_proxy_rot_var = ctk.IntVar(value=1 if (cs_rot and cs_rot.get("proxy_rotation_enabled")) else 0)
+    main_proxy_rot_var = ctk.IntVar(value=1 if cs_rot.get("proxy_rotation_enabled") else 0)
 
     def sync_rot_proxy_config_btn():
         bid, _ = resolve_main_creator_browser()
@@ -682,12 +760,14 @@ def setup_ui(logged_in_user, on_login_success):
         cs_m = get_creator_setting(bid) or {}
         save_creator_setting(
             browser_id=bid,
-            user_agent=cs_m.get("user_agent", ""),
-            accounts_to_create=cs_m.get("accounts_to_create", 1),
+            user_agent=cs_m.get("user_agent") or "",
+            accounts_to_create=cs_m.get("accounts_to_create") or 1,
             notification_email=cs_m.get("notification_email"),
             isInVps=cs_m.get("isInVps"),
             proxy_rotation_enabled=(main_proxy_rot_var.get() == 1),
             proxy_rotation_link=None,
+            proxy_url=cs_m.get("proxy_url"),
+            proxy_url_enabled=cs_m.get("proxy_url_enabled"),
         )
 
     def open_creator_rot_proxy_modal():
@@ -743,7 +823,11 @@ def setup_ui(logged_in_user, on_login_success):
             enable_adb = adb_checkbox.get() == 1
             pc = proxy_coord_checkbox.get() == 1
             pw = proxy_win_checkbox.get() == 1
-            enable_creator_ua = creator_ua_checkbox.get() == 1
+            enable_creator_ua = (
+                current_settings.get("enable_creator_user_agent_actions", False)
+                if current_settings
+                else False
+            )
 
             success = save_bot_settings(
                 iterations_val,
@@ -779,20 +863,14 @@ def setup_ui(logged_in_user, on_login_success):
         else:
             proxy_coord_checkbox.deselect()
             proxy_win_checkbox.deselect()
-        if bot_settings.get("enable_creator_user_agent_actions"):
-            creator_ua_checkbox.select()
-        else:
-            creator_ua_checkbox.deselect()
     else:
         adb_checkbox.select()
         proxy_coord_checkbox.deselect()
         proxy_win_checkbox.select()
-        creator_ua_checkbox.deselect()
 
     adb_checkbox.configure(command=auto_save_checkboxes)
     proxy_coord_checkbox.configure(command=_on_proxy_coord_toggle)
     proxy_win_checkbox.configure(command=_on_proxy_win_toggle)
-    creator_ua_checkbox.configure(command=auto_save_checkboxes)
 
    
 

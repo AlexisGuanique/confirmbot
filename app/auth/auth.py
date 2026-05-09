@@ -164,7 +164,7 @@ def _show_browser_not_available_messagebox(message_text):
 def apply_remote_user_agent_if_present(command_payload):
     """
     Si el servidor envía User-Agent(s), los guarda en creator_setting por navegador.
-    Si no envía UA, no falla: el creator obtiene el UA real por cuenta desde la extensión.
+    Ese valor es el que se escribe junto a cada cookie en el archivo de cuentas.
     """
     raw_list = command_payload.get("preferred_browsers")
     raw_uas = command_payload.get("remote_user_agents")
@@ -173,6 +173,10 @@ def apply_remote_user_agent_if_present(command_payload):
         and len(raw_list) > 0
         and isinstance(raw_uas, dict)
     ):
+        print(
+            "🌐 [servidor] Comando incluye remote_user_agents para varios navegadores; aplicando…",
+            flush=True,
+        )
         for name in raw_list:
             bn = str(name).strip()
             if not bn:
@@ -181,7 +185,7 @@ def apply_remote_user_agent_if_present(command_payload):
             if not ua:
                 print(
                     f"ℹ️ Sin User-Agent remoto para '{bn}'; se omite "
-                    "(el creador lo captura por extensión al guardar la cuenta)."
+                    "(debe existir user_agent en creator_setting para guardar cuentas)."
                 )
                 continue
             ok, message = set_creator_user_agent_by_browser_name(bn, ua)
@@ -189,7 +193,7 @@ def apply_remote_user_agent_if_present(command_payload):
                 print(f"⚠️ {message}")
                 _show_browser_not_available_messagebox(message)
                 return False, message
-            print(f"🌐 {message}")
+            print(f"🌐 {message}", flush=True)
         return True, None
 
     preferred_browser = (command_payload.get('preferred_browser') or '').strip()
@@ -201,18 +205,112 @@ def apply_remote_user_agent_if_present(command_payload):
     if not remote_user_agent:
         print(
             f"ℹ️ Sin User-Agent remoto para '{preferred_browser}'; "
-            "el creador lo captura por extensión al guardar la cuenta."
+            "asegura user_agent en creator_setting para poder guardar cuentas.",
+            flush=True,
         )
         return True, None
 
+    print(
+        f"🌐 [servidor] Comando trae remote_user_agent para {preferred_browser!r} "
+        f"({len(remote_user_agent)} caracteres) — guardando en creator_setting…",
+        flush=True,
+    )
     ok, message = set_creator_user_agent_by_browser_name(preferred_browser, remote_user_agent)
     if ok:
-        print(f"🌐 {message}")
+        print(f"🌐 {message}", flush=True)
         return True, None
 
-    print(f"⚠️ {message}")
+    print(f"⚠️ {message}", flush=True)
     _show_browser_not_available_messagebox(message)
     return False, message
+
+
+def apply_remote_creator_user_agents_if_present(command_payload):
+    """
+    (Nuevo) Solo para el comando remoto `execute_creator`.
+
+    El servidor envía:
+    - remote_creator_user_agents_by_browser: dict perfil→UA (case-sensitive).
+    - remote_creator_user_agent: UA fallback (p.ej. del preferred_browser).
+    - remote_creator_user_agents: lista legacy (no identifica 1:1).
+
+    Regla:
+    1) Si hay mapa, aplicar UA por nombre exacto de perfil.
+    2) Para perfiles sin entrada en el mapa, si hay fallback, aplicarlo como último recurso
+       (al menos para `preferred_browser` y/o `preferred_browsers`).
+    """
+    preferred_browser = (command_payload.get("preferred_browser") or "").strip()
+    preferred_browsers = command_payload.get("preferred_browsers")
+    if not isinstance(preferred_browsers, list):
+        preferred_browsers = []
+    preferred_browsers = [str(x).strip() for x in preferred_browsers if str(x).strip()]
+
+    ua_by_browser = command_payload.get("remote_creator_user_agents_by_browser")
+    if not isinstance(ua_by_browser, dict):
+        ua_by_browser = {}
+
+    fallback_ua = (command_payload.get("remote_creator_user_agent") or "").strip()
+
+    # 1) Aplicar el mapa perfil→UA
+    applied_any = False
+    if ua_by_browser:
+        print(
+            f"🌐 [servidor] remote_creator_user_agents_by_browser recibido "
+            f"({len(ua_by_browser)} perfiles). Aplicando por perfil…",
+            flush=True,
+        )
+        for profile_name, ua in ua_by_browser.items():
+            bn = str(profile_name or "").strip()
+            u = str(ua or "").strip()
+            if not bn or not u:
+                continue
+            ok, message = set_creator_user_agent_by_browser_name(bn, u)
+            if not ok:
+                print(f"⚠️ {message}", flush=True)
+                _show_browser_not_available_messagebox(message)
+                return False, message
+            print(f"🌐 {message}", flush=True)
+            applied_any = True
+
+    # 2) Fallback: aplicar a perfiles sin entrada (al menos los preferidos)
+    if fallback_ua:
+        targets = []
+        if preferred_browser:
+            targets.append(preferred_browser)
+        targets.extend(preferred_browsers)
+        # dedup preservando orden
+        seen = set()
+        targets = [x for x in targets if not (x in seen or seen.add(x))]
+
+        for bn in targets:
+            # Si el mapa ya trae UA para este perfil, no lo pisan.
+            if ua_by_browser.get(bn):
+                continue
+            print(
+                f"🌐 [servidor] Sin UA específico en el mapa para {bn!r}; "
+                f"aplicando fallback remote_creator_user_agent ({len(fallback_ua)} caracteres)…",
+                flush=True,
+            )
+            ok, message = set_creator_user_agent_by_browser_name(bn, fallback_ua)
+            if not ok:
+                print(f"⚠️ {message}", flush=True)
+                _show_browser_not_available_messagebox(message)
+                return False, message
+            print(f"🌐 {message}", flush=True)
+            applied_any = True
+
+    if applied_any:
+        return True, None
+
+    # 3) Sin UAs configurados: no falla
+    if ua_by_browser == {} and not fallback_ua:
+        print(
+            "ℹ️ [servidor] Sin User-Agents configurados (mapa vacío y fallback null/vacío).",
+            flush=True,
+        )
+        return True, None
+
+    return True, None
 
 
 def apply_remote_creator_user_agents_pool_if_present(command_payload):
@@ -587,7 +685,8 @@ def command(data):
                 'message': browser_error
             })
             return
-        ua_ok, ua_error = apply_remote_user_agent_if_present(data)
+        # UA del creator (nuevo contrato): map perfil→UA + fallback.
+        ua_ok, ua_error = apply_remote_creator_user_agents_if_present(data)
         if not ua_ok:
             sio.emit('status_update', {'status': 'stopped'})
             sio.emit('action_completed', {

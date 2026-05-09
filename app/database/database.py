@@ -410,6 +410,8 @@ def create_database():
             'user_agent_extension_click', 'user_agent_extract_click', 'user_agent_apply_click', 'user_agent_outside_click',
             'search_bar_click', 'user_options_click', 'logout_click', 'jobs_click',
             'login_with_email_click', 'clic_email_click', 'linkedin_logo_click',
+            'close_tab_click', 'clic_email_click_2',
+            'europa_click',
             'proxy_rotation_browser_click', 'proxy_rotation_search_bar_click', 'proxy_rotation_close_browser_click',
         ]
         
@@ -420,7 +422,7 @@ def create_database():
             for col in missing_columns:
                 if col != 'browser_id':  # browser_id ya se maneja en la migración
                     try:
-                        if col in ['close_window', 'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click', 'proxy_extension_click', 'activate_proxy_click', 'disable_proxy_click', 'user_agent_extension_click', 'user_agent_extract_click', 'user_agent_apply_click', 'user_agent_outside_click', 'search_bar_click', 'user_options_click', 'logout_click', 'jobs_click', 'login_with_email_click', 'clic_email_click', 'linkedin_logo_click', 'proxy_rotation_browser_click', 'proxy_rotation_search_bar_click', 'proxy_rotation_close_browser_click']:
+                        if col in ['close_window', 'white_captcha_click', 'close_captcha_error_click', 'close_proxy_error_click', 'proxy_extension_click', 'activate_proxy_click', 'disable_proxy_click', 'user_agent_extension_click', 'user_agent_extract_click', 'user_agent_apply_click', 'user_agent_outside_click', 'search_bar_click', 'user_options_click', 'logout_click', 'jobs_click', 'login_with_email_click', 'clic_email_click', 'linkedin_logo_click', 'close_tab_click', 'clic_email_click_2', 'europa_click', 'proxy_rotation_browser_click', 'proxy_rotation_search_bar_click', 'proxy_rotation_close_browser_click']:
                             cursor.execute(f"ALTER TABLE creator_coordinates ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
                         elif col == 'continue_button_click_optional':
                             cursor.execute(f"ALTER TABLE creator_coordinates ADD COLUMN {col} TEXT")
@@ -698,6 +700,8 @@ def create_database():
         for _pr_col, _pr_sql in (
             ("proxy_rotation_enabled", "ALTER TABLE creator_setting ADD COLUMN proxy_rotation_enabled INTEGER DEFAULT 0"),
             ("proxy_rotation_link", "ALTER TABLE creator_setting ADD COLUMN proxy_rotation_link TEXT"),
+            ("proxy_url", "ALTER TABLE creator_setting ADD COLUMN proxy_url TEXT"),
+            ("proxy_url_enabled", "ALTER TABLE creator_setting ADD COLUMN proxy_url_enabled INTEGER NOT NULL DEFAULT 0"),
         ):
             cursor.execute("PRAGMA table_info(creator_setting)")
             _cols_now = [col[1] for col in cursor.fetchall()]
@@ -889,6 +893,21 @@ def run_migrations():
                 'version': 26,
                 'description': 'Post-éxito: clic Email (clic_email_click)',
                 'sql': "ALTER TABLE creator_coordinates ADD COLUMN clic_email_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 27,
+                'description': 'Post-éxito: cerrar pestaña (close_tab_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN close_tab_click TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 28,
+                'description': 'Post-éxito: clic Email 2 (clic_email_click_2)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN clic_email_click_2 TEXT NOT NULL DEFAULT ''"
+            },
+            {
+                'version': 29,
+                'description': 'Post-éxito: observador imagen Europa → clic (europa_click)',
+                'sql': "ALTER TABLE creator_coordinates ADD COLUMN europa_click TEXT NOT NULL DEFAULT ''"
             },
         ]
         
@@ -1700,6 +1719,12 @@ def set_creator_user_agent_by_browser_name(browser_name, user_agent):
             return False, f"Navegador '{target_name}' no existe en la configuración local"
 
         browser_id, browser_real_name = row[0], row[1]
+        print(
+            f"🌐 [servidor→creator_setting] User-Agent recibido para "
+            f"navegador={browser_real_name!r} (browser_id={browser_id}), "
+            f"{len(ua_value)} caracteres: {ua_value!r}",
+            flush=True,
+        )
         current = get_creator_setting(browser_id) or {}
 
         ok = save_creator_setting(
@@ -1710,6 +1735,8 @@ def set_creator_user_agent_by_browser_name(browser_name, user_agent):
             isInVps=current.get('isInVps'),
             proxy_rotation_enabled=current.get('proxy_rotation_enabled'),
             proxy_rotation_link=current.get('proxy_rotation_link'),
+            proxy_url=current.get('proxy_url'),
+            proxy_url_enabled=current.get('proxy_url_enabled'),
         )
         if not ok:
             return False, f"No se pudo guardar User-Agent para {browser_real_name}"
@@ -2102,7 +2129,7 @@ def get_creator_coordinates(browser_id, *field_names):
 
 
 #! FUNCIONES DE CREATOR_SETTING
-def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None, is33mail=None, domain=None, proxy_rotation_enabled=None, proxy_rotation_link=None):
+def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled_time=None, timezone=None, notification_email=None, cycle_time_minutes=None, time_config_type='manual', accounts_per_cycle=None, isInVps=None, is33mail=None, domain=None, proxy_rotation_enabled=None, proxy_rotation_link=None, proxy_url=None, proxy_url_enabled=None):
     """
     Guarda o actualiza la configuración del creator para un navegador específico
     NOTA: Los campos de tiempo (scheduled_time, timezone, cycle_time_minutes, time_config_type, accounts_per_cycle) 
@@ -2123,6 +2150,8 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
         domain (str): IGNORADO - usar save_global_time_config() (opcional, mantenido por compatibilidad)
         proxy_rotation_enabled (bool|None): Si se usa enlace + coordenadas de rotación de proxy; None conserva el valor guardado
         proxy_rotation_link (str|None): URL del panel de rotación; None conserva el valor guardado
+        proxy_url (str|None): URL o endpoint del proxy (p. ej. http://host:puerto); None conserva el valor guardado
+        proxy_url_enabled (bool|None): Si se usa la URL de proxy configurada; None conserva el valor guardado
     
     Returns:
         bool: True si se guardó correctamente, False en caso contrario
@@ -2138,7 +2167,7 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
         
         cursor.execute(
             """
-            SELECT COALESCE(proxy_rotation_enabled, 0), proxy_rotation_link
+            SELECT COALESCE(proxy_rotation_enabled, 0), proxy_rotation_link, proxy_url, COALESCE(proxy_url_enabled, 0)
             FROM creator_setting WHERE browser_id = ?
             """,
             (browser_id,),
@@ -2146,21 +2175,28 @@ def save_creator_setting(browser_id, user_agent, accounts_to_create=1, scheduled
         ex_proxy = cursor.fetchone()
         pr_en = int(ex_proxy[0]) if ex_proxy else 0
         pr_link = ex_proxy[1] if ex_proxy else None
+        pr_url = ex_proxy[2] if ex_proxy else None
+        pr_url_en = int(ex_proxy[3]) if ex_proxy else 0
         if proxy_rotation_enabled is not None:
             pr_en = 1 if proxy_rotation_enabled else 0
         if proxy_rotation_link is not None:
             s = str(proxy_rotation_link).strip()
             pr_link = s if s else None
+        if proxy_url is not None:
+            su = str(proxy_url).strip()
+            pr_url = su if su else None
+        if proxy_url_enabled is not None:
+            pr_url_en = 1 if proxy_url_enabled else 0
 
         # Insertar o actualizar (UPSERT) - NO guardar campos de tiempo ni dominio
         cursor.execute('''
-            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, notification_email, isInVps, proxy_rotation_enabled, proxy_rotation_link)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (browser_id, user_agent, accounts_to_create, notification_email, isInVps_int, pr_en, pr_link))
+            INSERT OR REPLACE INTO creator_setting (browser_id, user_agent, accounts_to_create, notification_email, isInVps, proxy_rotation_enabled, proxy_rotation_link, proxy_url, proxy_url_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (browser_id, user_agent, accounts_to_create, notification_email, isInVps_int, pr_en, pr_link, pr_url, pr_url_en))
         
         conn.commit()
         conn.close()
-        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Notificación={notification_email}, isInVps={isInVps}, proxy_rotación={bool(pr_en)}")
+        print(f"✅ Configuración del creator guardada para navegador {browser_id}: UA={user_agent}, Cuentas={accounts_to_create}, Notificación={notification_email}, isInVps={isInVps}, proxy_rotación={bool(pr_en)}, proxy_url={'sí' if pr_url else 'no'}, usar_proxy_url={bool(pr_url_en)}")
         return True
         
     except Exception as e:
@@ -2179,6 +2215,7 @@ def get_creator_setting(browser_id):
     Returns:
         dict: Diccionario con user_agent, accounts_to_create, scheduled_time, timezone, notification_email, 
               cycle_time_minutes, time_config_type, accounts_per_cycle, isInVps, is33mail y domain, 
+              proxy_rotation_enabled, proxy_rotation_link, proxy_url, proxy_url_enabled,
               o None si no existe la configuración del navegador
     """
     try:
@@ -2187,7 +2224,7 @@ def get_creator_setting(browser_id):
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT user_agent, accounts_to_create, notification_email, isInVps, COALESCE(proxy_rotation_enabled, 0), proxy_rotation_link FROM creator_setting WHERE browser_id = ?",
+            "SELECT user_agent, accounts_to_create, notification_email, isInVps, COALESCE(proxy_rotation_enabled, 0), proxy_rotation_link, proxy_url, COALESCE(proxy_url_enabled, 0) FROM creator_setting WHERE browser_id = ?",
             (browser_id,),
         )
         row = cursor.fetchone()
@@ -2209,6 +2246,8 @@ def get_creator_setting(browser_id):
                 'isInVps': isInVps_bool,  # Boolean o None
                 'proxy_rotation_enabled': bool(row[4]),
                 'proxy_rotation_link': row[5],
+                'proxy_url': row[6],
+                'proxy_url_enabled': bool(row[7]),
                 # Campos de tiempo y dominio desde configuración global
                 'scheduled_time': global_time_config['scheduled_time'],
                 'timezone': global_time_config['timezone'],
@@ -2227,6 +2266,19 @@ def get_creator_setting(browser_id):
     except Exception as e:
         print(f"❌ Error al obtener configuración del creator: {e}")
         return None
+
+
+def get_creator_user_agent_for_saved_account(browser_id):
+    """
+    User-Agent que debe escribirse en la línea del archivo de cuentas.
+
+    Returns:
+        str: UA en texto plano, o "" si no hay ninguno.
+    """
+    if browser_id is None:
+        return ""
+    st = get_creator_setting(browser_id)
+    return (st.get("user_agent") or "").strip() if st else ""
 
 
 def clear_scheduled_time(browser_id):
