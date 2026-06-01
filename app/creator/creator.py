@@ -96,6 +96,33 @@ def _son_cookies_similares(cookie1, cookie2):
         return False
 
 
+def _resolve_user_agent(browser_id=None, browser_name=None):
+    """
+    User-Agent para guardar/enviar cuentas.
+    Prioriza el recibido del servidor en esta sesión; si no hay, usa creator_setting local.
+    """
+    from app.creator.remote_user_agent_session import get_remote_user_agent
+    from app.database.database import get_creator_setting, get_all_browsers
+
+    if not browser_name and browser_id:
+        for browser in get_all_browsers():
+            if browser.get("id") == browser_id:
+                browser_name = browser.get("name")
+                break
+
+    if browser_name:
+        remote_ua = get_remote_user_agent(browser_name)
+        if remote_ua:
+            return remote_ua
+
+    if browser_id:
+        creator_settings = get_creator_setting(browser_id)
+        if creator_settings and creator_settings.get("user_agent"):
+            return str(creator_settings["user_agent"]).strip()
+
+    return None
+
+
 def execute_creator():
     """
     Función principal del creator que ejecuta todas las acciones.
@@ -105,6 +132,7 @@ def execute_creator():
     import app.auth.auth as auth_module
     
     # Establecer bot_running = True cuando se ejecuta desde la UI
+    auth_module._stop_requested = False
     auth_module.bot_running = True
     print("🚀 Iniciando Creator desde UI...")
     
@@ -1108,7 +1136,6 @@ def _procesar_captcha_blanco(coordinates, estado, browser_name=None):
 def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id=None, browser_name=None):
     """Obtiene y guarda la cookie de la cuenta creada"""
     from app.creator.computer_actions import click_coordinates, get_clipboard_content
-    from app.database.database import get_creator_setting
     import time
     import pyperclip
     
@@ -1165,14 +1192,10 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id
         # Guardar cookie
         print("✅ Cookie única guardada")
         
-        if browser_id:
-            creator_settings = get_creator_setting(browser_id)
-        else:
-            creator_settings = None
-        if not creator_settings or not creator_settings.get('user_agent'):
+        user_agent = _resolve_user_agent(browser_id=browser_id, browser_name=browser_name)
+        if not user_agent:
             return False, "user_agent_no_encontrado", {}
         
-        user_agent = creator_settings.get('user_agent')
         contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
         
         try:
@@ -1194,7 +1217,6 @@ def _obtener_y_guardar_cookie(coordinates, email, password, filepath, browser_id
 def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath, exito_image_name, browser_id=None, browser_name=None):
     """Obtiene y guarda la cookie con información detallada"""
     from app.creator.computer_actions import click_coordinates, get_clipboard_content
-    from app.database.database import get_creator_setting
     import time
     import pyperclip
     
@@ -1251,14 +1273,10 @@ def _obtener_y_guardar_cookie_con_detalle(coordinates, email, password, filepath
         # Guardar cookie
         print("✅ Cookie única guardada")
         
-        if browser_id:
-            creator_settings = get_creator_setting(browser_id)
-        else:
-            creator_settings = None
-        if not creator_settings or not creator_settings.get('user_agent'):
+        user_agent = _resolve_user_agent(browser_id=browser_id, browser_name=browser_name)
+        if not user_agent:
             return False, "user_agent_no_encontrado", {}
         
-        user_agent = creator_settings.get('user_agent')
         contenido = f"{user_agent}\t{email}\t{password}\t{cookie}"
         
         
@@ -1477,6 +1495,9 @@ def _click_brave(coordinates, browser_name=None):
     
     # Obtener nombre del navegador para mensajes
     nombre_navegador = browser_name if browser_name else "navegador"
+
+    if not _ejecutar_peticion_pre_iteracion_si_habilitada():
+        return False
     
     brave_coords = coordinates.get("brave_click")
     if not brave_coords:
@@ -2091,43 +2112,123 @@ def _cerrar_ventana(coordinates):
         time.sleep(2)
 
 
+def _is_valid_http_url(url):
+    """Valida que la cadena sea una URL http(s) con host."""
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse((url or "").strip())
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    except Exception:
+        return False
+
+
+def _ejecutar_peticion_pre_iteracion_si_habilitada():
+    """
+    Realiza GET a la URL configurada (curl) antes de abrir el navegador.
+    Solo si use_pre_iteration_url está activo en bot_settings.
+    """
+    from app.database.database import get_bot_settings
+    import os
+    import subprocess
+    import shutil
+
+    config = get_bot_settings() or {}
+    if not config.get("use_pre_iteration_url"):
+        return True
+
+    url = (config.get("pre_iteration_url") or "").strip()
+    if not url:
+        print("⚠️ URL pre-iteración habilitada pero no configurada; se omite la petición")
+        return True
+
+    if not _is_valid_http_url(url):
+        print(f"⚠️ URL pre-iteración inválida: {url}")
+        return True
+
+    print(f"🌐 Petición GET pre-iteración: {url}")
+
+    curl_path = shutil.which("curl")
+    if curl_path:
+        try:
+            result = subprocess.run(
+                [curl_path, "-sS", "-L", "-m", "30", "-o", os.devnull, "-w", "%{http_code}", url],
+                capture_output=True,
+                text=True,
+                timeout=35,
+            )
+            http_code = (result.stdout or "").strip()
+            if result.returncode == 0:
+                print(f"✅ Petición pre-iteración OK (HTTP {http_code or '200'})")
+                return True
+            print(f"⚠️ curl falló (código {result.returncode}): {(result.stderr or '').strip()}")
+        except subprocess.TimeoutExpired:
+            print("⚠️ Timeout en petición pre-iteración (curl)")
+        except Exception as e:
+            print(f"⚠️ Error en petición pre-iteración (curl): {e}")
+    else:
+        try:
+            import requests
+            response = requests.get(url, timeout=30, allow_redirects=True)
+            print(f"✅ Petición pre-iteración OK (HTTP {response.status_code})")
+            return True
+        except Exception as e:
+            print(f"⚠️ Error en petición pre-iteración (requests): {e}")
+
+    return True
+
+
 def _ejecutar_modo_avion():
     """Ejecuta el modo avión si está disponible"""
     import os
     import subprocess
     import time
     from app.database.database import get_bot_settings
+    from app.auth.auth import bot_running
     
-    config = get_bot_settings()
-    
-    # Ruta del ejecutable ADB - verificar si existe
+    config = get_bot_settings() or {}
+    enable_adb = config.get("enable_adb", True)
+
+    if not enable_adb:
+        return
+
     adb_path = r"C:\Adb\adb.exe"
-    adb_available = os.path.exists(adb_path)
-    
-    if not adb_available:
+    if not os.path.exists(adb_path):
+        print("⚠️ ADB no encontrado; modo avión omitido")
         return
     
-    # Ejecutar comandos ADB solo si está disponible y habilitado
-    enable_adb = config.get("enable_adb", True)
-    if adb_available and enable_adb:
-        try:
-            # Ejecutar el comando para activar el modo avión
-            subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"], 
-                            capture_output=True, text=True, timeout=10)
-            print("########################################################")
-            print("✈️ Modo avión activado")
-            time.sleep(3)
+    try:
+        subprocess.run(
+            [adb_path, "shell", "cmd", "connectivity", "airplane-mode", "enable"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        print("########################################################")
+        print("✈️ Modo avión activado")
 
-            # Ejecutar el comando para desactivar el modo avión
-            subprocess.run([adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"], 
-                            capture_output=True, text=True, timeout=10)
-            print("📶 Modo avión desactivado")
-            time.sleep(3)
-        except Exception as e:
-            pass
-    else:
-        print("❌ Modo avión no activado")
-        time.sleep(2)
+        slept = 0
+        while slept < 3:
+            if not bot_running:
+                return
+            time.sleep(0.2)
+            slept += 0.2
+
+        subprocess.run(
+            [adb_path, "shell", "cmd", "connectivity", "airplane-mode", "disable"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        print("📶 Modo avión desactivado")
+
+        slept = 0
+        while slept < 3:
+            if not bot_running:
+                return
+            time.sleep(0.2)
+            slept += 0.2
+    except Exception as e:
+        print(f"⚠️ Error en modo avión: {e}")
 
 
 def _activar_proxy():
@@ -2391,11 +2492,7 @@ def _determinar_emails_realmente_fallidos(emails_procesados, browser_id=None):
                 if default_browser:
                     browser_id = default_browser['id']
         
-        if browser_id:
-            creator_settings = get_creator_setting(browser_id)
-        else:
-            creator_settings = None
-        user_agent = creator_settings.get('user_agent', '') if creator_settings else ''
+        user_agent = _resolve_user_agent(browser_id=browser_id) or ''
         
         # Agrupar emails por dirección de email para determinar el estado final
         emails_por_direccion = {}
@@ -2855,8 +2952,13 @@ def _guardar_cuentas_en_servidor(filepath):
             print("❌ Error: Faltan datos del usuario (ID o access_token)")
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
         
-        # Leer y parsear el archivo de cuentas
-        accounts = _leer_cuentas_del_archivo(filepath)
+        # Leer y parsear el archivo de cuentas (UA remoto del servidor si aplica)
+        from app.database.database import get_active_browsers
+        active_browsers = get_active_browsers()
+        browser_name_for_ua = None
+        if len(active_browsers) == 1:
+            browser_name_for_ua = active_browsers[0].get("name")
+        accounts = _leer_cuentas_del_archivo(filepath, browser_name=browser_name_for_ua)
         if not accounts:
             print("❌ Error: No se encontraron cuentas en el archivo")
             return False, "timeout", {"tiempo_transcurrido": 0, "timeout_seconds": 0}
@@ -2972,12 +3074,16 @@ def _guardar_cuentas_fallidas_en_servidor(cuentas_fallidas):
         return False
 
 
-def _leer_cuentas_del_archivo(filepath):
+def _leer_cuentas_del_archivo(filepath, browser_name=None):
     """
-    Lee las cuentas del archivo y las convierte al formato requerido por el servidor
+    Lee las cuentas del archivo y las convierte al formato requerido por el servidor.
+    Si hay User-Agent remoto de sesión (servidor), se usa al enviar en lugar del del archivo.
     """
     try:
         accounts = []
+        remote_ua = _resolve_user_agent(browser_name=browser_name)
+        if remote_ua:
+            print(f"📤 Enviando cuentas al servidor con User-Agent remoto ({browser_name or 'sesión'})")
         
         with open(filepath, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -2990,7 +3096,7 @@ def _leer_cuentas_del_archivo(filepath):
             if '\t' in line and not line.startswith('CUENTAS') and not line.startswith('=') and not line.startswith('Total') and not line.startswith('Formato'):
                 parts = line.split('\t')
                 if len(parts) >= 4:  # user_agent, email, password, cookie
-                    user_agent = parts[0].strip()
+                    user_agent = remote_ua or parts[0].strip()
                     email = parts[1].strip()
                     password = parts[2].strip()
                     cookie = parts[3].strip()

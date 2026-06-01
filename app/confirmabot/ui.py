@@ -4,7 +4,19 @@ def setup_ui(logged_in_user, on_login_success):
     from tkinter import messagebox
     from app.auth.auth import logout
     from app.confirmabot.auth_ui import setup_auth_ui
-    from app.database.database import save_bot_settings, get_bot_settings, save_emails, get_all_emails, get_email_count, clear_emails, save_click_coordinates, save_nopecha_key, get_nopecha_key
+    from app.database.database import (
+        save_bot_settings,
+        get_bot_settings,
+        save_emails,
+        get_all_emails,
+        get_email_count,
+        clear_emails,
+        save_click_coordinates,
+        save_nopecha_key,
+        get_nopecha_key,
+        save_pre_iteration_url_config,
+    )
+    from urllib.parse import urlparse
 
     from app.confirmabot.confirm_bot import run_checker, stop_bot, open_temp_chrome_profile as openProfileWithExtraExtension
     import threading
@@ -18,7 +30,7 @@ def setup_ui(logged_in_user, on_login_success):
 
     root = ctk.CTk()
     root.title("Confirma Bot")
-    root.geometry("600x650")
+    root.geometry("600x780")
     root.configure(fg_color="#FFFFFF")  # Fondo blanco
 
    # 📌 Etiqueta de bienvenida centrada arriba
@@ -73,6 +85,81 @@ def setup_ui(logged_in_user, on_login_success):
         font=("Arial", 12)
     )
     creator_button.pack(pady=(20, 10), anchor="w")
+
+    # 👉 URL GET antes de cada iteración (creator)
+    pre_url_title = ctk.CTkLabel(
+        options_frame,
+        text="URL antes de abrir navegador",
+        text_color="black",
+        font=("Arial", 11, "bold"),
+    )
+    pre_url_title.pack(pady=(8, 4), anchor="w")
+
+    use_pre_url_checkbox = ctk.CTkCheckBox(
+        options_frame,
+        text="Usar URL antes de cada iteración",
+        text_color="black",
+        font=("Arial", 11),
+        checkbox_width=18,
+        checkbox_height=18,
+    )
+    use_pre_url_checkbox.pack(pady=(0, 6), anchor="w")
+
+    pre_url_entry = ctk.CTkEntry(
+        options_frame,
+        width=260,
+        placeholder_text="https://ejemplo.com/endpoint",
+        font=("Arial", 11),
+    )
+    pre_url_entry.pack(pady=(0, 6), anchor="w")
+
+    def _is_valid_url(url):
+        try:
+            parsed = urlparse((url or "").strip())
+            return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+        except Exception:
+            return False
+
+    def save_pre_url_config():
+        url_value = pre_url_entry.get().strip()
+        use_enabled = use_pre_url_checkbox.get() == 1
+        if use_enabled and url_value and not _is_valid_url(url_value):
+            messagebox.showerror(
+                "URL inválida",
+                "Ingresa una URL válida que comience con http:// o https://",
+            )
+            return
+        if save_pre_iteration_url_config(url_value, use_enabled):
+            messagebox.showinfo("Éxito", "URL pre-iteración guardada.")
+        else:
+            messagebox.showerror("Error", "No se pudo guardar la URL.")
+
+    def auto_save_pre_url_checkbox():
+        current = get_bot_settings() or {}
+        save_pre_iteration_url_config(
+            pre_url_entry.get().strip() or current.get("pre_iteration_url", ""),
+            use_pre_url_checkbox.get() == 1,
+        )
+
+    save_pre_url_button = ctk.CTkButton(
+        options_frame,
+        text="Guardar URL",
+        command=save_pre_url_config,
+        fg_color="#007ACC",
+        text_color="white",
+        width=120,
+        height=28,
+        font=("Arial", 11),
+    )
+    save_pre_url_button.pack(pady=(0, 10), anchor="w")
+
+    _pre_url_settings = get_bot_settings()
+    if _pre_url_settings:
+        if _pre_url_settings.get("pre_iteration_url"):
+            pre_url_entry.insert(0, _pre_url_settings["pre_iteration_url"])
+        if _pre_url_settings.get("use_pre_iteration_url"):
+            use_pre_url_checkbox.select()
+    use_pre_url_checkbox.configure(command=auto_save_pre_url_checkbox)
 
 
     # 👉 Mostrar cantidad de dominios y hacer clic para verlos

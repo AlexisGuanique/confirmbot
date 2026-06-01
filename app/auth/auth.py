@@ -36,6 +36,7 @@ sio = socketio.Client()
 # Variable global para controlar el bot
 bot_running = False
 bot_thread = None
+_stop_requested = False  # True solo con comando stop o logout explícito
 
 
 def get_public_ip():
@@ -159,23 +160,63 @@ def _show_browser_not_available_messagebox(message_text):
         print(f"⚠️  No se pudo mostrar messagebox: {e}")
 
 
+def _extract_remote_user_agents_by_browser(command_payload):
+    """
+    Normaliza los distintos campos de User-Agent que puede enviar el servidor
+    a un dict {nombre_navegador: user_agent}.
+    """
+    result = {}
+
+    for key in ("remote_user_agents", "remote_creator_user_agents_by_browser"):
+        raw = command_payload.get(key)
+        if isinstance(raw, dict):
+            for name, ua in raw.items():
+                browser_name = str(name).strip()
+                ua_value = (ua or "").strip() if ua is not None else ""
+                if browser_name and ua_value:
+                    result[browser_name] = ua_value
+
+    preferred_browsers = command_payload.get("preferred_browsers")
+    ua_list = command_payload.get("remote_creator_user_agents")
+    if isinstance(preferred_browsers, list) and isinstance(ua_list, list):
+        for name, ua in zip(preferred_browsers, ua_list):
+            browser_name = str(name).strip()
+            ua_value = (ua or "").strip() if ua is not None else ""
+            if browser_name and ua_value and browser_name not in result:
+                result[browser_name] = ua_value
+
+    preferred_browser = (command_payload.get("preferred_browser") or "").strip()
+    for key in ("remote_user_agent", "remote_creator_user_agent"):
+        ua_value = (command_payload.get(key) or "").strip()
+        if preferred_browser and ua_value and preferred_browser not in result:
+            result[preferred_browser] = ua_value
+
+    return result
+
+
 def apply_remote_user_agent_if_present(command_payload):
     """
     Aplica User-Agent enviado por servidor para el navegador seleccionado.
     """
+    from app.creator.remote_user_agent_session import set_user_agents
+
     raw_list = command_payload.get("preferred_browsers")
-    raw_uas = command_payload.get("remote_user_agents")
-    if (
-        isinstance(raw_list, list)
-        and len(raw_list) > 0
-        and isinstance(raw_uas, dict)
-    ):
+    uas_by_browser = _extract_remote_user_agents_by_browser(command_payload)
+    if uas_by_browser:
+        set_user_agents(uas_by_browser)
+    if isinstance(raw_list, list) and len(raw_list) > 0:
+        if not uas_by_browser:
+            print(
+                "⚠️  El servidor envió preferred_browsers sin User-Agent remoto; "
+                "se usará el User-Agent configurado localmente por navegador"
+            )
+            return True, None
         missing_ua: list[str] = []
         for name in raw_list:
             bn = str(name).strip()
             if not bn:
                 continue
-            ua = (raw_uas.get(bn) or raw_uas.get(name) or "").strip()
+            ua = (uas_by_browser.get(bn) or uas_by_browser.get(name) or "").strip()
             if not ua:
                 missing_ua.append(bn)
         if missing_ua:
@@ -190,7 +231,7 @@ def apply_remote_user_agent_if_present(command_payload):
             bn = str(name).strip()
             if not bn:
                 continue
-            ua = (raw_uas.get(bn) or raw_uas.get(name) or "").strip()
+            ua = (uas_by_browser.get(bn) or uas_by_browser.get(name) or "").strip()
             ok, message = set_creator_user_agent_by_browser_name(bn, ua)
             if not ok:
                 print(f"⚠️ {message}")
@@ -200,7 +241,11 @@ def apply_remote_user_agent_if_present(command_payload):
         return True, None
 
     preferred_browser = (command_payload.get('preferred_browser') or '').strip()
-    remote_user_agent = (command_payload.get('remote_user_agent') or '').strip()
+    remote_user_agent = (
+        uas_by_browser.get(preferred_browser)
+        or (command_payload.get('remote_user_agent') or '').strip()
+        or (command_payload.get('remote_creator_user_agent') or '').strip()
+    )
 
     if not preferred_browser:
         return True, None
@@ -378,13 +423,34 @@ def verify_token():
         return {"is_valid": False}
 
 
+def _reconnect_websocket_background():
+    """Reintenta conectar el WebSocket sin detener el creator (caídas de red transitorias)."""
+    for attempt in range(1, 6):
+        if _stop_requested or not bot_running:
+            return
+        time.sleep(min(2 * attempt, 10))
+        if _stop_requested or not bot_running:
+            return
+        if sio.connected:
+            return
+        try:
+            print(f"🔄 Reintento de conexión WebSocket ({attempt}/5)...")
+            if connect_bot():
+                print("✅ WebSocket reconectado")
+                return
+        except Exception as e:
+            print(f"⚠️  Error al reconectar WebSocket: {e}")
+    print("⚠️  No se pudo reconectar el WebSocket; el creator sigue en ejecución local")
+
+
 def logout():
     """Función para cerrar sesión: detiene el bot, desconecta WebSocket y elimina usuario local
     
     Returns:
         bool: True si había un usuario logueado y se cerró sesión correctamente, False si no había usuario
     """
-    global bot_running
+    global bot_running, _stop_requested
+    _stop_requested = True
     
     # Verificar si hay un usuario logueado antes de proceder
     user = get_logged_in_user()
@@ -450,9 +516,21 @@ def connect():
 @sio.event
 def disconnect():
     """Se ejecuta cuando el bot se desconecta del servidor"""
-    global bot_running
-    bot_running = False
-    print("❌ Bot desconectado del servidor WebSocket")
+    global bot_running, _stop_requested
+
+    if _stop_requested:
+        bot_running = False
+        try:
+            from app.creator.remote_user_agent_session import clear_user_agents
+            clear_user_agents()
+        except Exception:
+            pass
+        print("❌ Bot desconectado del servidor WebSocket")
+        return
+
+    print("⚠️  WebSocket desconectado (posible corte de red). El creator continúa...")
+    if bot_running:
+        sio.start_background_task(_reconnect_websocket_background)
 
 
 @sio.event
@@ -475,12 +553,13 @@ def connected(data):
 @sio.event
 def command(data):
     """Recibe comandos del servidor (start, stop, etc.)"""
-    global bot_running, bot_thread
+    global bot_running, bot_thread, _stop_requested
     
     cmd = data.get('command')
     bot_id = data.get('bot_id')
     
     print(f"📨 Comando recibido: {cmd} (bot_id: {bot_id})")
+    print(f"🔍 [DEBUG] Payload completo: {data}")
 
     if cmd == 'start':
         domain_ok, domain_error = apply_remote_domain_config_if_present(data)
@@ -521,6 +600,7 @@ def command(data):
             return
         
         print("🚀 Iniciando bot...")
+        _stop_requested = False
         bot_running = True
         
         # Importar aquí para evitar importaciones circulares
@@ -589,6 +669,7 @@ def command(data):
             return
         
         print("🚀 Iniciando Creator...")
+        _stop_requested = False
         bot_running = True
         
         # Importar aquí para evitar importaciones circulares
@@ -625,6 +706,7 @@ def command(data):
         })
         
     elif cmd == 'stop':
+        _stop_requested = True
         print("🛑 Deteniendo bot...")
         bot_running = False
         

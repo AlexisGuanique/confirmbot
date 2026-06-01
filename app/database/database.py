@@ -142,6 +142,24 @@ def create_database():
                 print("✅ Migración bot_type aplicada exitosamente")
             except Exception as e:
                 print(f"⚠️ Error en migración bot_type: {e}")
+
+        if 'pre_iteration_url' not in existing_columns:
+            print("🔄 Aplicando migración: agregando columna pre_iteration_url...")
+            try:
+                cursor.execute("ALTER TABLE bot_settings ADD COLUMN pre_iteration_url TEXT")
+                print("✅ Migración pre_iteration_url aplicada exitosamente")
+            except Exception as e:
+                print(f"⚠️ Error en migración pre_iteration_url: {e}")
+
+        if 'use_pre_iteration_url' not in existing_columns:
+            print("🔄 Aplicando migración: agregando columna use_pre_iteration_url...")
+            try:
+                cursor.execute(
+                    "ALTER TABLE bot_settings ADD COLUMN use_pre_iteration_url INTEGER NOT NULL DEFAULT 0"
+                )
+                print("✅ Migración use_pre_iteration_url aplicada exitosamente")
+            except Exception as e:
+                print(f"⚠️ Error en migración use_pre_iteration_url: {e}")
         
         conn.commit()
         print("✅ Verificación de migraciones de bot_settings completada")
@@ -834,22 +852,89 @@ def get_bot_settings():
         # Habilitar claves foráneas
         conn.execute("PRAGMA foreign_keys = ON")
         cursor = conn.cursor()
-        cursor.execute("SELECT iterations, pause_minutes, enable_adb, enable_proxy, emails_per_batch FROM bot_settings LIMIT 1")
+        cursor.execute("PRAGMA table_info(bot_settings)")
+        columns = {column[1] for column in cursor.fetchall()}
+        select_cols = [
+            "iterations",
+            "pause_minutes",
+            "enable_adb",
+            "enable_proxy",
+            "emails_per_batch",
+        ]
+        if "pre_iteration_url" in columns:
+            select_cols.append("pre_iteration_url")
+        if "use_pre_iteration_url" in columns:
+            select_cols.append("use_pre_iteration_url")
+        cursor.execute(
+            f"SELECT {', '.join(select_cols)} FROM bot_settings LIMIT 1"
+        )
         row = cursor.fetchone()
         conn.close()
         if row:
-            return {
-                "iterations": row[0], 
+            result = {
+                "iterations": row[0],
                 "pause_minutes": row[1],
                 "enable_adb": bool(row[2]),
                 "enable_proxy": bool(row[3]),
-                "emails_per_batch": row[4]
+                "emails_per_batch": row[4],
             }
+            idx = 5
+            if "pre_iteration_url" in columns:
+                result["pre_iteration_url"] = row[idx] if idx < len(row) else ""
+                idx += 1
+            else:
+                result["pre_iteration_url"] = ""
+            if "use_pre_iteration_url" in columns:
+                result["use_pre_iteration_url"] = bool(row[idx]) if idx < len(row) else False
+            else:
+                result["use_pre_iteration_url"] = False
+            return result
         else:
             return None
     except Exception as e:
         print(f"❌ Error al obtener configuración: {e}")
         return None
+
+
+def save_pre_iteration_url_config(pre_iteration_url, use_pre_iteration_url):
+    """Guarda la URL GET pre-iteración y si está habilitada."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM bot_settings LIMIT 1")
+        existing = cursor.fetchone()
+        url_value = (pre_iteration_url or "").strip() or None
+        use_value = int(bool(use_pre_iteration_url))
+
+        if existing:
+            cursor.execute(
+                """
+                UPDATE bot_settings
+                SET pre_iteration_url = ?, use_pre_iteration_url = ?
+                WHERE id = ?
+                """,
+                (url_value, use_value, existing[0]),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO bot_settings (
+                    iterations, pause_minutes, enable_adb, enable_proxy,
+                    emails_per_batch, pre_iteration_url, use_pre_iteration_url
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (5, 20, 1, 1, 5, url_value, use_value),
+            )
+
+        conn.commit()
+        conn.close()
+        print("✅ URL pre-iteración guardada.")
+        return True
+    except Exception as e:
+        print(f"❌ Error al guardar URL pre-iteración: {e}")
+        return False
 
 
 def save_bot_connection_config(bot_name, bot_type='creador'):
